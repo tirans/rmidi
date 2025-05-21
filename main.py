@@ -4,6 +4,7 @@ import os
 import uvicorn
 import threading
 import time
+import socket
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
@@ -53,6 +54,40 @@ ui_launcher_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(l
 ui_launcher_logger.addHandler(ui_launcher_handler)
 
 logger = logging.getLogger(__name__)
+
+def is_port_in_use(port: int) -> bool:
+    """
+    Check if a port is already in use
+
+    Args:
+        port: Port number to check
+
+    Returns:
+        True if the port is in use, False otherwise
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('localhost', port)) == 0
+
+def find_available_port(start_port: int, max_attempts: int = 10) -> int:
+    """
+    Find an available port starting from start_port
+
+    Args:
+        start_port: Port number to start checking from
+        max_attempts: Maximum number of ports to check
+
+    Returns:
+        An available port number
+    """
+    port = start_port
+    for _ in range(max_attempts):
+        if not is_port_in_use(port):
+            return port
+        port += 1
+    # If we couldn't find an available port, return the original port
+    # This will likely fail, but it's better than returning an invalid port
+    logger.warning(f"Could not find an available port after {max_attempts} attempts")
+    return start_port
 
 # Initialize components
 device_manager = DeviceManager()
@@ -218,7 +253,14 @@ async def send_preset(preset: PresetRequest):
 # Run the application
 if __name__ == '__main__':
     # Get port from environment variable with default of 7777
-    port = int(os.getenv("PORT", 7777))
+    requested_port = int(os.getenv("PORT", 7777))
+
+    # Find an available port starting from the requested port
+    port = find_available_port(requested_port)
+
+    if port != requested_port:
+        logger.info(f"Port {requested_port} is in use, using port {port} instead")
+
     logger.info(f"Starting server on port {port}")
 
     # Initialize UI launcher with the correct server URL

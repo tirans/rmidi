@@ -10,8 +10,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="MIDI Patch Selection Client")
     parser.add_argument(
         "--server-url", 
-        default="http://localhost:8000",
-        help="URL of the MIDI Patch Selection server (default: http://localhost:8000)"
+        default="http://localhost:7777",
+        help="URL of the MIDI Patch Selection server (default: http://localhost:7777)"
     )
     return parser.parse_args()
 

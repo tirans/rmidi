@@ -14,7 +14,7 @@ from ..models import Patch
 class MainWindow(QMainWindow):
     """Main application window"""
 
-    def __init__(self, server_url: str = "http://localhost:8000"):
+    def __init__(self, server_url: str = "http://localhost:7777"):
         super().__init__()
         self.server_url = server_url
         self.api_client = ApiClient(server_url)

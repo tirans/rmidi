@@ -8,7 +8,7 @@ from .models import Device, Patch
 class ApiClient:
     """Client for communicating with the MIDI Patch Selection API"""
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:7777"):
         """
         Initialize the API client
 

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class UILauncher:
     """Responsible for launching the UI client"""
 
-    def __init__(self, client_path: str = "midi_patch_client", server_url: str = "http://localhost:8000"):
+    def __init__(self, client_path: str = "midi_patch_client", server_url: str = "http://localhost:7777"):
         """
         Initialize the UI launcher
 

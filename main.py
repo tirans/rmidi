@@ -18,6 +18,7 @@ from device_manager import DeviceManager
 from midi_utils import MidiUtils
 from models import Device, Patch, PresetRequest
 from ui_launcher import UILauncher
+from version import __version__
 
 # Configure logging
 # Create logs directory if it doesn't exist
@@ -156,7 +157,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MIDI Patch Selection API",
     description="API for selecting MIDI patches and controlling MIDI devices",
-    version="0.1.0",
+    version=__version__,
     lifespan=lifespan
 )
 

@@ -6,9 +6,13 @@ on:
   pull_request:
     branches: [ "master" ]
 
+# Permission needed for OIDC token authentication with PyPI
+permissions:
+  id-token: write
+  contents: write
+
 jobs:
   build:
-
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -17,6 +21,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for proper versioning
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -31,7 +38,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install flake8 pytest
+        python -m pip install flake8 pytest build twine
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     - name: Lint with flake8
@@ -44,3 +51,58 @@ jobs:
     - name: Test with pytest
       run: |
         pytest
+
+    - name: Build package
+      run: |
+        python -m build
+
+    - name: Store build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist-${{ matrix.python-version }}
+        path: dist/
+        retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for proper versioning
+
+    - name: Get version
+      id: get_version
+      run: |
+        VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.get_version.outputs.version }}
+        release_name: Release v${{ steps.get_version.outputs.version }}
+        draft: false
+        prerelease: false
+
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Prepare distributions for PyPI
+      run: |
+        mkdir -p combined_dist
+        cp artifacts/dist-*/dist/* combined_dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: combined_dist/
+        # OpenID Connect (OIDC) is used automatically, no credentials needed

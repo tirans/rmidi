@@ -213,32 +213,24 @@ Logs are stored in the `logs` directory:
 
 ## Version Management
 
-The application version is stored in `version.py` and is automatically incremented on each git commit using a pre-commit hook.
+The application version is stored in `version.py` and is automatically incremented on each push to the master branch using GitHub Actions.
 
-### Installing the Pre-commit Hook
+### How Version Incrementing Works
 
-To enable automatic version incrementing, install the pre-commit hook:
+The version incrementing is handled by the GitHub Actions workflow defined in `.github/workflows/python-package.yml`. When code is pushed to the master branch, the workflow:
 
-```bash
-# From the project root directory
-cp pre-commit .git/hooks/
-chmod +x .git/hooks/pre-commit
-```
+1. Builds and tests the application
+2. Increments the patch version (the third number in the version)
+3. Updates both `version.py` and `pyproject.toml` with the new version
+4. Commits and pushes the version changes back to the repository
+5. Creates a GitHub release with the new version
+6. Publishes the package to PyPI
 
-This will increment the patch version (the third number in the version) on each commit. For example, if the current version is `0.1.0`, after a commit it will be `0.1.1`.
+For example, if the current version is `0.1.0`, after a push to master it will be `0.1.1`.
 
-For major or minor version updates, manually edit the `version.py` file.
+### Manual Version Updates
 
-### Testing the Version Incrementing
-
-To test that the version incrementing works correctly without making an actual commit:
-
-```bash
-# From the project root directory
-./test_version_increment.sh
-```
-
-This script will simulate a commit and show you the before and after versions. It will not make an actual git commit, so you can safely test the functionality.
+For major or minor version updates (first or second number), manually edit the `version.py` and `pyproject.toml` files before pushing to master. The GitHub Actions workflow will still handle creating the release and publishing to PyPI.
 
 ## Contributing
 
@@ -246,7 +238,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Install the pre-commit hook as described above
-4. Commit your changes (`git commit -m 'Add some amazing feature'`)
-5. Push to the branch (`git push origin feature/amazing-feature`)
-6. Open a Pull Request
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+**Note**: You don't need to worry about incrementing the version number. This is handled automatically by GitHub Actions when your changes are merged to the master branch.

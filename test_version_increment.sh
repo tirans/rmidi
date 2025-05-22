@@ -1,26 +1,16 @@
 #!/bin/bash
 
-# This script tests the version incrementing functionality
-# It simulates a git commit and checks if the version is incremented properly
+echo "NOTICE: This test script is deprecated."
+echo "Version incrementing is now handled automatically by GitHub Actions."
+echo "See .github/workflows/python-package.yml for details."
+echo "You can safely remove this script from your local repository."
 
-# Save the current version
-echo "Current version in version.py:"
+# Display current versions for reference
+echo -e "\nCurrent version in version.py:"
 grep "__version__" version.py
 
 echo "Current version in pyproject.toml:"
 grep "version =" pyproject.toml
 
-# Run the pre-commit hook
-echo -e "\nRunning pre-commit hook..."
-./pre-commit
-
-# Check the new version
-echo -e "\nNew version in version.py:"
-grep "__version__" version.py
-
-echo "New version in pyproject.toml:"
-grep "version =" pyproject.toml
-
-echo -e "\nTest completed. If the versions were incremented, the pre-commit hook is working correctly."
-echo "Note: This test only simulates a commit. No actual commit was made."
-echo "To revert the version changes, you can edit the files manually or use git checkout."
+echo -e "\nThese versions will be automatically incremented when changes are pushed to the master branch."
+echo "No manual testing or version incrementing is required."

@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "r2midi"
-# Version is managed in version.py and automatically updated by git pre-commit hook
+# Version is managed in version.py and automatically updated by GitHub Actions
 # The version here should match the one in version.py
-version = "0.1.0"
+version = "0.1.1"
 description = "MIDI 2.0 Patch Selection Application"
 authors = [
     {name = "R2MIDI Team", email = "example@example.com"}

@@ -1,26 +1,9 @@
 #!/bin/bash
 
-# Get the current version from version.py
-VERSION_FILE="version.py"
-PYPROJECT_FILE="pyproject.toml"
-CURRENT_VERSION=$(grep -o '__version__ = "[^"]*"' $VERSION_FILE | cut -d'"' -f2)
+echo "NOTICE: This pre-commit hook is deprecated."
+echo "Version incrementing is now handled automatically by GitHub Actions."
+echo "See .github/workflows/python-package.yml for details."
+echo "You can safely remove this hook from your local repository."
 
-# Split the version into major, minor, and patch components
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-
-# Increment the patch version
-NEW_PATCH=$((PATCH + 1))
-NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-
-# Update the version in the version file
-sed -i.bak "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" $VERSION_FILE
-rm -f "$VERSION_FILE.bak"
-
-# Update the version in pyproject.toml
-sed -i.bak "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" $PYPROJECT_FILE
-rm -f "$PYPROJECT_FILE.bak"
-
-# Add the updated files to the commit
-git add $VERSION_FILE $PYPROJECT_FILE
-
-echo "Version incremented from $CURRENT_VERSION to $NEW_VERSION"
+# Exit with success code
+exit 0

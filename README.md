@@ -12,6 +12,7 @@ R2MIDI is a modern application for managing and selecting MIDI patches across va
 - **User-Friendly Interface**: Clean, intuitive GUI for easy navigation
 
 ## Installation
+ https://pypi.org/project/r2midi  or as described below. 
 
 ### Prerequisites
 
@@ -37,12 +38,6 @@ R2MIDI is a modern application for managing and selecting MIDI patches across va
    pip install -e .
    ```
 
-3. Install SendMIDI:
-   - **macOS** (using Homebrew):
-     ```bash
-     brew install gbevin/tools/sendmidi
-     ```
-   - **Windows/Linux**: Download from [SendMIDI GitHub releases](https://github.com/gbevin/SendMIDI/releases)
 
 ## Configuration
 

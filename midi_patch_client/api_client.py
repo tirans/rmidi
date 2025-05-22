@@ -1,9 +1,13 @@
 import asyncio
 import json
+import logging
 from typing import Dict, List, Optional, Any
 import httpx
 
 from .models import Device, Patch
+
+# Configure logger
+logger = logging.getLogger('midi_patch_client.api_client')
 
 class ApiClient:
     """Client for communicating with the MIDI Patch Selection API"""
@@ -26,17 +30,17 @@ class ApiClient:
             List of Device objects
         """
         try:
-            print("Fetching devices from server...")
+            logger.info("Fetching devices from server...")
             response = await self.client.get("/devices")
             response.raise_for_status()
 
             devices_data = response.json()
             devices = [Device(**device) for device in devices_data]
-            print(f"Fetched {len(devices)} devices: {[d.name for d in devices]}")
+            logger.info(f"Fetched {len(devices)} devices: {[d.name for d in devices]}")
             return devices
 
         except httpx.HTTPError as e:
-            print(f"Error fetching devices: {str(e)}")
+            logger.error(f"Error fetching devices: {str(e)}")
             return []
 
     async def get_patches(self) -> List[Patch]:
@@ -47,17 +51,17 @@ class ApiClient:
             List of Patch objects
         """
         try:
-            print("Fetching patches from server...")
+            logger.info("Fetching patches from server...")
             response = await self.client.get("/patches")
             response.raise_for_status()
 
             patches_data = response.json()
             patches = [Patch(**patch) for patch in patches_data]
-            print(f"Fetched {len(patches)} patches: {[p.preset_name for p in patches[:5]]}...")
+            logger.info(f"Fetched {len(patches)} patches: {[p.preset_name for p in patches[:5]]}...")
             return patches
 
         except httpx.HTTPError as e:
-            print(f"Error fetching patches: {str(e)}")
+            logger.error(f"Error fetching patches: {str(e)}")
             return []
 
     async def get_midi_ports(self) -> Dict[str, List[str]]:
@@ -68,16 +72,16 @@ class ApiClient:
             Dictionary with 'in' and 'out' keys containing lists of port names
         """
         try:
-            print("Fetching MIDI ports from server...")
+            logger.info("Fetching MIDI ports from server...")
             response = await self.client.get("/midi_port")
             response.raise_for_status()
 
             ports = response.json()
-            print(f"Fetched MIDI ports: in={ports.get('in', [])}, out={ports.get('out', [])}")
+            logger.info(f"Fetched MIDI ports: in={ports.get('in', [])}, out={ports.get('out', [])}")
             return ports
 
         except httpx.HTTPError as e:
-            print(f"Error fetching MIDI ports: {str(e)}")
+            logger.error(f"Error fetching MIDI ports: {str(e)}")
             return {"in": [], "out": []}
 
     async def send_preset(self, preset_name: str, midi_port: str, midi_channel: int, 
@@ -110,7 +114,7 @@ class ApiClient:
             return response.json()
 
         except httpx.HTTPError as e:
-            print(f"Error sending preset: {str(e)}")
+            logger.error(f"Error sending preset: {str(e)}")
             if hasattr(e, 'response') and e.response is not None:
                 try:
                     error_data = e.response.json()

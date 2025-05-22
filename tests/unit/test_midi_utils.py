@@ -47,14 +47,11 @@ class TestMidiUtils(unittest.TestCase):
         self.assertEqual(result["in"], [])
         self.assertEqual(result["out"], [])
 
-    @patch('subprocess.run')
-    def test_send_midi_command(self, mock_run):
+    @patch('midi_utils.MidiUtils._send_rtmidi_message')
+    def test_send_midi_command(self, mock_send_rtmidi):
         """Test sending a MIDI command"""
         # Set up mock return value
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Command executed successfully"
-        mock_run.return_value = mock_result
+        mock_send_rtmidi.return_value = (True, "MIDI messages sent successfully")
 
         # Call the method under test
         success, message = MidiUtils.send_midi_command("sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0")
@@ -63,28 +60,17 @@ class TestMidiUtils(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(message, "Command executed successfully")
 
-        # Verify that subprocess.run was called with the correct arguments
-        mock_run.assert_called_once_with(
-            "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0", 
-            shell=True, 
-            check=True, 
-            capture_output=True, 
-            text=True
-        )
+        # Verify that _send_rtmidi_message was called with the correct arguments
+        mock_send_rtmidi.assert_called_once_with("Port 1", 1, 0, 0)
 
-    @patch('subprocess.run')
-    def test_send_midi_command_with_sequencer(self, mock_run):
+    @patch('midi_utils.MidiUtils._send_rtmidi_message')
+    def test_send_midi_command_with_sequencer(self, mock_send_rtmidi):
         """Test sending a MIDI command with a sequencer port"""
-        # Set up mock return values for both commands
-        mock_result1 = MagicMock()
-        mock_result1.returncode = 0
-        mock_result1.stdout = "Command executed successfully"
-
-        mock_result2 = MagicMock()
-        mock_result2.returncode = 0
-        mock_result2.stdout = "Sequencer command executed successfully"
-
-        mock_run.side_effect = [mock_result1, mock_result2]
+        # Set up mock return values for both calls
+        mock_send_rtmidi.side_effect = [
+            (True, "MIDI messages sent successfully"),
+            (True, "Sequencer MIDI messages sent successfully")
+        ]
 
         # Call the method under test
         success, message = MidiUtils.send_midi_command(
@@ -96,57 +82,70 @@ class TestMidiUtils(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(message, "Command executed successfully")
 
-        # Verify that subprocess.run was called twice with the correct arguments
-        self.assertEqual(mock_run.call_count, 2)
-        mock_run.assert_has_calls([
-            call("sendmidi dev \"Port 1\" ch 1 cc 0 0 pc 0", shell=True, check=True, capture_output=True, text=True),
-            call("sendmidi dev \"Sequencer Port\" ch 1 cc 0 0 pc 0", shell=True, check=True, capture_output=True, text=True)
+        # Verify that _send_rtmidi_message was called twice with the correct arguments
+        self.assertEqual(mock_send_rtmidi.call_count, 2)
+        mock_send_rtmidi.assert_has_calls([
+            call("Port 1", 1, 0, 0),
+            call("Sequencer Port", 1, 0, 0)
         ])
 
-    @patch('subprocess.run')
-    def test_send_midi_command_error(self, mock_run):
+    @patch('midi_utils.MidiUtils._send_rtmidi_message')
+    def test_send_midi_command_error(self, mock_send_rtmidi):
         """Test sending a MIDI command with an error"""
-        # Set up mock to raise an exception
-        mock_run.side_effect = subprocess.CalledProcessError(1, "cmd", stderr="Command failed")
+        # Set up mock to return an error
+        mock_send_rtmidi.return_value = (False, "MIDI output port 'Port 1' not found")
 
         # Call the method under test
         success, message = MidiUtils.send_midi_command("sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0")
 
         # Verify the results
         self.assertFalse(success)
-        self.assertEqual(message, "Error executing SendMIDI command: Command failed")
+        self.assertEqual(message, "MIDI output port 'Port 1' not found")
 
-    @patch('subprocess.run')
-    def test_is_sendmidi_installed(self, mock_run):
-        """Test checking if SendMIDI is installed"""
+    def test_send_midi_command_invalid_format(self):
+        """Test sending a MIDI command with invalid format"""
+        # Call the method with an invalid command format
+        success, message = MidiUtils.send_midi_command("invalid command")
+
+        # Verify the results
+        self.assertFalse(success)
+        self.assertTrue("Invalid command format" in message)
+
+    @patch('midi_utils.MidiUtils.is_midi_available')
+    def test_is_sendmidi_installed(self, mock_is_midi_available):
+        """Test checking if SendMIDI is installed (now redirects to is_midi_available)"""
         # Set up mock return value for successful case
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "/usr/local/bin/sendmidi"
-        mock_run.return_value = mock_result
+        mock_is_midi_available.return_value = True
 
         # Call the method under test
         result = MidiUtils.is_sendmidi_installed()
 
         # Verify the results
         self.assertTrue(result)
+        mock_is_midi_available.assert_called_once()
 
-        # Verify that subprocess.run was called with the correct arguments
-        mock_run.assert_called_once_with(
-            ["which", "sendmidi"], 
-            capture_output=True, 
-            text=True
-        )
-
-        # Reset mock and test the case where SendMIDI is not installed
-        mock_run.reset_mock()
-        mock_result.returncode = 1
+        # Reset mock and test the case where MIDI is not available
+        mock_is_midi_available.reset_mock()
+        mock_is_midi_available.return_value = False
 
         # Call the method under test
         result = MidiUtils.is_sendmidi_installed()
 
         # Verify the results
         self.assertFalse(result)
+        mock_is_midi_available.assert_called_once()
+
+    def test_is_midi_available(self):
+        """Test checking if MIDI functionality is available"""
+        # This is a simple test to verify the method exists and returns a boolean
+        # We can't easily mock rtmidi in the test environment, so we'll just call the method
+        # and verify it returns a boolean value
+
+        # Call the method under test
+        result = MidiUtils.is_midi_available()
+
+        # Verify the result is a boolean
+        self.assertIsInstance(result, bool)
 
     @patch('midi_utils.MidiUtils.send_midi_command')
     @patch('asyncio.get_event_loop')

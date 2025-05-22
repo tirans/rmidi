@@ -41,6 +41,8 @@ class PatchPanel(QWidget):
         self.category_combo = QComboBox()
         self.category_combo.addItem("All Categories", None)
         self.category_combo.currentIndexChanged.connect(self.on_category_changed)
+        self.category_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.category_combo.setMinimumWidth(200)
         filter_layout.addWidget(self.category_combo)
 
         left_layout.addWidget(filter_box)

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Optional
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -10,6 +11,9 @@ from ..api_client import ApiClient
 from .patch_panel import PatchPanel
 from .device_panel import DevicePanel
 from ..models import Patch
+
+# Configure logger
+logger = logging.getLogger('midi_patch_client.ui.main_window')
 
 class MainWindow(QMainWindow):
     """Main application window"""
@@ -98,9 +102,21 @@ class MainWindow(QMainWindow):
 
     def load_data(self):
         """Load data from the server"""
-        # Create a new event loop for the async operation
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Check if there's an existing event loop we can use
+        created_new_loop = False
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                logger.info("Existing event loop is closed, creating a new one")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                created_new_loop = True
+        except RuntimeError:
+            # No event loop in current thread
+            logger.info("No event loop in current thread, creating a new one")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            created_new_loop = True
 
         try:
             # Run the async load operation
@@ -108,12 +124,14 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.show_error(f"Error loading data: {str(e)}")
         finally:
-            loop.close()
+            # Only close the loop if we created a new one
+            if created_new_loop:
+                loop.close()
 
     def on_patch_selected(self, patch: Patch):
         """Handle patch selection"""
         self.selected_patch = patch
-        self.status_bar.showMessage(f"Selected patch: {patch.preset_name}")
+        self.status_bar.showMessage(f"Selected patch: {patch.get_display_name()}")
 
     def on_midi_out_port_changed(self, port_name: str):
         """Handle MIDI out port selection change"""
@@ -125,8 +143,10 @@ class MainWindow(QMainWindow):
         self.selected_sequencer_port = port_name if port_name else None
         if port_name:
             self.status_bar.showMessage(f"Selected sequencer port: {port_name}")
+            logger.info(f"Sequencer port changed to: {port_name}")
         else:
             self.status_bar.showMessage("No sequencer port selected")
+            logger.info("Sequencer port cleared")
 
     def on_midi_channel_changed(self, channel: int):
         """Handle MIDI channel selection change"""
@@ -150,7 +170,13 @@ class MainWindow(QMainWindow):
         if not self.selected_patch or not self.selected_midi_out_port:
             return
 
-        self.status_bar.showMessage(f"Sending preset: {self.selected_patch.preset_name}...")
+        self.status_bar.showMessage(f"Sending preset: {self.selected_patch.get_display_name()}...")
+
+        # Log debug information
+        logger.info(f"Sending preset: {self.selected_patch.get_display_name()}")
+        logger.info(f"MIDI out port: {self.selected_midi_out_port}")
+        logger.info(f"MIDI channel: {self.selected_midi_channel}")
+        logger.info(f"Sequencer port: {self.selected_sequencer_port}")
 
         try:
             result = await self.api_client.send_preset(
@@ -161,7 +187,7 @@ class MainWindow(QMainWindow):
             )
 
             if result.get("status") == "success":
-                self.status_bar.showMessage(f"Preset sent: {self.selected_patch.preset_name}")
+                self.status_bar.showMessage(f"Preset sent: {self.selected_patch.get_display_name()}")
             else:
                 self.show_error(f"Error sending preset: {result.get('message', 'Unknown error')}")
 
@@ -170,23 +196,31 @@ class MainWindow(QMainWindow):
 
     def send_preset(self):
         """Send the selected preset to the server"""
-        # Use the current event loop if it exists and is running, otherwise create a new one
+        # Check if there's an existing event loop we can use
+        created_new_loop = False
         try:
             loop = asyncio.get_event_loop()
             if loop.is_closed():
+                logger.info("Existing event loop is closed, creating a new one")
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                created_new_loop = True
         except RuntimeError:
             # No event loop in current thread
+            logger.info("No event loop in current thread, creating a new one")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            created_new_loop = True
 
         try:
             # Run the async send operation
             loop.run_until_complete(self._send_preset_async())
         except Exception as e:
             self.show_error(f"Error sending preset: {str(e)}")
-        # Don't close the loop here, as it might be used by other operations
+        finally:
+            # Only close the loop if we created a new one
+            if created_new_loop:
+                loop.close()
 
     def show_error(self, message: str):
         """Show an error message dialog"""
@@ -200,17 +234,31 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle window close event"""
-        # Create a new event loop for the async operation
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Check if there's an existing event loop we can use
+        created_new_loop = False
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                logger.info("Existing event loop is closed, creating a new one")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                created_new_loop = True
+        except RuntimeError:
+            # No event loop in current thread
+            logger.info("No event loop in current thread, creating a new one")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            created_new_loop = True
 
         try:
             # Close the API client
             loop.run_until_complete(self.api_client.close())
         except Exception as e:
-            print(f"Error closing API client: {str(e)}")
+            logger.error(f"Error closing API client: {str(e)}")
         finally:
-            loop.close()
+            # Only close the loop if we created a new one
+            if created_new_loop:
+                loop.close()
 
         # Accept the close event
         event.accept()

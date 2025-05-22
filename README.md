@@ -193,15 +193,12 @@ pytest --cov=. tests/
 
 ### Common Issues
 
-1. **SendMIDI not found**
-   - Ensure SendMIDI is installed and available in your PATH
-   - The application will show a warning if SendMIDI is not found
 
-2. **No MIDI devices detected**
+1**No MIDI devices detected**
    - Check that your MIDI devices are connected and powered on
    - Some devices may require specific drivers
 
-3. **UI client fails to start**
+2**UI client fails to start**
    - Check the logs in the `logs` directory for error messages
    - Ensure PyQt6 is properly installed
 

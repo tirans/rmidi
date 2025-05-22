@@ -60,33 +60,11 @@ jobs:
       run: ls -al dist/
 
     - name: Store build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
          name: dist-${{ matrix.python-version }}
          path: dist/
          retention-days: 1
-
-    - name: Lint with flake8
-      run: |
-        # stop the build if there are Python syntax errors or undefined names
-        #flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        # flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Test with pytest
-      run: |
-        pytest
-
-    - name: Build package
-      run: |
-        python -m build
-
-    - name: Store build artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: dist-${{ matrix.python-version }}
-        path: dist/
-        retention-days: 1
 
   release:
     needs: build
@@ -107,17 +85,16 @@ jobs:
 
     - name: Create GitHub Release
       id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: v${{ steps.get_version.outputs.version }}
-        release_name: Release v${{ steps.get_version.outputs.version }}
+        name: Release v${{ steps.get_version.outputs.version }}
         draft: false
         prerelease: false
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Download all build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts
 

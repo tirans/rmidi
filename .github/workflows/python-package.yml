@@ -83,6 +83,16 @@ jobs:
         echo "VERSION=$VERSION" >> $GITHUB_ENV
         echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare distributions for PyPI
+      run: |
+        mkdir -p combined_dist
+        find artifacts -type f -exec cp {} combined_dist/ \;
+
     - name: Create GitHub Release
       id: create_release
       uses: softprops/action-gh-release@v1
@@ -92,16 +102,6 @@ jobs:
         draft: false
         prerelease: false
         token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Download all build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Prepare distributions for PyPI
-      run: |
-        mkdir -p combined_dist
-        cp artifacts/dist-*/dist/* combined_dist/
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1

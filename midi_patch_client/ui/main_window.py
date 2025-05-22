@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
 
         # Connect patch panel signals
         self.patch_panel.patch_selected.connect(self.on_patch_selected)
+        self.patch_panel.patch_double_clicked.connect(self.on_patch_double_clicked)
 
         # Set initial splitter sizes (30% top, 70% bottom)
         splitter.setSizes([300, 700])
@@ -132,6 +133,16 @@ class MainWindow(QMainWindow):
         """Handle patch selection"""
         self.selected_patch = patch
         self.status_bar.showMessage(f"Selected patch: {patch.get_display_name()}")
+
+    def on_patch_double_clicked(self, patch: Patch):
+        """Handle patch double-click - same action as Send MIDI button"""
+        # First make sure we have the necessary selections
+        if not self.selected_midi_out_port:
+            self.show_error("No MIDI output port selected. Please select a MIDI output port first.")
+            return
+
+        # Call the send_preset method directly
+        self.send_preset()
 
     def on_midi_out_port_changed(self, port_name: str):
         """Handle MIDI out port selection change"""

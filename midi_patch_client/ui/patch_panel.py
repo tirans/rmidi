@@ -14,6 +14,9 @@ class PatchPanel(QWidget):
     # Signal emitted when a patch is selected
     patch_selected = pyqtSignal(object)
 
+    # Signal emitted when a patch is double-clicked
+    patch_double_clicked = pyqtSignal(object)
+
     def __init__(self):
         super().__init__()
         self.patches = []
@@ -54,6 +57,7 @@ class PatchPanel(QWidget):
 
         self.patch_list = QListWidget()
         self.patch_list.itemClicked.connect(self.on_patch_clicked)
+        self.patch_list.itemDoubleClicked.connect(self.on_patch_double_clicked)
         list_layout.addWidget(self.patch_list)
 
         left_layout.addWidget(list_box)
@@ -142,3 +146,14 @@ class PatchPanel(QWidget):
 
             # Emit signal
             self.patch_selected.emit(patch)
+
+    def on_patch_double_clicked(self, item):
+        """Handle patch double-click"""
+        patch = item.data(Qt.ItemDataRole.UserRole)
+        if patch:
+            # Update details display (same as single click)
+            self.details_text.setText(patch.get_details())
+
+            # Emit both signals - first select the patch, then emit double-click
+            self.patch_selected.emit(patch)
+            self.patch_double_clicked.emit(patch)

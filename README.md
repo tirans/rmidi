@@ -1,6 +1,6 @@
-# RMIDI - MIDI 2.0 Patch Selection Application
+# R2MIDI - MIDI 2.0 Patch Selection Application
 
-RMIDI is a modern application for managing and selecting MIDI patches across various devices. It provides a user-friendly interface for musicians and producers to quickly select and send MIDI program changes to their hardware.
+R2MIDI is a modern application for managing and selecting MIDI patches across various devices. It provides a user-friendly interface for musicians and producers to quickly select and send MIDI program changes to their hardware.
 
 ## Features
 
@@ -23,8 +23,8 @@ RMIDI is a modern application for managing and selecting MIDI patches across var
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/rmidi.git
-   cd rmidi
+   git clone https://github.com/tirans/r2midi.git
+   cd r2midi
    ```
 
 2. Install dependencies:

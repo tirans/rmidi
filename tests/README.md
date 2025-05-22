@@ -1,6 +1,6 @@
-# Tests for RMIDI
+# Tests for R2MIDI
 
-This directory contains tests for the RMIDI application.
+This directory contains tests for the R2MIDI application.
 
 ## Structure
 

@@ -3,13 +3,13 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rmidi"
+name = "r2midi"
 # Version is managed in version.py and automatically updated by git pre-commit hook
 # The version here should match the one in version.py
 version = "0.1.0"
 description = "MIDI 2.0 Patch Selection Application"
 authors = [
-    {name = "RMIDI Team", email = "example@example.com"}
+    {name = "R2MIDI Team", email = "example@example.com"}
 ]
 readme = "README.md"
 license = "MIT"
@@ -52,5 +52,5 @@ include-package-data = true
 "devices" = ["devices/*.json"]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/rmidi"
-"Bug Tracker" = "https://github.com/yourusername/rmidi/issues"
+"Homepage" = "https://github.com/tirans/r2midi"
+"Bug Tracker" = "https://github.com/tirans/r2midi/issues"

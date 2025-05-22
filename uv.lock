@@ -1206,7 +1206,7 @@ wheels = [
 ]
 
 [[package]]
-name = "rmidi"
+name = "r2midi"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

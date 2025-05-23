@@ -35,21 +35,43 @@ jobs:
         run: |
           CURRENT_VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
           echo "Current version: $CURRENT_VERSION"
-          
+
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
           NEW_PATCH=$((PATCH + 1))
           NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
           echo "New version: $NEW_VERSION"
-          
+
           sed -i "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" version.py
           sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" pyproject.toml
-          
+
           echo "VERSION=$NEW_VERSION" >> $GITHUB_ENV
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          
+
           git add version.py pyproject.toml
           git commit -m "Bump version from $CURRENT_VERSION to $NEW_VERSION [skip ci]"
-          git push
+
+          # Pull latest changes before pushing to handle potential conflicts
+          git pull --rebase origin master
+
+          # Push with error handling and retry logic
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if git push; then
+              echo "Successfully pushed version bump"
+              break
+            else
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "Push failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+                git pull --rebase origin master
+              else
+                echo "Failed to push after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
 
       # Setup Python environment and install dependencies in separate steps for clarity
       - name: Set up Python ${{ matrix.python-version }}

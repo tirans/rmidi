@@ -105,6 +105,12 @@ jobs:
 
       - name: Debug dist directory
         run: ls -al dist/
+      - name: Store build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.python-version }}
+          path: dist/
+          retention-days: 1
   release:
     needs: build
     runs-on: ubuntu-latest

@@ -237,7 +237,7 @@ async def get_patches_by_manufacturer_and_device(
         logger.error(f"Error getting patches for manufacturer {manufacturer}, device {device}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting patches for manufacturer {manufacturer}, device {device}: {str(e)}")
 
-@app.get("/midi_port", response_model=Dict[str, List[str]])
+@app.get("/midi_ports", response_model=Dict[str, List[str]])
 async def get_midi_ports():
     """Return dictionary of in/out MIDI ports available on the system"""
     try:
@@ -262,26 +262,32 @@ async def send_preset(preset: PresetRequest):
             raise HTTPException(status_code=404, detail=f"Preset '{preset.preset_name}' not found")
 
         # Get the bank select (cc_0) and program change (pgm) values
-        cc_0 = patch_data.get('cc_0')
-        pgm = patch_data.get('pgm')
+        cc_value = patch_data.get('cc_0')
+        pgm_value = patch_data.get('pgm')
 
-        if cc_0 is None or pgm is None:
+        if cc_value is None or pgm_value is None:
             logger.warning(f"Missing cc_0 or pgm values for preset '{preset.preset_name}'")
             raise HTTPException(status_code=400, detail=f"Missing cc_0 or pgm values for preset '{preset.preset_name}'")
 
-        # Construct the SendMIDI command using the selected MIDI port, channel, cc_0, and pgm values
-        command = f'sendmidi dev "{preset.midi_port}" ch {preset.midi_channel} cc 0 {cc_0} pc {pgm}'
-        logger.info(f"Sending MIDI command: {command}")
+        # Use the new send_patch_select function
+        logger.info(f"Sending patch select: port={preset.midi_port}, channel={preset.midi_channel}, cc0={cc_value}, pgm={pgm_value}")
 
         # Execute the command
         try:
-            success, message = await MidiUtils.asend_midi_command(command, preset.sequencer_port)
+            success, message = await MidiUtils.asend_patch_select(
+                port_name=preset.midi_port,
+                channel=preset.midi_channel,
+                pgm_value=pgm_value,
+                cc_value=cc_value,
+                cc_number=0,  # Default to Bank Select (CC 0)
+                sequencer_port=preset.sequencer_port
+            )
 
             if not success:
-                logger.error(f"MIDI command failed: {message}")
+                logger.error(f"Patch selection failed: {message}")
                 raise HTTPException(status_code=500, detail=message)
 
-            logger.info(f"MIDI command succeeded: {message}")
+            logger.info(f"Patch selection succeeded: {message}")
 
             # If sequencer port is specified, log it
             if preset.sequencer_port:
@@ -290,8 +296,8 @@ async def send_preset(preset: PresetRequest):
             return {"status": "success", "message": message}
 
         except Exception as e:
-            logger.error(f"Error executing MIDI command: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error executing MIDI command: {str(e)}")
+            logger.error(f"Error executing patch selection: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error executing patch selection: {str(e)}")
 
     except HTTPException:
         # Re-raise HTTP exceptions to preserve their status codes

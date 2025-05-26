@@ -1,6 +1,8 @@
-fastapi
-uvicorn
-python-dotenv
-httpx
-rtmidi
-PyQt6
+fastapi>=0.95.0
+uvicorn>=0.22.0
+python-dotenv>=1.0.0
+httpx>=0.24.0
+rtmidi>=2.5.0
+mido==1.3.3
+PyQt6>=6.5.0
+psutil>=5.9.0

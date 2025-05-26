@@ -3,6 +3,7 @@ import sys
 import argparse
 from PyQt6.QtWidgets import QApplication
 
+# Import our fixed version of MainWindow (now copied to main_window.py)
 from midi_patch_client.ui.main_window import MainWindow
 
 def parse_args():

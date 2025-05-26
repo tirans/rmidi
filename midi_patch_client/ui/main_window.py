@@ -1,37 +1,215 @@
 import asyncio
 import logging
-from typing import Optional
+import sys
+import time
+from typing import Optional, Callable, Any, Coroutine
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QStatusBar, QMessageBox, QSplitter, QPushButton
+    QStatusBar, QMessageBox, QSplitter, QPushButton,
+    QProgressBar, QLabel, QApplication
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSlot, QThread, pyqtSignal
+import threading
+import concurrent.futures
 
-from ..api_client import ApiClient
+from ..api_client import CachedApiClient
 from .patch_panel import PatchPanel
 from .device_panel import DevicePanel
+from .preferences_dialog import PreferencesDialog
 from ..models import Patch
+from ..config import get_config, get_config_manager
+from ..shortcuts import ShortcutManager
+from ..themes import ThemeManager
+from ..performance import get_monitor, PerformanceContext
 
 # Configure logger
 logger = logging.getLogger('midi_patch_client.ui.main_window')
 
+
+class AsyncWorker(QThread):
+    """Worker thread for running async operations"""
+    result_ready = pyqtSignal(object)
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, coro):
+        super().__init__()
+        self.coro = coro
+
+    def run(self):
+        try:
+            # Get the main event loop from the main window
+            main_window = QApplication.instance().activeWindow()
+            if main_window and hasattr(main_window, '_async_loop'):
+                loop = main_window._async_loop
+                # Run the coroutine in the main event loop
+                future = asyncio.run_coroutine_threadsafe(self.coro, loop)
+                result = future.result()
+                self.result_ready.emit(result)
+            else:
+                # Fallback to creating a new event loop if main loop not available
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(self.coro)
+                # Don't close the loop to avoid "event loop is closed" errors
+                self.result_ready.emit(result)
+        except Exception as e:
+            logger.error(f"Error in async worker: {str(e)}")
+            self.error_occurred.emit(str(e))
+
+
 class MainWindow(QMainWindow):
     """Main application window"""
 
-    def __init__(self, server_url: str = "http://localhost:7777"):
+    def __init__(self, server_url: str = None):
         super().__init__()
+
+        # Load configuration
+        self.config = get_config()
+        self.config_manager = get_config_manager()
+
+        # Use configured server URL if not provided
+        if server_url is None:
+            server_url = self.config.server_url
+
         self.server_url = server_url
-        self.api_client = ApiClient(server_url)
+        self.api_client = CachedApiClient(server_url, cache_timeout=self.config.cache_timeout)
+        self.loading_count = 0
         self.selected_patch: Optional[Patch] = None
         self.selected_midi_out_port: Optional[str] = None
         self.selected_sequencer_port: Optional[str] = None
-        self.selected_midi_channel: int = 1
+        self.selected_midi_channel: int = self.config.default_midi_channel
+        self.selected_manufacturer: Optional[str] = None
+        self.selected_device: Optional[str] = None
+        self.selected_community_folder: Optional[str] = None
+        self.sync_enabled: bool = True
+        self.server_available = False
+        self.server_check_retries = 0
+        self.max_server_check_retries = self.config.server_check_retries
+
+        # List to keep references to active worker threads
+        self._active_workers = []
+
+        # Set up a dedicated thread with an event loop for async operations
+        self._async_loop = None
+        self._async_thread = None
+        self._setup_async_loop()
 
         # Set up the UI
         self.initUI()
 
-        # Set up a timer to load data after the UI is shown
-        QTimer.singleShot(100, self.load_data)
+        # Set up keyboard shortcuts if enabled
+        if self.config.enable_keyboard_shortcuts:
+            self.setup_shortcuts()
+
+        # Apply configuration
+        self.apply_configuration()
+
+        # Run git sync if enabled
+        if self.sync_enabled:
+            QTimer.singleShot(0, lambda: self.run_async_task(self.run_git_sync()))
+
+        # Wait for server to be available before loading data
+        QTimer.singleShot(100, self.wait_for_server)
+
+    def _setup_async_loop(self):
+        """Set up a dedicated thread with an event loop for async operations"""
+        def run_loop():
+            self._async_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._async_loop)
+            self._async_loop.run_forever()
+
+        self._async_thread = threading.Thread(target=run_loop, daemon=True)
+        self._async_thread.start()
+
+        # Wait a bit for the loop to start
+        time.sleep(0.1)
+
+    def _remove_worker(self, worker):
+        """Remove a worker from the active workers list"""
+        if worker in self._active_workers:
+            self._active_workers.remove(worker)
+            logger.debug(f"Worker removed, {len(self._active_workers)} workers remaining")
+
+    def run_async_task(self, coro: Coroutine, callback=None, error_callback=None) -> None:
+        """
+        Run an async coroutine in the dedicated async thread
+
+        Args:
+            coro: The coroutine to run
+            callback: Optional callback to run with the result
+            error_callback: Optional callback to run on error
+        """
+        # Create a worker using QThread instead of a regular Python thread
+        worker = AsyncWorker(coro)
+
+        # Connect signals
+        if callback:
+            worker.result_ready.connect(lambda result: callback(result))
+
+        # Connect error signal
+        if error_callback:
+            worker.error_occurred.connect(lambda error: error_callback(error))
+        else:
+            worker.error_occurred.connect(lambda error: self.show_error(f"Error: {error}"))
+
+        # Connect finished signal to remove worker from active workers list
+        worker.finished.connect(lambda: self._remove_worker(worker))
+
+        # Add to active workers list to prevent garbage collection
+        self._active_workers.append(worker)
+
+        # Start the worker thread
+        worker.start()
+
+    def setup_shortcuts(self):
+        """Set up keyboard shortcuts"""
+        self.shortcut_manager = ShortcutManager(self)
+
+        # Connect shortcut signals
+        self.shortcut_manager.send_preset.connect(self.on_send_button_clicked)
+        self.shortcut_manager.search_focus.connect(self.focus_search)
+        self.shortcut_manager.clear_search.connect(self.clear_search)
+        self.shortcut_manager.toggle_favorites.connect(self.toggle_favorites_filter)
+        self.shortcut_manager.refresh_data.connect(self.refresh_all_data)
+        self.shortcut_manager.quit_app.connect(self.close)
+        self.shortcut_manager.show_preferences.connect(self.show_preferences)
+
+        # Navigation
+        self.shortcut_manager.next_patch.connect(self.select_next_patch)
+        self.shortcut_manager.previous_patch.connect(self.select_previous_patch)
+        self.shortcut_manager.next_category.connect(self.select_next_category)
+        self.shortcut_manager.previous_category.connect(self.select_previous_category)
+
+        # MIDI control
+        self.shortcut_manager.midi_channel_up.connect(self.increment_midi_channel)
+        self.shortcut_manager.midi_channel_down.connect(self.decrement_midi_channel)
+
+        logger.info("Keyboard shortcuts configured")
+
+    def apply_configuration(self):
+        """Apply configuration settings"""
+        # Set window size
+        self.resize(self.config.window_width, self.config.window_height)
+
+        # Set debug logging if enabled
+        if self.config.debug_mode:
+            logging.getLogger().setLevel(getattr(logging, self.config.log_level))
+
+        # Force light mode as per requirements
+        self.config.dark_mode = False
+
+        # Apply theme
+        app = QApplication.instance()
+        if app:
+            ThemeManager.apply_theme(app, self.config.dark_mode)
+
+        # Start performance monitoring if in debug mode
+        if self.config.debug_mode:
+            monitor = get_monitor()
+            # Just mark as monitoring, the actual async task will be started later
+            monitor.start_monitoring(interval=2.0)
+            # Start the async monitoring task using the dedicated async thread
+            self.run_async_task(monitor.start_monitoring_async(interval=2.0))
 
     def initUI(self):
         """Initialize the UI components"""
@@ -51,13 +229,17 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter)
 
         # Device panel (top)
-        self.device_panel = DevicePanel()
+        self.device_panel = DevicePanel(api_client=self.api_client, main_window=self)
         splitter.addWidget(self.device_panel)
 
         # Connect device panel signals
+        self.device_panel.manufacturer_changed.connect(self.on_manufacturer_changed)
+        self.device_panel.device_changed.connect(self.on_device_changed)
+        self.device_panel.community_folder_changed.connect(self.on_community_folder_changed)
         self.device_panel.midi_out_port_changed.connect(self.on_midi_out_port_changed)
         self.device_panel.sequencer_port_changed.connect(self.on_sequencer_port_changed)
         self.device_panel.midi_channel_changed.connect(self.on_midi_channel_changed)
+        self.device_panel.sync_changed.connect(self.on_sync_changed)
 
         # Patch panel (bottom)
         self.patch_panel = PatchPanel()
@@ -70,64 +252,501 @@ class MainWindow(QMainWindow):
         # Set initial splitter sizes (30% top, 70% bottom)
         splitter.setSizes([300, 700])
 
-        # Add Send button
-        self.send_button = QPushButton("Send MIDI")
-        self.send_button.setToolTip("Send the selected patch to the MIDI device")
-        self.send_button.clicked.connect(self.on_send_button_clicked)
-        main_layout.addWidget(self.send_button)
+        # Button layout
+        button_layout = QHBoxLayout()
 
-        # Status bar
+        # Send button
+        self.send_button = QPushButton("Send MIDI")
+        self.send_button.setToolTip("Send the selected patch to the MIDI device (Enter)")
+        self.send_button.clicked.connect(self.on_send_button_clicked)
+        button_layout.addWidget(self.send_button)
+
+        # Refresh button
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.setToolTip("Refresh all data (F5)")
+        self.refresh_button.clicked.connect(self.refresh_all_data)
+        button_layout.addWidget(self.refresh_button)
+
+        # Preferences button
+        self.preferences_button = QPushButton("Preferences")
+        self.preferences_button.setToolTip("Open preferences (Ctrl+,)")
+        self.preferences_button.clicked.connect(self.show_preferences)
+        button_layout.addWidget(self.preferences_button)
+
+        button_layout.addStretch()
+        main_layout.addLayout(button_layout)
+
+        # Status bar with progress indicator
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
 
+        # Add progress bar to status bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setMaximumWidth(200)
+        self.status_bar.addPermanentWidget(self.progress_bar)
+
+        # Loading label
+        self.loading_label = QLabel("")
+        self.loading_label.setVisible(False)
+        self.status_bar.addPermanentWidget(self.loading_label)
+
+    def _start_loading(self, message: str = "Loading..."):
+        """Start loading indicator"""
+        self.loading_count += 1
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        self.progress_bar.setVisible(True)
+        self.loading_label.setText(message)
+        self.loading_label.setVisible(True)
+        self.status_bar.showMessage(message)
+
+    def _stop_loading(self):
+        """Stop loading indicator"""
+        self.loading_count = max(0, self.loading_count - 1)
+        if self.loading_count == 0:
+            self.progress_bar.setVisible(False)
+            self.loading_label.setVisible(False)
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
+
+    # Shortcut actions
+    def focus_search(self):
+        """Focus the search input"""
+        if hasattr(self.patch_panel, 'search_input'):
+            self.patch_panel.search_input.setFocus()
+            self.patch_panel.search_input.selectAll()
+
+    def clear_search(self):
+        """Clear the search input"""
+        if hasattr(self.patch_panel, 'clear_search'):
+            self.patch_panel.clear_search()
+
+    def toggle_favorites_filter(self):
+        """Toggle favorites filter"""
+        if hasattr(self.patch_panel, 'favorites_checkbox'):
+            current = self.patch_panel.favorites_checkbox.isChecked()
+            self.patch_panel.favorites_checkbox.setChecked(not current)
+
+    def refresh_all_data(self):
+        """Refresh all data from server"""
+        logger.info("Refreshing all data...")
+        # Clear cache
+        self.api_client.clear_cache()
+        # Reload data
+        self.load_data()
+
+    def show_preferences(self):
+        """Show preferences dialog"""
+        dialog = PreferencesDialog(self)
+        dialog.preferences_saved.connect(self.on_preferences_saved)
+        dialog.exec()
+
+    def on_preferences_saved(self):
+        """Handle preferences saved"""
+        # Reload configuration
+        self.config = get_config()
+
+        # Update API client cache timeout
+        self.api_client._cache_timeout = self.config.cache_timeout
+
+        # Update shortcuts
+        if hasattr(self, 'shortcut_manager'):
+            self.shortcut_manager.set_enabled(self.config.enable_keyboard_shortcuts)
+
+        # Apply theme change
+        app = QApplication.instance()
+        if app:
+            ThemeManager.apply_theme(app, self.config.dark_mode)
+
+        # Apply other configuration changes
+        self.apply_configuration()
+
+        # Show message
+        self.status_bar.showMessage("Preferences saved", 3000)
+
+    def select_next_patch(self):
+        """Select next patch in list"""
+        if hasattr(self.patch_panel, 'patch_list'):
+            current = self.patch_panel.patch_list.currentRow()
+            if current < self.patch_panel.patch_list.count() - 1:
+                self.patch_panel.patch_list.setCurrentRow(current + 1)
+                item = self.patch_panel.patch_list.currentItem()
+                if item:
+                    self.patch_panel.on_patch_clicked(item)
+
+    def select_previous_patch(self):
+        """Select previous patch in list"""
+        if hasattr(self.patch_panel, 'patch_list'):
+            current = self.patch_panel.patch_list.currentRow()
+            if current > 0:
+                self.patch_panel.patch_list.setCurrentRow(current - 1)
+                item = self.patch_panel.patch_list.currentItem()
+                if item:
+                    self.patch_panel.on_patch_clicked(item)
+
+    def select_next_category(self):
+        """Select next category"""
+        if hasattr(self.patch_panel, 'category_combo'):
+            current = self.patch_panel.category_combo.currentIndex()
+            if current < self.patch_panel.category_combo.count() - 1:
+                self.patch_panel.category_combo.setCurrentIndex(current + 1)
+
+    def select_previous_category(self):
+        """Select previous category"""
+        if hasattr(self.patch_panel, 'category_combo'):
+            current = self.patch_panel.category_combo.currentIndex()
+            if current > 0:
+                self.patch_panel.category_combo.setCurrentIndex(current - 1)
+
+    def increment_midi_channel(self):
+        """Increment MIDI channel"""
+        if self.selected_midi_channel < 16:
+            self.selected_midi_channel += 1
+            self.device_panel.channel_spin.setValue(self.selected_midi_channel)
+
+    def decrement_midi_channel(self):
+        """Decrement MIDI channel"""
+        if self.selected_midi_channel > 1:
+            self.selected_midi_channel -= 1
+            self.device_panel.channel_spin.setValue(self.selected_midi_channel)
+
     async def _load_data_async(self):
         """Load data from the server asynchronously"""
-        # Show loading message
-        self.status_bar.showMessage("Loading data from server...")
+        # Monitor performance
+        with PerformanceContext(get_monitor(), "load_data"):
+            # Show loading message immediately
+            self._start_loading("Loading data from server...")
 
-        # Load devices
-        devices = await self.api_client.get_devices()
-        self.device_panel.set_devices(devices)
+            # Check if server is available
+            if not self.server_available:
+                logger.warning("Server is not available, cannot load data")
+                self.status_bar.showMessage("Server is not available, cannot load data")
+                # Try to check server availability again
+                available = await self.check_server_availability()
+                if not available:
+                    logger.error("Server is still not available, aborting data loading")
+                    self.status_bar.showMessage("Server is not available, aborting data loading")
+                    self.show_error("Server is not available. Please check your connection and try again.")
+                    self._stop_loading()
+                    return
+                else:
+                    # Server is now available, update flag
+                    self.server_available = True
+                    logger.info("Server is now available, continuing with data loading")
+                    self.status_bar.showMessage("Server is now available, continuing with data loading")
 
-        # Load MIDI ports
-        midi_ports = await self.api_client.get_midi_ports()
-        self.device_panel.set_midi_ports(midi_ports)
+            try:
+                # Load manufacturers first
+                logger.info("Loading manufacturers from server...")
+                manufacturers = await self.api_client.get_manufacturers()
+                logger.info(f"Loaded {len(manufacturers)} manufacturers: {manufacturers}")
 
-        # Load patches
-        patches = await self.api_client.get_patches()
-        self.patch_panel.set_patches(patches)
+                if not manufacturers:
+                    logger.warning("No manufacturers found, UI dropdowns may not display correctly")
+                    self.status_bar.showMessage("Warning: No manufacturers found")
+                    self._stop_loading()
+                    return
 
-        # Update status
-        self.status_bar.showMessage(f"Loaded {len(devices)} devices and {len(patches)} patches")
+                # Set manufacturers in the device panel immediately - no QTimer delay
+                logger.info("Setting manufacturers in device panel...")
+                self.device_panel.set_manufacturers(manufacturers)
+                logger.info("Manufacturers set successfully")
+
+                # Load MIDI ports
+                logger.info("Loading MIDI ports from server...")
+                midi_ports = await self.api_client.get_midi_ports()
+                logger.info(f"Loaded MIDI ports: in={len(midi_ports.get('in', []))}, out={len(midi_ports.get('out', []))}")
+
+                # Set MIDI ports in the device panel immediately
+                self.device_panel.set_midi_ports(midi_ports)
+                logger.info("MIDI ports set successfully")
+
+                # Get the selected manufacturer and trigger device load if available
+                manufacturer = self.device_panel.get_selected_manufacturer()
+                logger.info(f"Selected manufacturer after loading: {manufacturer}")
+
+                if manufacturer:
+                    logger.info(f"Triggering device load for manufacturer: {manufacturer}")
+                    # Trigger manufacturer changed to load devices
+                    self.device_panel.on_manufacturer_changed(manufacturer)
+
+                    # Wait a moment for devices to load
+                    await asyncio.sleep(0.5)
+                    logger.info("Waited for devices to load")
+
+                # Load UI state after manufacturers and devices are loaded
+                logger.info("Loading UI state after manufacturers and devices...")
+                self.device_panel.load_ui_state()
+                logger.info("UI state loaded successfully")
+
+                # Load patches based on selected device and community folder
+                logger.info("Loading patches based on selected device and community folder...")
+                await self.load_patches()
+
+                # Update status
+                self.status_bar.showMessage(f"Loaded {len(manufacturers)} manufacturers")
+            except Exception as e:
+                logger.error(f"Error loading data: {str(e)}")
+                self.status_bar.showMessage(f"Error loading data: {str(e)}")
+                self.show_error(f"Error loading data: {str(e)}")
+            finally:
+                # Stop loading indicator immediately
+                self._stop_loading()
+
+    async def load_patches(self):
+        """Load patches based on selected manufacturer, device, and community folder"""
+        # Monitor performance
+        with PerformanceContext(get_monitor(), "load_patches"):
+            # Start loading indicator immediately
+            self._start_loading("Loading patches...")
+
+            # Check if server is available
+            if not self.server_available:
+                logger.warning("Server is not available, cannot load patches")
+                self.status_bar.showMessage("Server is not available, cannot load patches")
+                # Try to check server availability again
+                available = await self.check_server_availability()
+                if not available:
+                    logger.error("Server is still not available, aborting patch loading")
+                    self.status_bar.showMessage("Server is not available, aborting patch loading")
+                    self._stop_loading()
+                    return
+                else:
+                    # Server is now available, update flag
+                    self.server_available = True
+                    logger.info("Server is now available, continuing with patch loading")
+                    self.status_bar.showMessage("Server is now available, continuing with patch loading")
+
+            try:
+                manufacturer = self.device_panel.get_selected_manufacturer()
+                device = self.device_panel.get_selected_device()
+                community_folder = self.device_panel.get_selected_community_folder()
+
+                logger.info(f"Loading patches for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
+
+                if not manufacturer or not device:
+                    logger.warning("No manufacturer or device selected, cannot load patches")
+                    self.status_bar.showMessage("Warning: No manufacturer or device selected")
+                    # Don't try to load patches if manufacturer or device is missing
+                    patches = []
+                else:
+                    # Load patches based on selected manufacturer, device, and community folder
+                    patches = await self.api_client.get_patches(device, community_folder, manufacturer)
+
+                logger.info(f"Loaded {len(patches)} patches")
+
+                # Set patches in the patch panel immediately
+                self.patch_panel.set_patches(patches)
+
+                # Update status
+                if manufacturer and device:
+                    self.status_bar.showMessage(f"Loaded {len(patches)} patches for {manufacturer} {device}")
+                elif manufacturer:
+                    self.status_bar.showMessage(f"Loaded {len(patches)} patches for {manufacturer}")
+                elif device:
+                    self.status_bar.showMessage(f"Loaded {len(patches)} patches for {device}")
+                else:
+                    self.status_bar.showMessage(f"Loaded {len(patches)} patches")
+            except Exception as e:
+                logger.error(f"Error loading patches: {str(e)}")
+                self.status_bar.showMessage(f"Error loading patches: {str(e)}")
+            finally:
+                # Stop loading indicator immediately
+                self._stop_loading()
+
+    async def run_git_sync(self):
+        """Run git submodule sync if enabled"""
+        if not self.sync_enabled:
+            logger.info("Sync is disabled, skipping git sync")
+            return
+
+        # Monitor performance
+        with PerformanceContext(get_monitor(), "run_git_sync"):
+            # Start loading indicator immediately
+            self._start_loading("Running git sync...")
+
+            # Check if server is available
+            if not self.server_available:
+                logger.warning("Server is not available, cannot run git sync")
+                self.status_bar.showMessage("Server is not available, cannot run git sync")
+                # Try to check server availability again
+                available = await self.check_server_availability()
+                if not available:
+                    logger.error("Server is still not available, aborting git sync")
+                    self.status_bar.showMessage("Server is not available, aborting git sync")
+                    self._stop_loading()
+                    return
+                else:
+                    # Server is now available, update flag
+                    self.server_available = True
+                    logger.info("Server is now available, continuing with git sync")
+                    self.status_bar.showMessage("Server is now available, continuing with git sync")
+
+            try:
+                logger.info("Running git sync...")
+                self.status_bar.showMessage("Running git sync...")
+
+                success, message = await self.api_client.run_git_sync()
+
+                if success:
+                    logger.info("Git sync completed successfully")
+                    self.status_bar.showMessage("Git sync completed successfully")
+                else:
+                    logger.error(f"Git sync failed: {message}")
+                    self.status_bar.showMessage(f"Git sync failed: {message}")
+                    self.show_error(f"Git sync failed: {message}")
+            finally:
+                # Stop loading indicator immediately
+                self._stop_loading()
+
+    async def check_server_availability(self) -> bool:
+        """
+        Check if the server is available by querying the manufacturers endpoint
+
+        Returns:
+            True if the server is available, False otherwise
+        """
+        try:
+            logger.info("Checking server availability...")
+            self.status_bar.showMessage("Checking server availability...")
+
+            # Try to get manufacturers from the server
+            manufacturers = await self.api_client.get_manufacturers()
+
+            # If we get a response, the server is available
+            if manufacturers is not None:
+                logger.info("Server is available")
+                self.status_bar.showMessage("Server is available")
+                return True
+            else:
+                logger.info("Server is not available (no manufacturers returned)")
+                self.status_bar.showMessage("Server is not available (no manufacturers returned)")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error checking server availability: {str(e)}")
+            self.status_bar.showMessage(f"Error checking server availability: {str(e)}")
+            return False
+
+    def wait_for_server(self):
+        """
+        Wait for the server to be available before loading data
+
+        This method will repeatedly check if the server is available and
+        only proceed with loading data once the server is confirmed available.
+        It will timeout after max_server_check_retries attempts.
+        """
+        logger.info("Waiting for server to be available...")
+        self.status_bar.showMessage("Waiting for server to be available...")
+
+        # Check if we've exceeded the maximum number of retries
+        if self.server_check_retries >= self.max_server_check_retries:
+            logger.error(f"Server not available after {self.server_check_retries} retries, giving up")
+            self.status_bar.showMessage("Server not available, giving up")
+            self.show_error(f"Server not available after {self.server_check_retries} retries. Please check your connection and restart the application.")
+            return
+
+        # Increment retry counter
+        self.server_check_retries += 1
+
+        # Check if the server is available
+        def on_check_complete(available):
+            if available:
+                logger.info("Server is available, loading data...")
+                self.server_available = True
+                self.status_bar.showMessage("Server is available, loading data...")
+                # Reset retry counter
+                self.server_check_retries = 0
+                # Now that the server is available, load data
+                self.load_data()
+            else:
+                logger.info(f"Server is not available (retry {self.server_check_retries}/{self.max_server_check_retries}), retrying in 1 second...")
+                self.status_bar.showMessage(f"Server is not available (retry {self.server_check_retries}/{self.max_server_check_retries}), retrying in 1 second...")
+                # Retry after 1 second
+                QTimer.singleShot(1000, self.wait_for_server)
+
+        # Run the check asynchronously
+        self.run_async_task(self.check_server_availability(), callback=on_check_complete)
 
     def load_data(self):
         """Load data from the server"""
-        # Check if there's an existing event loop we can use
-        created_new_loop = False
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                logger.info("Existing event loop is closed, creating a new one")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                created_new_loop = True
-        except RuntimeError:
-            # No event loop in current thread
-            logger.info("No event loop in current thread, creating a new one")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            created_new_loop = True
+        logger.info("Loading data from the server")
+        self.run_async_task(self._load_data_async())
 
+    def on_manufacturer_changed(self, manufacturer: str):
+        """Handle manufacturer selection change"""
+        self.selected_manufacturer = manufacturer
+        self.status_bar.showMessage(f"Selected manufacturer: {manufacturer}")
+        logger.info(f"Manufacturer changed to: {manufacturer}")
+
+    def on_device_changed(self, device: str):
+        """Handle device selection change"""
+        self.selected_device = device
+        self.status_bar.showMessage(f"Selected device: {device}")
+        logger.info(f"Device changed to: {device}")
+
+        # Load patches for the selected device
+        self.reload_patches()
+
+    def on_community_folder_changed(self, folder: str):
+        """Handle community folder selection change"""
+        if folder == "Default":
+            self.selected_community_folder = None
+            self.status_bar.showMessage(f"Selected community folder: Default")
+            logger.info("Community folder changed to: Default")
+        else:
+            self.selected_community_folder = folder
+            self.status_bar.showMessage(f"Selected community folder: {folder}")
+            logger.info(f"Community folder changed to: {folder}")
+
+        # Load patches for the selected device and community folder
+        self.reload_patches()
+
+    def on_sync_changed(self, enabled: bool):
+        """Handle sync checkbox state change"""
+        self.sync_enabled = enabled
+        logger.info(f"Sync changed to: {enabled}")
+
+    def reload_patches(self):
+        """Reload patches based on selected manufacturer, device, and community folder"""
+        # Check if server is available
+        if not self.server_available:
+            logger.warning("Server is not available, cannot reload patches")
+            self.status_bar.showMessage("Server is not available, cannot reload patches")
+            # Try to check server availability again
+            def on_check_complete(available):
+                if available:
+                    logger.info("Server is now available, reloading patches...")
+                    self.server_available = True
+                    self.status_bar.showMessage("Server is now available, reloading patches...")
+                    # Now that the server is available, reload patches
+                    self._do_reload_patches()
+                else:
+                    logger.error("Server is still not available, aborting patch reload")
+                    self.status_bar.showMessage("Server is not available, aborting patch reload")
+
+            # Run the check asynchronously
+            self.run_async_task(self.check_server_availability(), callback=on_check_complete)
+        else:
+            # Server is available, proceed with reloading patches
+            self._do_reload_patches()
+
+    def _do_reload_patches(self):
+        """Internal method to reload patches after server availability check"""
         try:
-            # Run the async load operation
-            loop.run_until_complete(self._load_data_async())
+            manufacturer = self.device_panel.get_selected_manufacturer()
+            device = self.device_panel.get_selected_device()
+            community_folder = self.device_panel.get_selected_community_folder()
+
+            logger.info(f"Reloading patches for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
+            self.status_bar.showMessage(f"Reloading patches...")
+
+            # Run the load_patches method asynchronously
+            self.run_async_task(self.load_patches())
         except Exception as e:
-            self.show_error(f"Error loading data: {str(e)}")
-        finally:
-            # Only close the loop if we created a new one
-            if created_new_loop:
-                loop.close()
+            logger.error(f"Error reloading patches: {str(e)}")
+            self.status_bar.showMessage(f"Error reloading patches: {str(e)}")
 
     def on_patch_selected(self, patch: Patch):
         """Handle patch selection"""
@@ -181,95 +800,102 @@ class MainWindow(QMainWindow):
         if not self.selected_patch or not self.selected_midi_out_port:
             return
 
-        self.status_bar.showMessage(f"Sending preset: {self.selected_patch.get_display_name()}...")
+        # Monitor performance
+        with PerformanceContext(get_monitor(), "send_preset"):
+            # Start loading indicator immediately
+            self._start_loading(f"Sending preset: {self.selected_patch.get_display_name()}...")
 
-        # Log debug information
-        logger.info(f"Sending preset: {self.selected_patch.get_display_name()}")
-        logger.info(f"MIDI out port: {self.selected_midi_out_port}")
-        logger.info(f"MIDI channel: {self.selected_midi_channel}")
-        logger.info(f"Sequencer port: {self.selected_sequencer_port}")
+            # Check if server is available
+            if not self.server_available:
+                logger.warning("Server is not available, cannot send preset")
+                self.status_bar.showMessage("Server is not available, cannot send preset")
+                # Try to check server availability again
+                available = await self.check_server_availability()
+                if not available:
+                    logger.error("Server is still not available, aborting preset send")
+                    self.status_bar.showMessage("Server is not available, aborting preset send")
+                    self.show_error("Server is not available. Please check your connection and try again.")
+                    self._stop_loading()
+                    return
+                else:
+                    # Server is now available, update flag
+                    self.server_available = True
+                    logger.info("Server is now available, continuing with preset send")
+                    self.status_bar.showMessage("Server is now available, continuing with preset send")
 
-        try:
-            result = await self.api_client.send_preset(
-                self.selected_patch.preset_name,
-                self.selected_midi_out_port,
-                self.selected_midi_channel,
-                self.selected_sequencer_port
-            )
+            try:
+                self.status_bar.showMessage(f"Sending preset: {self.selected_patch.get_display_name()}...")
 
-            if result.get("status") == "success":
-                self.status_bar.showMessage(f"Preset sent: {self.selected_patch.get_display_name()}")
-            else:
-                self.show_error(f"Error sending preset: {result.get('message', 'Unknown error')}")
+                # Log debug information
+                logger.info(f"Sending preset: {self.selected_patch.get_display_name()}")
+                logger.info(f"MIDI out port: {self.selected_midi_out_port}")
+                logger.info(f"MIDI channel: {self.selected_midi_channel}")
+                logger.info(f"Sequencer port: {self.selected_sequencer_port}")
 
-        except Exception as e:
-            self.show_error(f"Error sending preset: {str(e)}")
+                result = await self.api_client.send_preset(
+                    self.selected_patch.preset_name,
+                    self.selected_midi_out_port,
+                    self.selected_midi_channel,
+                    self.selected_sequencer_port
+                )
+
+                if result.get("status") == "success":
+                    self.status_bar.showMessage(f"Preset sent: {self.selected_patch.get_display_name()}")
+                else:
+                    self.show_error(f"Error sending preset: {result.get('message', 'Unknown error')}")
+
+            except Exception as e:
+                self.show_error(f"Error sending preset: {str(e)}")
+            finally:
+                # Stop loading indicator immediately
+                self._stop_loading()
 
     def send_preset(self):
         """Send the selected preset to the server"""
-        # Check if there's an existing event loop we can use
-        created_new_loop = False
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                logger.info("Existing event loop is closed, creating a new one")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                created_new_loop = True
-        except RuntimeError:
-            # No event loop in current thread
-            logger.info("No event loop in current thread, creating a new one")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            created_new_loop = True
-
-        try:
-            # Run the async send operation
-            loop.run_until_complete(self._send_preset_async())
-        except Exception as e:
-            self.show_error(f"Error sending preset: {str(e)}")
-        finally:
-            # Only close the loop if we created a new one
-            if created_new_loop:
-                loop.close()
+        logger.info("Sending preset")
+        self.run_async_task(self._send_preset_async())
 
     def show_error(self, message: str):
         """Show an error message dialog"""
+        # Update status bar - this is thread-safe
         self.status_bar.showMessage(f"Error: {message}")
 
-        error_box = QMessageBox()
-        error_box.setIcon(QMessageBox.Icon.Critical)
-        error_box.setWindowTitle("Error")
-        error_box.setText(message)
-        error_box.exec()
+        # Use QTimer to ensure the QMessageBox is created and shown on the main thread
+        def show_message_box():
+            error_box = QMessageBox()
+            error_box.setIcon(QMessageBox.Icon.Critical)
+            error_box.setWindowTitle("Error")
+            error_box.setText(message)
+            error_box.exec()
+
+        # Use QTimer.singleShot to run on the main thread
+        QTimer.singleShot(0, show_message_box)
 
     def closeEvent(self, event):
         """Handle window close event"""
-        # Check if there's an existing event loop we can use
-        created_new_loop = False
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                logger.info("Existing event loop is closed, creating a new one")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                created_new_loop = True
-        except RuntimeError:
-            # No event loop in current thread
-            logger.info("No event loop in current thread, creating a new one")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            created_new_loop = True
+        logger.info("Closing application")
+
+        # Log performance summary if in debug mode
+        if self.config.debug_mode:
+            monitor = get_monitor()
+            monitor.log_summary()
+            monitor.stop_monitoring()
 
         try:
             # Close the API client
-            loop.run_until_complete(self.api_client.close())
+            if self._async_loop and self._async_loop.is_running():
+                try:
+                    # Try to close the API client
+                    future = asyncio.run_coroutine_threadsafe(self.api_client.close(), self._async_loop)
+                    # Wait for a short time to allow the client to close
+                    future.result(timeout=1.0)
+                except Exception as e:
+                    logger.error(f"Error closing API client: {str(e)}")
+                finally:
+                    # Stop the event loop
+                    self._async_loop.call_soon_threadsafe(self._async_loop.stop)
         except Exception as e:
-            logger.error(f"Error closing API client: {str(e)}")
-        finally:
-            # Only close the loop if we created a new one
-            if created_new_loop:
-                loop.close()
+            logger.error(f"Error during shutdown: {str(e)}")
 
         # Accept the close event
         event.accept()

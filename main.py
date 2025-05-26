@@ -7,7 +7,7 @@ import time
 import socket
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List
+from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -16,7 +16,7 @@ load_dotenv()
 
 from device_manager import DeviceManager
 from midi_utils import MidiUtils
-from models import Device, Patch, PresetRequest
+from models import Device, Patch, PresetRequest, ManufacturerRequest
 from ui_launcher import UILauncher
 from version import __version__
 
@@ -162,31 +162,80 @@ app = FastAPI(
 )
 
 # API Routes
-@app.get("/devices", response_model=List[Device])
-async def get_devices():
-    """Return all devices with their MIDI ports and channels"""
+@app.get("/manufacturers", response_model=List[str])
+async def get_manufacturers():
+    """Return all manufacturers"""
     try:
-        devices = device_manager.get_all_devices()
-        logger.info(f"Returning {len(devices)} devices: {[d.name for d in devices]}")
-        for device in devices:
-            logger.debug(f"Device: {device.name}, MIDI ports: {device.midi_port}, MIDI channels: {device.midi_channel}")
+        manufacturers = device_manager.get_manufacturers()
+        logger.info(f"Returning {len(manufacturers)} manufacturers: {manufacturers}")
+        return manufacturers
+    except Exception as e:
+        logger.error(f"Error getting manufacturers: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting manufacturers: {str(e)}")
+
+
+@app.get("/devices/{manufacturer}", response_model=List[str])
+async def get_devices_by_manufacturer(manufacturer: str):
+    """Return all devices for a specific manufacturer"""
+    try:
+        devices = device_manager.get_devices_by_manufacturer(manufacturer)
+        logger.info(f"Returning {len(devices)} devices for manufacturer {manufacturer}: {devices}")
         return devices
     except Exception as e:
-        logger.error(f"Error getting devices: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting devices: {str(e)}")
+        logger.error(f"Error getting devices for manufacturer {manufacturer}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting devices for manufacturer {manufacturer}: {str(e)}")
 
-@app.get("/patches", response_model=List[Patch])
-async def get_patches():
-    """Return all patches with their preset_name and category"""
+@app.post("/device_info", response_model=List[Dict[str, Any]])
+async def get_device_info(request: ManufacturerRequest):
+    """Return device info for a specific manufacturer"""
     try:
-        patches = device_manager.get_all_patches()
-        logger.info(f"Returning {len(patches)} patches")
+        manufacturer = request.manufacturer
+        device_info = device_manager.get_device_info_by_manufacturer(manufacturer)
+        logger.info(f"Returning device info for {len(device_info)} devices for manufacturer {manufacturer}")
+        return device_info
+    except Exception as e:
+        logger.error(f"Error getting device info for manufacturer {request.manufacturer}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting device info for manufacturer {request.manufacturer}: {str(e)}")
+
+@app.get("/community_folders/{device_name}", response_model=List[str])
+async def get_community_folders(device_name: str):
+    """Return all community folders for a specific device"""
+    try:
+        folders = device_manager.get_community_folders(device_name)
+        logger.info(f"Returning {len(folders)} community folders for device {device_name}: {folders}")
+        return folders
+    except Exception as e:
+        logger.error(f"Error getting community folders for device {device_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting community folders for device {device_name}: {str(e)}")
+
+
+@app.get("/patches/{manufacturer}/{device}", response_model=List[Patch])
+async def get_patches_by_manufacturer_and_device(
+    manufacturer: str, 
+    device: str, 
+    community_folder: Optional[str] = None
+):
+    """
+    Return patches for a specific manufacturer and device
+
+    Args:
+        manufacturer: Name of the manufacturer
+        device: Name of the device
+        community_folder: Optional name of the community folder to get patches from
+    """
+    try:
+        patches = device_manager.get_all_patches(
+            device_name=device, 
+            community_folder=community_folder,
+            manufacturer=manufacturer
+        )
+        logger.info(f"Returning {len(patches)} patches for manufacturer {manufacturer}, device {device}")
         if patches:
             logger.debug(f"First 5 patches: {[p.preset_name for p in patches[:5]]}")
         return patches
     except Exception as e:
-        logger.error(f"Error getting patches: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting patches: {str(e)}")
+        logger.error(f"Error getting patches for manufacturer {manufacturer}, device {device}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting patches for manufacturer {manufacturer}, device {device}: {str(e)}")
 
 @app.get("/midi_port", response_model=Dict[str, List[str]])
 async def get_midi_ports():

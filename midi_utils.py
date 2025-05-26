@@ -12,14 +12,14 @@ except ImportError:
         # Create compatibility layer for different rtmidi versions
         class MidiIn:
             def __init__(self):
-                self._midi = RtMidi.RtMidi(RtMidi.API_UNSPECIFIED, "Input")
+                self._midi = RtMidi(RtMidi.API_UNSPECIFIED, "Input")
 
             def get_ports(self):
                 return [self._midi.getPortName(i) for i in range(self._midi.getPortCount())]
 
         class MidiOut:
             def __init__(self):
-                self._midi = RtMidi.RtMidi(RtMidi.API_UNSPECIFIED, "Output")
+                self._midi = RtMidi(RtMidi.API_UNSPECIFIED, "Output")
 
             def get_ports(self):
                 return [self._midi.getPortName(i) for i in range(self._midi.getPortCount())]

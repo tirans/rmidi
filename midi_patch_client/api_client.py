@@ -1,83 +1,394 @@
 import asyncio
 import json
 import logging
-from typing import Dict, List, Optional, Any
+import subprocess
+import time
+from typing import Dict, List, Optional, Any, Tuple
 import httpx
 
-from .models import Device, Patch
+from .models import Device, Patch, UIState
 
 # Configure logger
 logger = logging.getLogger('midi_patch_client.api_client')
 
-class ApiClient:
-    """Client for communicating with the MIDI Patch Selection API"""
 
-    def __init__(self, base_url: str = "http://localhost:7777"):
+class CachedApiClient:
+    """Enhanced API client with caching and retry logic"""
+
+    def __init__(self, base_url: str = "http://localhost:7777", cache_timeout: int = 300):
         """
-        Initialize the API client
+        Initialize the API client with caching
 
         Args:
             base_url: Base URL of the server API
+            cache_timeout: Cache timeout in seconds (default: 5 minutes)
         """
         self.base_url = base_url
         self.client = httpx.AsyncClient(base_url=base_url, timeout=10.0)
+        self.ui_state = UIState()
+        self._cache = {}
+        self._cache_timeout = cache_timeout
 
-    async def get_devices(self) -> List[Device]:
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cache entry is still valid"""
+        if cache_key not in self._cache:
+            return False
+        timestamp, _ = self._cache[cache_key]
+        return time.time() - timestamp < self._cache_timeout
+
+    def _get_from_cache(self, cache_key: str) -> Optional[Any]:
+        """Get data from cache if valid"""
+        if self._is_cache_valid(cache_key):
+            _, data = self._cache[cache_key]
+            logger.debug(f"Cache hit for {cache_key}")
+            return data
+        logger.debug(f"Cache miss for {cache_key}")
+        return None
+
+    def _set_cache(self, cache_key: str, data: Any) -> None:
+        """Set data in cache"""
+        self._cache[cache_key] = (time.time(), data)
+        logger.debug(f"Cached {cache_key}")
+
+    def clear_cache(self) -> None:
+        """Clear all cache entries"""
+        self._cache.clear()
+        logger.info("Cache cleared")
+
+    def clear_cache_for_prefix(self, prefix: str) -> None:
+        """Clear cache entries with given prefix"""
+        keys_to_remove = [k for k in self._cache.keys() if k.startswith(prefix)]
+        for key in keys_to_remove:
+            del self._cache[key]
+        logger.info(f"Cleared {len(keys_to_remove)} cache entries with prefix {prefix}")
+
+    async def _retry_request(self, func, max_retries: int = 3, delay: float = 1.0):
+        """Retry a request function with exponential backoff"""
+        for attempt in range(max_retries):
+            try:
+                return await func()
+            except httpx.HTTPError as e:
+                # Don't retry on HTTP errors
+                logger.error(f"HTTP error occurred: {str(e)}")
+                raise
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = delay * (2 ** attempt)  # Exponential backoff
+                    logger.warning(f"Request failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {str(e)}")
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise
+
+    async def get_manufacturers(self) -> List[str]:
         """
-        Fetch devices from server
+        Fetch manufacturers from server with caching
 
         Returns:
-            List of Device objects
+            List of manufacturer names
         """
-        try:
-            logger.info("Fetching devices from server...")
-            response = await self.client.get("/devices")
-            response.raise_for_status()
+        cache_key = "manufacturers"
 
-            devices_data = response.json()
-            devices = [Device(**device) for device in devices_data]
-            logger.info(f"Fetched {len(devices)} devices: {[d.name for d in devices]}")
+        # Check cache first
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
+        try:
+            logger.info("Fetching manufacturers from server...")
+
+            async def fetch():
+                response = await self.client.get("/manufacturers")
+                response.raise_for_status()
+                return response.json()
+
+            manufacturers = await self._retry_request(fetch)
+            logger.info(f"Fetched {len(manufacturers)} manufacturers: {manufacturers}")
+
+            # Cache the result
+            self._set_cache(cache_key, manufacturers)
+            return manufacturers
+
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching manufacturers: {str(e)}")
+            return []
+
+
+    async def get_devices_by_manufacturer(self, manufacturer: str) -> List[str]:
+        """
+        Fetch devices for a specific manufacturer from server with caching
+
+        Args:
+            manufacturer: Name of the manufacturer
+
+        Returns:
+            List of device names
+        """
+        cache_key = f"devices_by_manufacturer_{manufacturer}"
+
+        # Check cache first
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
+        try:
+            logger.info(f"Fetching devices for manufacturer {manufacturer} from server...")
+
+            async def fetch():
+                response = await self.client.get(f"/devices/{manufacturer}")
+                response.raise_for_status()
+                return response.json()
+
+            devices = await self._retry_request(fetch)
+            logger.info(f"Fetched {len(devices)} devices for manufacturer {manufacturer}: {devices}")
+
+            # Cache the result
+            self._set_cache(cache_key, devices)
             return devices
 
         except httpx.HTTPError as e:
-            logger.error(f"Error fetching devices: {str(e)}")
+            logger.error(f"Error fetching devices for manufacturer {manufacturer}: {str(e)}")
             return []
 
-    async def get_patches(self) -> List[Patch]:
+    async def get_device_info(self, manufacturer: str) -> List[Dict]:
         """
-        Fetch patches from server
+        Fetch device info for a specific manufacturer from server with caching
+
+        Args:
+            manufacturer: Name of the manufacturer
+
+        Returns:
+            List of dictionaries containing device_info
+        """
+        cache_key = f"device_info_{manufacturer}"
+
+        # Check cache first
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
+        try:
+            logger.info(f"Fetching device info for manufacturer {manufacturer} from server...")
+
+            async def fetch():
+                response = await self.client.post("/device_info", json={"manufacturer": manufacturer})
+                response.raise_for_status()
+                return response.json()
+
+            device_info = await self._retry_request(fetch)
+            logger.info(f"Fetched device info for {len(device_info)} devices for manufacturer {manufacturer}")
+
+            # Cache the result
+            self._set_cache(cache_key, device_info)
+            return device_info
+
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching device info for manufacturer {manufacturer}: {str(e)}")
+            return []
+
+    async def get_community_folders(self, device_name: str) -> List[str]:
+        """
+        Fetch community folders for a specific device from server with caching
+
+        Args:
+            device_name: Name of the device
+
+        Returns:
+            List of community folder names
+        """
+        cache_key = f"community_folders_{device_name}"
+
+        # Check cache first
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
+        try:
+            logger.info(f"Fetching community folders for device {device_name} from server...")
+
+            async def fetch():
+                response = await self.client.get(f"/community_folders/{device_name}")
+                response.raise_for_status()
+                return response.json()
+
+            folders = await self._retry_request(fetch)
+            logger.info(f"Fetched {len(folders)} community folders for device {device_name}: {folders}")
+
+            # Cache the result
+            self._set_cache(cache_key, folders)
+            return folders
+
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching community folders for device {device_name}: {str(e)}")
+            return []
+
+    async def get_patches(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, 
+                         manufacturer: Optional[str] = None) -> List[Patch]:
+        """
+        Fetch patches from server with caching
+
+        Args:
+            device_name: Optional name of the device to get patches from
+            community_folder: Optional name of the community folder to get patches from
+            manufacturer: Optional name of the manufacturer to filter devices by
 
         Returns:
             List of Patch objects
         """
-        try:
-            logger.info("Fetching patches from server...")
-            response = await self.client.get("/patches")
-            response.raise_for_status()
+        # Both manufacturer and device_name are required for the specific endpoint
+        if not (manufacturer and device_name):
+            logger.warning(f"Both manufacturer and device_name are required, got manufacturer={manufacturer}, device_name={device_name}")
+            return []
 
-            patches_data = response.json()
+        # Create cache key based on parameters
+        cache_key = f"patches_{manufacturer}_{device_name}_{community_folder or 'default'}"
+
+        # Check cache first
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
+        try:
+            logger.info(f"Fetching patches from server for {manufacturer}/{device_name} (folder: {community_folder})...")
+
+            # Use the specific endpoint with manufacturer and device_name
+            url = f"/patches/{manufacturer}/{device_name}"
+            params = {}
+            if community_folder:
+                params['community_folder'] = community_folder
+
+            async def fetch():
+                response = await self.client.get(url, params=params)
+                response.raise_for_status()
+                return response.json()
+
+            patches_data = await self._retry_request(fetch)
             patches = [Patch(**patch) for patch in patches_data]
-            logger.info(f"Fetched {len(patches)} patches: {[p.preset_name for p in patches[:5]]}...")
+            logger.info(f"Fetched {len(patches)} patches")
+
+            # Cache the result
+            self._set_cache(cache_key, patches)
             return patches
 
         except httpx.HTTPError as e:
             logger.error(f"Error fetching patches: {str(e)}")
             return []
 
+    async def run_git_sync(self) -> Tuple[bool, str]:
+        """
+        Run git submodule sync to update the midi-presets submodule
+
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            logger.info("Running git submodule sync...")
+            result = subprocess.run(
+                ["git", "submodule", "sync"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            logger.info(f"Git submodule sync output: {result.stdout}")
+
+            # Also run git submodule update to ensure the submodule is up to date
+            update_result = subprocess.run(
+                ["git", "submodule", "update", "--init", "--recursive"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            logger.info(f"Git submodule update output: {update_result.stdout}")
+
+            # Clear cache after sync as data might have changed
+            self.clear_cache()
+
+            return True, "Git submodule sync and update completed successfully"
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Git submodule sync failed: {e.stderr}")
+            return False, f"Git submodule sync failed: {e.stderr}"
+        except Exception as e:
+            logger.error(f"Error running git submodule sync: {str(e)}")
+            return False, f"Error running git submodule sync: {str(e)}"
+
+    def save_ui_state(self, state: UIState) -> None:
+        """
+        Save the UI state
+
+        Args:
+            state: UI state to save
+        """
+        self.ui_state = state
+        logger.info(f"Saved UI state: {state}")
+
+        # Also persist to file for next session
+        try:
+            import os
+            state_file = os.path.join(os.path.expanduser("~"), ".r2midi_ui_state.json")
+            with open(state_file, 'w') as f:
+                json.dump({
+                    'manufacturer': state.manufacturer,
+                    'device': state.device,
+                    'community_folder': state.community_folder,
+                    'midi_in_port': state.midi_in_port,
+                    'midi_out_port': state.midi_out_port,
+                    'sequencer_port': state.sequencer_port,
+                    'midi_channel': state.midi_channel,
+                    'sync_enabled': state.sync_enabled
+                }, f)
+            logger.debug(f"Persisted UI state to {state_file}")
+        except Exception as e:
+            logger.warning(f"Could not persist UI state: {str(e)}")
+
+    def get_ui_state(self) -> UIState:
+        """
+        Get the saved UI state
+
+        Returns:
+            Saved UI state
+        """
+        # Try to load from file if not in memory
+        if not any([self.ui_state.manufacturer, self.ui_state.device]):
+            try:
+                import os
+                state_file = os.path.join(os.path.expanduser("~"), ".r2midi_ui_state.json")
+                if os.path.exists(state_file):
+                    with open(state_file, 'r') as f:
+                        data = json.load(f)
+                        self.ui_state = UIState(**data)
+                        logger.debug(f"Loaded UI state from {state_file}")
+            except Exception as e:
+                logger.warning(f"Could not load persisted UI state: {str(e)}")
+
+        logger.info(f"Retrieved UI state: {self.ui_state}")
+        return self.ui_state
+
     async def get_midi_ports(self) -> Dict[str, List[str]]:
         """
-        Fetch MIDI ports from server
+        Fetch MIDI ports from server with caching
 
         Returns:
             Dictionary with 'in' and 'out' keys containing lists of port names
         """
+        cache_key = "midi_ports"
+
+        # Check cache first - MIDI ports don't change often
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
         try:
             logger.info("Fetching MIDI ports from server...")
-            response = await self.client.get("/midi_port")
-            response.raise_for_status()
 
-            ports = response.json()
+            async def fetch():
+                response = await self.client.get("/midi_ports")
+                response.raise_for_status()
+                return response.json()
+
+            ports = await self._retry_request(fetch)
             logger.info(f"Fetched MIDI ports: in={ports.get('in', [])}, out={ports.get('out', [])}")
+
+            # Cache the result
+            self._set_cache(cache_key, ports)
             return ports
 
         except httpx.HTTPError as e:
@@ -108,10 +419,12 @@ class ApiClient:
             if sequencer_port:
                 data["sequencer_port"] = sequencer_port
 
-            response = await self.client.post("/preset", json=data)
-            response.raise_for_status()
+            async def send():
+                response = await self.client.post("/preset", json=data)
+                response.raise_for_status()
+                return response.json()
 
-            return response.json()
+            return await self._retry_request(send, max_retries=2)  # Less retries for send operations
 
         except httpx.HTTPError as e:
             logger.error(f"Error sending preset: {str(e)}")

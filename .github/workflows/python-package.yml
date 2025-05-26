@@ -51,7 +51,9 @@ jobs:
           git commit -m "Bump version from $CURRENT_VERSION to $NEW_VERSION [skip ci]"
 
           # Pull latest changes before pushing to handle potential conflicts
-          git pull --rebase origin master
+          git fetch origin master
+          git rebase origin/master || (git rebase --abort && git reset --hard origin/master)
+          git push || exit 1
 
           # Push with error handling and retry logic
           MAX_RETRIES=3

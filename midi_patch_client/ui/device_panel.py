@@ -75,7 +75,7 @@ class DevicePanel(QWidget):
         # UI state will be loaded after MIDI ports are fetched
         # This is now handled by the MainWindow after loading data
 
-    def run_async(self, coro: Coroutine, callback=None, error_callback=None) -> None:
+    def run_async(self, coro: Coroutine, callback=None, error_callback=None, loading_message="Loading data...") -> None:
         """
         Safely run an async coroutine
 
@@ -83,10 +83,11 @@ class DevicePanel(QWidget):
             coro: The coroutine to run
             callback: Optional callback to run with the result  
             error_callback: Optional callback to run on error
+            loading_message: Optional message to display in the loading indicator
         """
         # If we have a reference to the main window, use its run_async_task method
         if self.main_window and hasattr(self.main_window, 'run_async_task'):
-            self.main_window.run_async_task(coro, callback, error_callback)
+            self.main_window.run_async_task(coro, callback, error_callback, loading_message)
             return
 
         # Otherwise, log an error - we need the main window for async operations
@@ -640,7 +641,7 @@ class DevicePanel(QWidget):
                     # Use QTimer to ensure UI update happens in main thread
                     QTimer.singleShot(0, lambda: self.update_devices_by_manufacturer(devices))
 
-            self.run_async(self._get_devices_for_manufacturer(manufacturer), callback=on_devices_loaded)
+            self.run_async(self._get_devices_for_manufacturer(manufacturer), callback=on_devices_loaded, loading_message=f"Loading devices for {manufacturer}...")
 
         self.manufacturer_changed.emit(manufacturer)
 
@@ -695,7 +696,7 @@ class DevicePanel(QWidget):
                             if folders:
                                 logger.info(f"Async loaded {len(folders)} community folders")
                                 QTimer.singleShot(0, lambda: self.update_community_folders(folders))
-                        self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded)
+                        self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device_name}...")
                 break
 
         if not device_found:
@@ -724,7 +725,7 @@ class DevicePanel(QWidget):
                                 if folders:
                                     logger.info(f"Async loaded {len(folders)} community folders")
                                     QTimer.singleShot(0, lambda: self.update_community_folders(folders))
-                            self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded)
+                            self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device.name}...")
                     break
 
             # If still not found, keep the string value for filtering patches
@@ -737,7 +738,7 @@ class DevicePanel(QWidget):
                         if folders:
                             logger.info(f"Async loaded {len(folders)} community folders")
                             QTimer.singleShot(0, lambda: self.update_community_folders(folders))
-                    self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded)
+                    self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device_name}...")
 
         self.device_changed.emit(device_name)
 

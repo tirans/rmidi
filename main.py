@@ -5,7 +5,7 @@ import uvicorn
 import threading
 import time
 import socket
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
@@ -16,7 +16,11 @@ load_dotenv()
 
 from device_manager import DeviceManager
 from midi_utils import MidiUtils
-from models import Device, Patch, PresetRequest, ManufacturerRequest
+from models import (
+    Device, Patch, PresetRequest, ManufacturerRequest, 
+    ManufacturerCreate, DeviceCreate, PresetCreate, 
+    DirectoryStructureRequest, DirectoryStructureResponse
+)
 from ui_launcher import UILauncher
 from version import __version__
 
@@ -305,6 +309,144 @@ async def send_preset(preset: PresetRequest):
     except Exception as e:
         logger.error(f"Unexpected error sending preset: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+# Directory structure management
+@app.post("/directory_structure", response_model=DirectoryStructureResponse)
+async def check_directory_structure(request: DirectoryStructureRequest):
+    """Check if the manufacturer and device directories exist, and if the device JSON file exists"""
+    try:
+        response = device_manager.check_directory_structure(
+            request.manufacturer, 
+            request.device, 
+            request.create_if_missing
+        )
+        logger.info(f"Checked directory structure for {request.manufacturer}/{request.device}")
+        return response
+    except Exception as e:
+        logger.error(f"Error checking directory structure: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error checking directory structure: {str(e)}")
+
+# Manufacturer management
+@app.post("/manufacturers", status_code=status.HTTP_201_CREATED)
+async def create_manufacturer(manufacturer: ManufacturerCreate):
+    """Create a new manufacturer"""
+    try:
+        success, message = device_manager.create_manufacturer(manufacturer.name)
+        if not success:
+            logger.error(f"Error creating manufacturer: {message}")
+            raise HTTPException(status_code=400, detail=message)
+
+        logger.info(f"Created manufacturer: {manufacturer.name}")
+        return {"status": "success", "message": message}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating manufacturer: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating manufacturer: {str(e)}")
+
+@app.delete("/manufacturers/{manufacturer_name}")
+async def delete_manufacturer(manufacturer_name: str):
+    """Delete a manufacturer and all its devices"""
+    try:
+        success, message = device_manager.delete_manufacturer(manufacturer_name)
+        if not success:
+            logger.error(f"Error deleting manufacturer: {message}")
+            raise HTTPException(status_code=404, detail=message)
+
+        logger.info(f"Deleted manufacturer: {manufacturer_name}")
+        return {"status": "success", "message": message}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting manufacturer: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting manufacturer: {str(e)}")
+
+# Device management
+@app.post("/devices", status_code=status.HTTP_201_CREATED)
+async def create_device(device: DeviceCreate):
+    """Create a new device"""
+    try:
+        success, message, json_path = device_manager.create_device(device.model_dump())
+        if not success:
+            logger.error(f"Error creating device: {message}")
+            raise HTTPException(status_code=400, detail=message)
+
+        logger.info(f"Created device: {device.name} for manufacturer {device.manufacturer}")
+        return {"status": "success", "message": message, "json_path": json_path}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating device: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating device: {str(e)}")
+
+@app.delete("/devices/{manufacturer}/{device_name}")
+async def delete_device(manufacturer: str, device_name: str):
+    """Delete a device and all its presets"""
+    try:
+        success, message = device_manager.delete_device(manufacturer, device_name)
+        if not success:
+            logger.error(f"Error deleting device: {message}")
+            raise HTTPException(status_code=404, detail=message)
+
+        logger.info(f"Deleted device: {device_name} for manufacturer {manufacturer}")
+        return {"status": "success", "message": message}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting device: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting device: {str(e)}")
+
+# Preset management
+@app.post("/presets", status_code=status.HTTP_201_CREATED)
+async def create_preset(preset: PresetCreate):
+    """Create a new preset"""
+    try:
+        success, message = device_manager.create_preset(preset.model_dump())
+        if not success:
+            logger.error(f"Error creating preset: {message}")
+            raise HTTPException(status_code=400, detail=message)
+
+        logger.info(f"Created preset: {preset.preset_name} for device {preset.device}")
+        return {"status": "success", "message": message}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating preset: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating preset: {str(e)}")
+
+@app.put("/presets", status_code=status.HTTP_200_OK)
+async def update_preset(preset: PresetCreate):
+    """Update an existing preset"""
+    try:
+        success, message = device_manager.update_preset(preset.model_dump())
+        if not success:
+            logger.error(f"Error updating preset: {message}")
+            raise HTTPException(status_code=400, detail=message)
+
+        logger.info(f"Updated preset: {preset.preset_name} for device {preset.device}")
+        return {"status": "success", "message": message}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating preset: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error updating preset: {str(e)}")
+
+@app.delete("/presets/{manufacturer}/{device}/{collection}/{preset_name}")
+async def delete_preset(manufacturer: str, device: str, collection: str, preset_name: str):
+    """Delete a preset"""
+    try:
+        success, message = device_manager.delete_preset(manufacturer, device, collection, preset_name)
+        if not success:
+            logger.error(f"Error deleting preset: {message}")
+            raise HTTPException(status_code=404, detail=message)
+
+        logger.info(f"Deleted preset: {preset_name} from collection {collection} for device {device}")
+        return {"status": "success", "message": message}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting preset: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting preset: {str(e)}")
 
 # Run the application
 if __name__ == '__main__':

@@ -2,8 +2,10 @@ import os
 import json
 import logging
 import subprocess
-from typing import Dict, List, Optional, Tuple
-from models import Device, Patch
+import shutil
+from typing import Dict, List, Optional, Tuple, Any
+from datetime import datetime
+from models import Device, Patch, DirectoryStructureResponse
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -460,3 +462,649 @@ class DeviceManager:
                         pass
 
         return None
+
+    def check_directory_structure(self, manufacturer: str, device: str, create_if_missing: bool = True) -> DirectoryStructureResponse:
+        """
+        Check if the manufacturer and device directories exist, and if the device JSON file exists.
+        Optionally create them if they don't exist.
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device: Name of the device
+            create_if_missing: Whether to create the directories and file if they don't exist
+
+        Returns:
+            DirectoryStructureResponse object with information about the directory structure
+        """
+        # Normalize names to avoid path issues
+        manufacturer_safe = manufacturer.replace(' ', '_')
+        device_safe = device.replace(' ', '_')
+
+        # Construct paths
+        manufacturer_path = os.path.join(self.devices_folder, manufacturer_safe)
+        device_path = os.path.join(manufacturer_path, device_safe)
+        json_path = os.path.join(device_path, f"{manufacturer_safe.lower()}_{device_safe.lower()}.json")
+
+        # Check if they exist
+        manufacturer_exists = os.path.exists(manufacturer_path) and os.path.isdir(manufacturer_path)
+        device_exists = os.path.exists(device_path) and os.path.isdir(device_path)
+        json_exists = os.path.exists(json_path)
+
+        response = DirectoryStructureResponse(
+            manufacturer_exists=manufacturer_exists,
+            device_exists=device_exists,
+            json_exists=json_exists,
+            json_path=json_path
+        )
+
+        # Create if requested and missing
+        if create_if_missing:
+            # Create manufacturer directory if it doesn't exist
+            if not manufacturer_exists:
+                try:
+                    os.makedirs(manufacturer_path, exist_ok=True)
+                    response.created_manufacturer = True
+                    manufacturer_exists = True
+                    response.manufacturer_exists = True
+                    logger.info(f"Created manufacturer directory: {manufacturer_path}")
+                except Exception as e:
+                    logger.error(f"Error creating manufacturer directory {manufacturer_path}: {str(e)}")
+                    return response
+
+            # Create device directory if it doesn't exist
+            if manufacturer_exists and not device_exists:
+                try:
+                    os.makedirs(device_path, exist_ok=True)
+                    response.created_device = True
+                    device_exists = True
+                    response.device_exists = True
+                    logger.info(f"Created device directory: {device_path}")
+                except Exception as e:
+                    logger.error(f"Error creating device directory {device_path}: {str(e)}")
+                    return response
+
+            # Create JSON file if it doesn't exist
+            if device_exists and not json_exists:
+                try:
+                    # Create a basic device JSON file
+                    device_data = {
+                        "_metadata": {
+                            "schema_version": "1.0.0",
+                            "file_revision": 1,
+                            "created_by": "r2midi",
+                            "modified_by": "r2midi",
+                            "created_at": datetime.now().isoformat(),
+                            "modified_at": datetime.now().isoformat(),
+                            "migration_path": [],
+                            "compatibility": {}
+                        },
+                        "device_info": {
+                            "name": device,
+                            "version": "1.0.0",
+                            "manufacturer": manufacturer,
+                            "manufacturer_id": 0,
+                            "device_id": 0,
+                            "ports": ["IN", "OUT"],
+                            "midi_channels": {"IN": 1, "OUT": 1},
+                            "midi_ports": {"IN": "", "OUT": ""}
+                        },
+                        "capabilities": {},
+                        "preset_collections": {
+                            "default": {
+                                "metadata": {
+                                    "name": "default",
+                                    "version": "1.0",
+                                    "revision": 1,
+                                    "author": "r2midi",
+                                    "description": "Default preset collection",
+                                    "readonly": False,
+                                    "preset_count": 0,
+                                    "parent_collections": [],
+                                    "sync_status": "synced",
+                                    "created_at": datetime.now().isoformat(),
+                                    "modified_at": datetime.now().isoformat()
+                                },
+                                "presets": [],
+                                "preset_metadata": {}
+                            }
+                        }
+                    }
+
+                    with open(json_path, 'w') as f:
+                        json.dump(device_data, f, indent=2)
+
+                    response.created_json = True
+                    response.json_exists = True
+                    logger.info(f"Created device JSON file: {json_path}")
+                except Exception as e:
+                    logger.error(f"Error creating device JSON file {json_path}: {str(e)}")
+                    return response
+
+        return response
+
+    def create_manufacturer(self, name: str) -> Tuple[bool, str]:
+        """
+        Create a new manufacturer directory
+
+        Args:
+            name: Name of the manufacturer
+
+        Returns:
+            Tuple of (success, message)
+        """
+        # Normalize name to avoid path issues
+        name_safe = name.replace(' ', '_')
+
+        # Construct path
+        manufacturer_path = os.path.join(self.devices_folder, name_safe)
+
+        # Check if it already exists
+        if os.path.exists(manufacturer_path):
+            return False, f"Manufacturer '{name}' already exists"
+
+        # Create the directory
+        try:
+            os.makedirs(manufacturer_path, exist_ok=True)
+            logger.info(f"Created manufacturer directory: {manufacturer_path}")
+
+            # Rescan devices to include the new manufacturer
+            self.scan_devices()
+
+            return True, f"Manufacturer '{name}' created successfully"
+        except Exception as e:
+            logger.error(f"Error creating manufacturer directory {manufacturer_path}: {str(e)}")
+            return False, f"Error creating manufacturer: {str(e)}"
+
+    def delete_manufacturer(self, name: str) -> Tuple[bool, str]:
+        """
+        Delete a manufacturer directory and all its contents
+
+        Args:
+            name: Name of the manufacturer
+
+        Returns:
+            Tuple of (success, message)
+        """
+        # Check if manufacturer exists
+        if name not in self.manufacturers:
+            return False, f"Manufacturer '{name}' does not exist"
+
+        # Construct path
+        manufacturer_path = os.path.join(self.devices_folder, name)
+
+        # Check if it exists
+        if not os.path.exists(manufacturer_path):
+            return False, f"Manufacturer directory '{manufacturer_path}' does not exist"
+
+        # Delete the directory
+        try:
+            shutil.rmtree(manufacturer_path)
+            logger.info(f"Deleted manufacturer directory: {manufacturer_path}")
+
+            # Rescan devices to update the list
+            self.scan_devices()
+
+            return True, f"Manufacturer '{name}' deleted successfully"
+        except Exception as e:
+            logger.error(f"Error deleting manufacturer directory {manufacturer_path}: {str(e)}")
+            return False, f"Error deleting manufacturer: {str(e)}"
+
+    def create_device(self, device_data: Dict[str, Any]) -> Tuple[bool, str, Optional[str]]:
+        """
+        Create a new device with the given data
+
+        Args:
+            device_data: Dictionary containing device data
+
+        Returns:
+            Tuple of (success, message, json_path)
+        """
+        manufacturer = device_data.get('manufacturer')
+        name = device_data.get('name')
+
+        if not manufacturer or not name:
+            return False, "Manufacturer and name are required", None
+
+        # Check if manufacturer exists
+        if manufacturer not in self.manufacturers:
+            # Create manufacturer if it doesn't exist
+            success, message = self.create_manufacturer(manufacturer)
+            if not success:
+                return False, f"Error creating manufacturer: {message}", None
+
+        # Check and create directory structure
+        response = self.check_directory_structure(manufacturer, name, create_if_missing=True)
+
+        if not response.manufacturer_exists or not response.device_exists:
+            return False, "Failed to create directory structure", None
+
+        # Create or update the device JSON file
+        try:
+            # Normalize names for file paths
+            manufacturer_safe = manufacturer.replace(' ', '_')
+            device_safe = name.replace(' ', '_')
+
+            # Construct the JSON file path
+            json_path = os.path.join(
+                self.devices_folder,
+                manufacturer_safe,
+                device_safe,
+                f"{manufacturer_safe.lower()}_{device_safe.lower()}.json"
+            )
+
+            # Create a basic device JSON file
+            device_json = {
+                "_metadata": {
+                    "schema_version": "1.0.0",
+                    "file_revision": 1,
+                    "created_by": "r2midi",
+                    "modified_by": "r2midi",
+                    "created_at": datetime.now().isoformat(),
+                    "modified_at": datetime.now().isoformat(),
+                    "migration_path": [],
+                    "compatibility": {}
+                },
+                "device_info": {
+                    "name": name,
+                    "version": device_data.get('version', "1.0.0"),
+                    "manufacturer": manufacturer,
+                    "manufacturer_id": device_data.get('manufacturer_id', 0),
+                    "device_id": device_data.get('device_id', 0),
+                    "ports": ["IN", "OUT"],
+                    "midi_channels": device_data.get('midi_channels', {"IN": 1, "OUT": 1}),
+                    "midi_ports": device_data.get('midi_ports', {"IN": "", "OUT": ""})
+                },
+                "capabilities": {},
+                "preset_collections": {
+                    "default": {
+                        "metadata": {
+                            "name": "default",
+                            "version": "1.0",
+                            "revision": 1,
+                            "author": "r2midi",
+                            "description": "Default preset collection",
+                            "readonly": False,
+                            "preset_count": 0,
+                            "parent_collections": [],
+                            "sync_status": "synced",
+                            "created_at": datetime.now().isoformat(),
+                            "modified_at": datetime.now().isoformat()
+                        },
+                        "presets": [],
+                        "preset_metadata": {}
+                    }
+                }
+            }
+
+            with open(json_path, 'w') as f:
+                json.dump(device_json, f, indent=2)
+
+            logger.info(f"Created device JSON file: {json_path}")
+
+            # Rescan devices to include the new device
+            self.scan_devices()
+
+            return True, f"Device '{name}' created successfully", json_path
+        except Exception as e:
+            logger.error(f"Error creating device JSON file: {str(e)}")
+            return False, f"Error creating device: {str(e)}", None
+
+    def delete_device(self, manufacturer: str, device: str) -> Tuple[bool, str]:
+        """
+        Delete a device directory and all its contents
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device: Name of the device
+
+        Returns:
+            Tuple of (success, message)
+        """
+        # Check if manufacturer exists
+        if manufacturer not in self.manufacturers:
+            return False, f"Manufacturer '{manufacturer}' does not exist"
+
+        # Check if device exists
+        devices = self.get_devices_by_manufacturer(manufacturer)
+        if device not in devices:
+            return False, f"Device '{device}' does not exist for manufacturer '{manufacturer}'"
+
+        # Construct path
+        device_path = os.path.join(self.devices_folder, manufacturer, device)
+
+        # Check if it exists
+        if not os.path.exists(device_path):
+            return False, f"Device directory '{device_path}' does not exist"
+
+        # Delete the directory
+        try:
+            shutil.rmtree(device_path)
+            logger.info(f"Deleted device directory: {device_path}")
+
+            # Rescan devices to update the list
+            self.scan_devices()
+
+            return True, f"Device '{device}' deleted successfully"
+        except Exception as e:
+            logger.error(f"Error deleting device directory {device_path}: {str(e)}")
+            return False, f"Error deleting device: {str(e)}"
+
+    def create_preset(self, preset_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Create a new preset in the specified collection
+
+        Args:
+            preset_data: Dictionary containing preset data
+
+        Returns:
+            Tuple of (success, message)
+        """
+        manufacturer = preset_data.get('manufacturer')
+        device_name = preset_data.get('device')
+        collection_name = preset_data.get('collection')
+        preset_name = preset_data.get('preset_name')
+
+        if not manufacturer or not device_name or not collection_name or not preset_name:
+            return False, "Manufacturer, device, collection, and preset_name are required"
+
+        # Check if manufacturer exists
+        if manufacturer not in self.manufacturers:
+            return False, f"Manufacturer '{manufacturer}' does not exist"
+
+        # Check if device exists
+        devices = self.get_devices_by_manufacturer(manufacturer)
+        if device_name not in devices:
+            return False, f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'"
+
+        # Get the device data
+        device = self.get_device_by_name(device_name)
+        if not device:
+            return False, f"Device '{device_name}' not found"
+
+        # Check if preset_collections exists, create it if it doesn't
+        if 'preset_collections' not in device:
+            device['preset_collections'] = {}
+            logger.info(f"Created preset_collections for device '{device_name}'")
+
+        # Check if collection exists, create it if it doesn't
+        preset_collections = device.get('preset_collections', {})
+        if collection_name not in preset_collections:
+            # Create the collection
+            collection_display_name = "Factory Presets" if collection_name == "factory_presets" else collection_name
+            preset_collections[collection_name] = {
+                "metadata": {
+                    "name": collection_display_name,
+                    "version": "1.0",
+                    "revision": 1,
+                    "author": "r2midi",
+                    "description": f"{collection_display_name} for {device_name}",
+                    "readonly": False,
+                    "preset_count": 0,
+                    "parent_collections": [],
+                    "sync_status": "synced",
+                    "created_at": datetime.now().isoformat(),
+                    "modified_at": datetime.now().isoformat()
+                },
+                "presets": [],
+                "preset_metadata": {}
+            }
+            logger.info(f"Created collection '{collection_name}' for device '{device_name}'")
+
+            # Update the device data
+            device['preset_collections'] = preset_collections
+
+        # Get the collection data
+        collection = preset_collections[collection_name]
+        presets = collection.get('presets', [])
+        preset_metadata = collection.get('preset_metadata', {})
+
+        # Check if preset already exists
+        for preset in presets:
+            if preset.get('preset_name') == preset_name:
+                return False, f"Preset '{preset_name}' already exists in collection '{collection_name}'"
+
+        # Create the preset
+        try:
+            # Generate a unique preset ID
+            preset_id = f"{preset_name.lower().replace(' ', '_')}_{len(presets) + 1}"
+
+            # Create the preset
+            new_preset = {
+                "preset_id": preset_id,
+                "preset_name": preset_name,
+                "category": preset_data.get('category', ""),
+                "cc_0": preset_data.get('cc_0'),
+                "pgm": preset_data.get('pgm', 0),
+                "characters": preset_data.get('characters', []),
+                "sendmidi_command": preset_data.get('sendmidi_command', f"sendmidi dev \"{device_name}\" cc 0 {preset_data.get('cc_0', 0)} pc {preset_data.get('pgm', 0)}")
+            }
+
+            # Create the preset metadata
+            new_preset_metadata = {
+                "version": "1.0",
+                "validation_status": "validated",
+                "source": "user",
+                "created_at": datetime.now().isoformat(),
+                "modified_at": datetime.now().isoformat()
+            }
+
+            # Add the preset to the collection
+            presets.append(new_preset)
+            preset_metadata[preset_id] = new_preset_metadata
+
+            # Update the collection metadata
+            collection['metadata']['preset_count'] = len(presets)
+            collection['metadata']['modified_at'] = datetime.now().isoformat()
+
+            # Update the device data
+            device['preset_collections'][collection_name]['presets'] = presets
+            device['preset_collections'][collection_name]['preset_metadata'] = preset_metadata
+            device['preset_collections'][collection_name]['metadata'] = collection['metadata']
+
+            # Save the device data
+            device_path = os.path.join(self.devices_folder, manufacturer, device_name)
+            json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+
+            if not json_files:
+                return False, f"No JSON file found for device '{device_name}'"
+
+            json_path = os.path.join(device_path, json_files[0])
+
+            with open(json_path, 'w') as f:
+                json.dump(device, f, indent=2)
+
+            logger.info(f"Created preset '{preset_name}' in collection '{collection_name}' for device '{device_name}'")
+
+            return True, f"Preset '{preset_name}' created successfully"
+        except Exception as e:
+            logger.error(f"Error creating preset: {str(e)}")
+            return False, f"Error creating preset: {str(e)}"
+
+    def update_preset(self, preset_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Update an existing preset with new data
+
+        Args:
+            preset_data: Dictionary containing preset data
+
+        Returns:
+            Tuple of (success, message)
+        """
+        manufacturer = preset_data.get('manufacturer')
+        device_name = preset_data.get('device')
+        collection_name = preset_data.get('collection')
+        preset_name = preset_data.get('preset_name')
+
+        if not manufacturer or not device_name or not collection_name or not preset_name:
+            return False, "Manufacturer, device, collection, and preset_name are required"
+
+        # Check if manufacturer exists
+        if manufacturer not in self.manufacturers:
+            return False, f"Manufacturer '{manufacturer}' does not exist"
+
+        # Check if device exists
+        devices = self.get_devices_by_manufacturer(manufacturer)
+        if device_name not in devices:
+            return False, f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'"
+
+        # Get the device data
+        device = self.get_device_by_name(device_name)
+        if not device:
+            return False, f"Device '{device_name}' not found"
+
+        # Check if collection exists
+        preset_collections = device.get('preset_collections', {})
+        if collection_name not in preset_collections:
+            return False, f"Collection '{collection_name}' does not exist for device '{device_name}'"
+
+        # Get the collection data
+        collection = preset_collections[collection_name]
+        presets = collection.get('presets', [])
+        preset_metadata = collection.get('preset_metadata', {})
+
+        # Find the preset
+        preset_index = None
+        preset_id = None
+
+        for i, preset in enumerate(presets):
+            if preset.get('preset_name') == preset_name:
+                preset_index = i
+                preset_id = preset.get('preset_id')
+                break
+
+        if preset_index is None:
+            return False, f"Preset '{preset_name}' not found in collection '{collection_name}'"
+
+        # Update the preset
+        try:
+            # Create the updated preset
+            updated_preset = {
+                "preset_id": preset_id,
+                "preset_name": preset_name,
+                "category": preset_data.get('category', ""),
+                "cc_0": preset_data.get('cc_0'),
+                "pgm": preset_data.get('pgm', 0),
+                "characters": preset_data.get('characters', []),
+                "sendmidi_command": preset_data.get('sendmidi_command', f"sendmidi dev \"{device_name}\" cc 0 {preset_data.get('cc_0', 0)} pc {preset_data.get('pgm', 0)}")
+            }
+
+            # Update the preset metadata
+            if preset_id and preset_id in preset_metadata:
+                preset_metadata[preset_id]["modified_at"] = datetime.now().isoformat()
+
+            # Update the preset in the collection
+            presets[preset_index] = updated_preset
+
+            # Update the collection metadata
+            collection['metadata']['modified_at'] = datetime.now().isoformat()
+
+            # Update the device data
+            device['preset_collections'][collection_name]['presets'] = presets
+            device['preset_collections'][collection_name]['preset_metadata'] = preset_metadata
+            device['preset_collections'][collection_name]['metadata'] = collection['metadata']
+
+            # Save the device data
+            device_path = os.path.join(self.devices_folder, manufacturer, device_name)
+            json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+
+            if not json_files:
+                return False, f"No JSON file found for device '{device_name}'"
+
+            json_path = os.path.join(device_path, json_files[0])
+
+            with open(json_path, 'w') as f:
+                json.dump(device, f, indent=2)
+
+            logger.info(f"Updated preset '{preset_name}' in collection '{collection_name}' for device '{device_name}'")
+
+            return True, f"Preset '{preset_name}' updated successfully"
+        except Exception as e:
+            logger.error(f"Error updating preset: {str(e)}")
+            return False, f"Error updating preset: {str(e)}"
+
+    def delete_preset(self, manufacturer: str, device_name: str, collection_name: str, preset_name: str) -> Tuple[bool, str]:
+        """
+        Delete a preset from the specified collection
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device_name: Name of the device
+            collection_name: Name of the collection
+            preset_name: Name of the preset
+
+        Returns:
+            Tuple of (success, message)
+        """
+        # Check if manufacturer exists
+        if manufacturer not in self.manufacturers:
+            return False, f"Manufacturer '{manufacturer}' does not exist"
+
+        # Check if device exists
+        devices = self.get_devices_by_manufacturer(manufacturer)
+        if device_name not in devices:
+            return False, f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'"
+
+        # Get the device data
+        device = self.get_device_by_name(device_name)
+        if not device:
+            return False, f"Device '{device_name}' not found"
+
+        # Check if collection exists
+        preset_collections = device.get('preset_collections', {})
+        if collection_name not in preset_collections:
+            return False, f"Collection '{collection_name}' does not exist for device '{device_name}'"
+
+        # Get the collection data
+        collection = preset_collections[collection_name]
+        presets = collection.get('presets', [])
+        preset_metadata = collection.get('preset_metadata', {})
+
+        # Find the preset
+        preset_index = None
+        preset_id = None
+
+        for i, preset in enumerate(presets):
+            if preset.get('preset_name') == preset_name:
+                preset_index = i
+                preset_id = preset.get('preset_id')
+                break
+
+        if preset_index is None:
+            return False, f"Preset '{preset_name}' not found in collection '{collection_name}'"
+
+        # Delete the preset
+        try:
+            # Remove the preset from the collection
+            del presets[preset_index]
+
+            # Remove the preset metadata if it exists
+            if preset_id and preset_id in preset_metadata:
+                del preset_metadata[preset_id]
+
+            # Update the collection metadata
+            collection['metadata']['preset_count'] = len(presets)
+            collection['metadata']['modified_at'] = datetime.now().isoformat()
+
+            # Update the device data
+            device['preset_collections'][collection_name]['presets'] = presets
+            device['preset_collections'][collection_name]['preset_metadata'] = preset_metadata
+            device['preset_collections'][collection_name]['metadata'] = collection['metadata']
+
+            # Save the device data
+            device_path = os.path.join(self.devices_folder, manufacturer, device_name)
+            json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+
+            if not json_files:
+                return False, f"No JSON file found for device '{device_name}'"
+
+            json_path = os.path.join(device_path, json_files[0])
+
+            with open(json_path, 'w') as f:
+                json.dump(device, f, indent=2)
+
+            logger.info(f"Deleted preset '{preset_name}' from collection '{collection_name}' for device '{device_name}'")
+
+            return True, f"Preset '{preset_name}' deleted successfully"
+        except Exception as e:
+            logger.error(f"Error deleting preset: {str(e)}")
+            return False, f"Error deleting preset: {str(e)}"

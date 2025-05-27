@@ -6,9 +6,9 @@ from typing import Optional, Callable, Any, Coroutine
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QStatusBar, QMessageBox, QSplitter, QPushButton,
-    QProgressBar, QLabel, QApplication
+    QProgressBar, QLabel, QApplication, QGraphicsOpacityEffect
 )
-from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSlot, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSlot, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve, QSize, QPoint, pyqtProperty
 import threading
 import concurrent.futures
 
@@ -16,6 +16,7 @@ from ..api_client import CachedApiClient
 from .patch_panel import PatchPanel
 from .device_panel import DevicePanel
 from .preferences_dialog import PreferencesDialog
+from .edit_dialog import EditDialog
 from ..models import Patch
 from ..config import get_config, get_config_manager
 from ..shortcuts import ShortcutManager
@@ -26,35 +27,135 @@ from ..performance import get_monitor, PerformanceContext
 logger = logging.getLogger('midi_patch_client.ui.main_window')
 
 
+class WIPAnimation(QLabel):
+    """Widget for displaying a 'WIP' animation"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setText("WIP")
+        self.setStyleSheet("""
+            background-color: rgba(255, 204, 204, 180);
+            color: #990000;
+            border-radius: 5px;
+            padding: 5px;
+            font-weight: bold;
+        """)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setFixedSize(50, 30)
+        self.setVisible(False)
+
+        # Create animation
+        self.animation = QPropertyAnimation(self, b"opacity")
+        self.animation.setDuration(1000)
+        self.animation.setStartValue(0.5)
+        self.animation.setEndValue(1.0)
+        self.animation.setLoopCount(-1)  # Infinite loop
+        self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+    def start_animation(self):
+        """Start the animation"""
+        self.setVisible(True)
+        self.animation.start()
+
+    def stop_animation(self):
+        """Stop the animation"""
+        self.animation.stop()
+        self.setVisible(False)
+
+    def set_opacity(self, opacity):
+        """Set the opacity of the widget"""
+        opacity_effect = QGraphicsOpacityEffect(self)
+        opacity_effect.setOpacity(opacity)
+        self.setGraphicsEffect(opacity_effect)
+
+    # Property for animation
+    opacity = pyqtProperty(float, fset=set_opacity)
+
+
 class AsyncWorker(QThread):
     """Worker thread for running async operations"""
     result_ready = pyqtSignal(object)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, coro):
+    # Add signals for UI updates
+    start_loading_signal = pyqtSignal(str)
+    stop_loading_signal = pyqtSignal()
+
+    def __init__(self, coro, main_window=None, loading_message="Loading data..."):
         super().__init__()
         self.coro = coro
+        self.main_window = main_window
+        self.loading_message = loading_message
+
+        # Connect signals to UI update methods if main_window is provided
+        if main_window:
+            self.start_loading_signal.connect(main_window._start_loading_direct)
+            self.stop_loading_signal.connect(main_window._stop_loading_direct)
+
+    def emit_start_loading(self, message: str = "Loading..."):
+        """Emit signal to start loading indicator"""
+        self.start_loading_signal.emit(message)
+
+    def emit_stop_loading(self):
+        """Emit signal to stop loading indicator"""
+        self.stop_loading_signal.emit()
 
     def run(self):
         try:
+            # Show loading indicator automatically when starting the coroutine
+            self.emit_start_loading(self.loading_message)
+
             # Get the main event loop from the main window
-            main_window = QApplication.instance().activeWindow()
+            main_window = self.main_window or QApplication.instance().activeWindow()
             if main_window and hasattr(main_window, '_async_loop'):
                 loop = main_window._async_loop
-                # Run the coroutine in the main event loop
-                future = asyncio.run_coroutine_threadsafe(self.coro, loop)
-                result = future.result()
-                self.result_ready.emit(result)
+                try:
+                    # Create a new event loop for this thread
+                    thread_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(thread_loop)
+
+                    # Create a wrapper coroutine that handles loading signals
+                    async def wrapped_coro():
+                        try:
+                            # Run the actual coroutine in the main event loop
+                            future = asyncio.run_coroutine_threadsafe(self.coro, loop)
+                            return await asyncio.wrap_future(future)
+                        except Exception as e:
+                            logger.error(f"Error in wrapped coroutine: {str(e)}")
+                            raise
+
+                    # Run the wrapper coroutine in this thread's event loop
+                    result = thread_loop.run_until_complete(wrapped_coro())
+                    self.result_ready.emit(result)
+                except asyncio.CancelledError:
+                    logger.warning("Async operation was cancelled")
+                    self.error_occurred.emit("Operation was cancelled")
+                except asyncio.TimeoutError:
+                    logger.warning("Async operation timed out")
+                    self.error_occurred.emit("Operation timed out")
+                except Exception as e:
+                    logger.error(f"Error in async worker with main loop: {str(e)}")
+                    self.error_occurred.emit(str(e))
+                finally:
+                    thread_loop.close()
             else:
                 # Fallback to creating a new event loop if main loop not available
+                # This should be avoided if possible as it can lead to event loop conflicts
+                logger.warning("Creating new event loop - this may cause conflicts")
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(self.coro)
-                # Don't close the loop to avoid "event loop is closed" errors
-                self.result_ready.emit(result)
+                try:
+                    result = loop.run_until_complete(self.coro)
+                    self.result_ready.emit(result)
+                finally:
+                    # Clean up the loop properly
+                    loop.close()
         except Exception as e:
             logger.error(f"Error in async worker: {str(e)}")
             self.error_occurred.emit(str(e))
+        finally:
+            # Stop loading indicator automatically when the coroutine is done
+            self.emit_stop_loading()
 
 
 class MainWindow(QMainWindow):
@@ -114,15 +215,38 @@ class MainWindow(QMainWindow):
     def _setup_async_loop(self):
         """Set up a dedicated thread with an event loop for async operations"""
         def run_loop():
-            self._async_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._async_loop)
-            self._async_loop.run_forever()
+            try:
+                # Create a new event loop
+                self._async_loop = asyncio.new_event_loop()
 
-        self._async_thread = threading.Thread(target=run_loop, daemon=True)
+                # Set the event loop policy to prevent conflicts
+                asyncio.set_event_loop(self._async_loop)
+
+                # Set a larger default timeout for futures
+                self._async_loop.set_default_executor(
+                    concurrent.futures.ThreadPoolExecutor(max_workers=4)
+                )
+
+                # Run the event loop forever
+                self._async_loop.run_forever()
+            except Exception as e:
+                logger.error(f"Error in async loop thread: {str(e)}")
+            finally:
+                # Clean up the loop when it's done
+                if self._async_loop and self._async_loop.is_running():
+                    self._async_loop.stop()
+                if self._async_loop and not self._async_loop.is_closed():
+                    self._async_loop.close()
+                logger.info("Async loop thread exiting")
+
+        # Create and start the thread
+        self._async_thread = threading.Thread(target=run_loop, daemon=True, name="AsyncLoopThread")
         self._async_thread.start()
 
         # Wait a bit for the loop to start
-        time.sleep(0.1)
+        time.sleep(0.2)  # Increased wait time to ensure loop is ready
+
+        logger.info("Async loop thread started")
 
     def _remove_worker(self, worker):
         """Remove a worker from the active workers list"""
@@ -130,7 +254,7 @@ class MainWindow(QMainWindow):
             self._active_workers.remove(worker)
             logger.debug(f"Worker removed, {len(self._active_workers)} workers remaining")
 
-    def run_async_task(self, coro: Coroutine, callback=None, error_callback=None) -> None:
+    def run_async_task(self, coro: Coroutine, callback=None, error_callback=None, loading_message="Loading data...") -> None:
         """
         Run an async coroutine in the dedicated async thread
 
@@ -138,28 +262,54 @@ class MainWindow(QMainWindow):
             coro: The coroutine to run
             callback: Optional callback to run with the result
             error_callback: Optional callback to run on error
+            loading_message: Optional message to display in the loading indicator
         """
-        # Create a worker using QThread instead of a regular Python thread
-        worker = AsyncWorker(coro)
+        # Check if we have a valid async loop
+        if not self._async_loop or self._async_loop.is_closed():
+            error_msg = "Async loop is not available or is closed"
+            logger.error(error_msg)
+            if error_callback:
+                error_callback(error_msg)
+            else:
+                self.show_error(f"Error: {error_msg}")
+            return
 
-        # Connect signals
-        if callback:
-            worker.result_ready.connect(lambda result: callback(result))
+        # Limit the number of concurrent workers to prevent overload
+        if len(self._active_workers) > 10:  # Arbitrary limit, adjust as needed
+            logger.warning(f"Too many active workers ({len(self._active_workers)}), delaying new task")
+            # Use a timer to retry after a short delay
+            QTimer.singleShot(500, lambda: self.run_async_task(coro, callback, error_callback))
+            return
 
-        # Connect error signal
-        if error_callback:
-            worker.error_occurred.connect(lambda error: error_callback(error))
-        else:
-            worker.error_occurred.connect(lambda error: self.show_error(f"Error: {error}"))
+        try:
+            # Create a worker using QThread instead of a regular Python thread
+            worker = AsyncWorker(coro, main_window=self, loading_message=loading_message)
 
-        # Connect finished signal to remove worker from active workers list
-        worker.finished.connect(lambda: self._remove_worker(worker))
+            # Connect signals
+            if callback:
+                worker.result_ready.connect(lambda result: callback(result))
 
-        # Add to active workers list to prevent garbage collection
-        self._active_workers.append(worker)
+            # Connect error signal
+            if error_callback:
+                worker.error_occurred.connect(lambda error: error_callback(error))
+            else:
+                worker.error_occurred.connect(lambda error: self.show_error(f"Error: {error}"))
 
-        # Start the worker thread
-        worker.start()
+            # Connect finished signal to remove worker from active workers list
+            worker.finished.connect(lambda: self._remove_worker(worker))
+
+            # Add to active workers list to prevent garbage collection
+            self._active_workers.append(worker)
+            logger.debug(f"Added worker, now {len(self._active_workers)} active workers")
+
+            # Start the worker thread
+            worker.start()
+        except Exception as e:
+            logger.error(f"Error creating async worker: {str(e)}")
+            if error_callback:
+                error_callback(str(e))
+            else:
+                self.show_error(f"Error creating async worker: {str(e)}")
 
     def setup_shortcuts(self):
         """Set up keyboard shortcuts"""
@@ -273,6 +423,12 @@ class MainWindow(QMainWindow):
         self.preferences_button.clicked.connect(self.show_preferences)
         button_layout.addWidget(self.preferences_button)
 
+        # Edit button
+        self.edit_button = QPushButton("Edit")
+        self.edit_button.setToolTip("Edit manufacturers, devices, and presets")
+        self.edit_button.clicked.connect(self.show_edit_dialog)
+        button_layout.addWidget(self.edit_button)
+
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
 
@@ -292,23 +448,96 @@ class MainWindow(QMainWindow):
         self.loading_label.setVisible(False)
         self.status_bar.addPermanentWidget(self.loading_label)
 
-    def _start_loading(self, message: str = "Loading..."):
-        """Start loading indicator"""
+        # WIP animation
+        self.wip_animation = WIPAnimation(self)
+        self.wip_animation.setGeometry(10, 10, 50, 30)  # Position in top-left corner
+
+    def _set_status_bar_loading_style(self, is_loading: bool):
+        """Set the status bar style for loading state"""
+        if is_loading:
+            # Light red background for loading state
+            self.status_bar.setStyleSheet("background-color: #ffcccc; color: #990000;")
+        else:
+            # Reset to default style
+            self.status_bar.setStyleSheet("")
+
+    def _start_loading_direct(self, message: str = "Loading..."):
+        """Start loading indicator directly on the main thread"""
         self.loading_count += 1
         self.progress_bar.setRange(0, 0)  # Indeterminate progress
         self.progress_bar.setVisible(True)
         self.loading_label.setText(message)
         self.loading_label.setVisible(True)
         self.status_bar.showMessage(message)
+        # Set loading style
+        self._set_status_bar_loading_style(True)
+        # Start WIP animation
+        self.wip_animation.start_animation()
 
-    def _stop_loading(self):
-        """Stop loading indicator"""
+    def _stop_loading_direct(self):
+        """Stop loading indicator directly on the main thread"""
         self.loading_count = max(0, self.loading_count - 1)
         if self.loading_count == 0:
             self.progress_bar.setVisible(False)
             self.loading_label.setVisible(False)
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
+            # Reset loading style
+            self._set_status_bar_loading_style(False)
+            # Stop WIP animation
+            self.wip_animation.stop_animation()
+
+    def _start_loading(self, message: str = "Loading..."):
+        """Start loading indicator - safe to call from any thread"""
+        # Check if we're on the main thread
+        if QThread.currentThread() is QApplication.instance().thread():
+            # If we're on the main thread, call the direct method
+            self._start_loading_direct(message)
+        else:
+            # If we're not on the main thread, use a signal-slot approach
+            # This is more reliable than QTimer.singleShot for cross-thread UI updates
+            try:
+                # Find the current worker thread
+                for worker in self._active_workers:
+                    if worker is QThread.currentThread():
+                        # Use the worker's signal to update the UI
+                        worker.start_loading_signal.emit(message)
+                        return
+
+                # If we couldn't find the worker, fall back to QTimer
+                # This is less reliable but better than nothing
+                logger.warning("Could not find worker thread, falling back to QTimer for UI update")
+                QTimer.singleShot(0, lambda: self._start_loading_direct(message))
+            except Exception as e:
+                logger.error(f"Error in _start_loading: {str(e)}")
+                # Last resort fallback
+                QTimer.singleShot(0, lambda: self._start_loading_direct(message))
+
+    def _stop_loading(self):
+        """Stop loading indicator - safe to call from any thread"""
+        # Check if we're on the main thread
+        if QThread.currentThread() is QApplication.instance().thread():
+            # If we're on the main thread, call the direct method
+            self._stop_loading_direct()
+        else:
+            # If we're not on the main thread, use a signal-slot approach
+            # This is more reliable than QTimer.singleShot for cross-thread UI updates
+            try:
+                # Find the current worker thread
+                for worker in self._active_workers:
+                    if worker is QThread.currentThread():
+                        # Use the worker's signal to update the UI
+                        worker.stop_loading_signal.emit()
+                        return
+
+                # If we couldn't find the worker, fall back to QTimer
+                # This is less reliable but better than nothing
+                logger.warning("Could not find worker thread, falling back to QTimer for UI update")
+                QTimer.singleShot(0, self._stop_loading_direct)
+            except Exception as e:
+                logger.error(f"Error in _stop_loading: {str(e)}")
+                # Last resort fallback
+                QTimer.singleShot(0, self._stop_loading_direct)
 
     # Shortcut actions
     def focus_search(self):
@@ -340,6 +569,12 @@ class MainWindow(QMainWindow):
         """Show preferences dialog"""
         dialog = PreferencesDialog(self)
         dialog.preferences_saved.connect(self.on_preferences_saved)
+        dialog.exec()
+
+    def show_edit_dialog(self):
+        """Show edit dialog for manufacturers, devices, and presets"""
+        dialog = EditDialog(self.api_client, self)
+        dialog.changes_made.connect(self.refresh_all_data)
         dialog.exec()
 
     def on_preferences_saved(self):

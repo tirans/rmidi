@@ -1,5 +1,5 @@
-from typing import Dict, List, Optional
-from pydantic import BaseModel
+from typing import Dict, List, Optional, Any
+from pydantic import BaseModel, Field
 
 class Device(BaseModel):
     """Model for device information"""
@@ -40,3 +40,55 @@ class UIState(BaseModel):
 class ManufacturerRequest(BaseModel):
     """Model for manufacturer request"""
     manufacturer: str
+
+class ManufacturerCreate(BaseModel):
+    """Model for creating a manufacturer"""
+    name: str
+
+class DeviceCreate(BaseModel):
+    """Model for creating a device"""
+    name: str
+    manufacturer: str
+    version: str = "1.0.0"
+    manufacturer_id: int = 0
+    device_id: int = 0
+    midi_ports: Dict[str, str] = Field(default_factory=dict)
+    midi_channels: Dict[str, int] = Field(default_factory=dict)
+
+class PresetCollectionCreate(BaseModel):
+    """Model for creating a preset collection"""
+    name: str
+    device: str
+    manufacturer: str
+    version: str = "1.0"
+    revision: int = 1
+    author: str = "User"
+    description: str = ""
+
+class PresetCreate(BaseModel):
+    """Model for creating a preset"""
+    preset_name: str
+    category: str
+    collection: str
+    device: str
+    manufacturer: str
+    cc_0: Optional[int] = None
+    pgm: int
+    characters: List[str] = Field(default_factory=list)
+    sendmidi_command: Optional[str] = None
+
+class DirectoryStructureRequest(BaseModel):
+    """Model for checking/creating directory structure"""
+    manufacturer: str
+    device: str
+    create_if_missing: bool = True
+
+class DirectoryStructureResponse(BaseModel):
+    """Response model for directory structure check"""
+    manufacturer_exists: bool
+    device_exists: bool
+    json_exists: bool
+    created_manufacturer: bool = False
+    created_device: bool = False
+    created_json: bool = False
+    json_path: Optional[str] = None

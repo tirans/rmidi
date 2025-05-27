@@ -79,19 +79,23 @@ class CachedApiClient:
                 else:
                     raise
 
-    async def get_manufacturers(self) -> List[str]:
+    async def get_manufacturers(self, force_refresh: bool = False) -> List[str]:
         """
         Fetch manufacturers from server with caching
+
+        Args:
+            force_refresh: If True, bypass cache and fetch fresh data from server
 
         Returns:
             List of manufacturer names
         """
         cache_key = "manufacturers"
 
-        # Check cache first
-        cached_data = self._get_from_cache(cache_key)
-        if cached_data is not None:
-            return cached_data
+        # Check cache first if not forcing refresh
+        if not force_refresh:
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data is not None:
+                return cached_data
 
         try:
             logger.info("Fetching manufacturers from server...")
@@ -113,22 +117,24 @@ class CachedApiClient:
             return []
 
 
-    async def get_devices_by_manufacturer(self, manufacturer: str) -> List[str]:
+    async def get_devices_by_manufacturer(self, manufacturer: str, force_refresh: bool = False) -> List[str]:
         """
         Fetch devices for a specific manufacturer from server with caching
 
         Args:
             manufacturer: Name of the manufacturer
+            force_refresh: If True, bypass cache and fetch fresh data from server
 
         Returns:
             List of device names
         """
         cache_key = f"devices_by_manufacturer_{manufacturer}"
 
-        # Check cache first
-        cached_data = self._get_from_cache(cache_key)
-        if cached_data is not None:
-            return cached_data
+        # Check cache first if not forcing refresh
+        if not force_refresh:
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data is not None:
+                return cached_data
 
         try:
             logger.info(f"Fetching devices for manufacturer {manufacturer} from server...")
@@ -149,22 +155,24 @@ class CachedApiClient:
             logger.error(f"Error fetching devices for manufacturer {manufacturer}: {str(e)}")
             return []
 
-    async def get_device_info(self, manufacturer: str) -> List[Dict]:
+    async def get_device_info(self, manufacturer: str, force_refresh: bool = False) -> List[Dict]:
         """
         Fetch device info for a specific manufacturer from server with caching
 
         Args:
             manufacturer: Name of the manufacturer
+            force_refresh: If True, bypass cache and fetch fresh data from server
 
         Returns:
             List of dictionaries containing device_info
         """
         cache_key = f"device_info_{manufacturer}"
 
-        # Check cache first
-        cached_data = self._get_from_cache(cache_key)
-        if cached_data is not None:
-            return cached_data
+        # Check cache first if not forcing refresh
+        if not force_refresh:
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data is not None:
+                return cached_data
 
         try:
             logger.info(f"Fetching device info for manufacturer {manufacturer} from server...")
@@ -185,22 +193,24 @@ class CachedApiClient:
             logger.error(f"Error fetching device info for manufacturer {manufacturer}: {str(e)}")
             return []
 
-    async def get_community_folders(self, device_name: str) -> List[str]:
+    async def get_community_folders(self, device_name: str, force_refresh: bool = False) -> List[str]:
         """
         Fetch community folders for a specific device from server with caching
 
         Args:
             device_name: Name of the device
+            force_refresh: If True, bypass cache and fetch fresh data from server
 
         Returns:
             List of community folder names
         """
         cache_key = f"community_folders_{device_name}"
 
-        # Check cache first
-        cached_data = self._get_from_cache(cache_key)
-        if cached_data is not None:
-            return cached_data
+        # Check cache first if not forcing refresh
+        if not force_refresh:
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data is not None:
+                return cached_data
 
         try:
             logger.info(f"Fetching community folders for device {device_name} from server...")
@@ -222,7 +232,7 @@ class CachedApiClient:
             return []
 
     async def get_patches(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, 
-                         manufacturer: Optional[str] = None) -> List[Patch]:
+                         manufacturer: Optional[str] = None, force_refresh: bool = False) -> List[Patch]:
         """
         Fetch patches from server with caching
 
@@ -230,6 +240,7 @@ class CachedApiClient:
             device_name: Optional name of the device to get patches from
             community_folder: Optional name of the community folder to get patches from
             manufacturer: Optional name of the manufacturer to filter devices by
+            force_refresh: If True, bypass cache and fetch fresh data from server
 
         Returns:
             List of Patch objects
@@ -242,10 +253,11 @@ class CachedApiClient:
         # Create cache key based on parameters
         cache_key = f"patches_{manufacturer}_{device_name}_{community_folder or 'default'}"
 
-        # Check cache first
-        cached_data = self._get_from_cache(cache_key)
-        if cached_data is not None:
-            return cached_data
+        # Check cache first if not forcing refresh
+        if not force_refresh:
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data is not None:
+                return cached_data
 
         try:
             logger.info(f"Fetching patches from server for {manufacturer}/{device_name} (folder: {community_folder})...")
@@ -362,19 +374,23 @@ class CachedApiClient:
         logger.info(f"Retrieved UI state: {self.ui_state}")
         return self.ui_state
 
-    async def get_midi_ports(self) -> Dict[str, List[str]]:
+    async def get_midi_ports(self, force_refresh: bool = False) -> Dict[str, List[str]]:
         """
         Fetch MIDI ports from server with caching
+
+        Args:
+            force_refresh: If True, bypass cache and fetch fresh data from server
 
         Returns:
             Dictionary with 'in' and 'out' keys containing lists of port names
         """
         cache_key = "midi_ports"
 
-        # Check cache first - MIDI ports don't change often
-        cached_data = self._get_from_cache(cache_key)
-        if cached_data is not None:
-            return cached_data
+        # Check cache first if not forcing refresh - MIDI ports don't change often
+        if not force_refresh:
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data is not None:
+                return cached_data
 
         try:
             logger.info("Fetching MIDI ports from server...")
@@ -428,6 +444,308 @@ class CachedApiClient:
 
         except httpx.HTTPError as e:
             logger.error(f"Error sending preset: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def check_directory_structure(self, manufacturer: str, device: str, create_if_missing: bool = True) -> Dict[str, Any]:
+        """
+        Check if the manufacturer and device directories exist, and if the device JSON file exists
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device: Name of the device
+            create_if_missing: Whether to create the directories and file if they don't exist
+
+        Returns:
+            Dictionary with information about the directory structure
+        """
+        try:
+            logger.info(f"Checking directory structure for {manufacturer}/{device}")
+
+            async def check():
+                response = await self.client.post(
+                    "/directory_structure", 
+                    json={
+                        "manufacturer": manufacturer,
+                        "device": device,
+                        "create_if_missing": create_if_missing
+                    }
+                )
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(check)
+            logger.info(f"Directory structure check result: {result}")
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error checking directory structure: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"error": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"error": str(e)}
+
+    async def create_manufacturer(self, name: str) -> Dict[str, Any]:
+        """
+        Create a new manufacturer
+
+        Args:
+            name: Name of the manufacturer
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Creating manufacturer: {name}")
+
+            async def create():
+                response = await self.client.post(
+                    "/manufacturers", 
+                    json={"name": name}
+                )
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(create)
+            logger.info(f"Manufacturer creation result: {result}")
+
+            # Clear cache for manufacturers
+            self.clear_cache_for_prefix("manufacturers")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error creating manufacturer: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def delete_manufacturer(self, name: str) -> Dict[str, Any]:
+        """
+        Delete a manufacturer and all its devices
+
+        Args:
+            name: Name of the manufacturer
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Deleting manufacturer: {name}")
+
+            async def delete():
+                response = await self.client.delete(f"/manufacturers/{name}")
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(delete)
+            logger.info(f"Manufacturer deletion result: {result}")
+
+            # Clear cache for manufacturers and devices
+            self.clear_cache_for_prefix("manufacturers")
+            self.clear_cache_for_prefix("devices_by_manufacturer")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error deleting manufacturer: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def create_device(self, device_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new device
+
+        Args:
+            device_data: Dictionary containing device data
+
+        Returns:
+            Dictionary with status, message, and json_path
+        """
+        try:
+            logger.info(f"Creating device: {device_data.get('name')} for manufacturer {device_data.get('manufacturer')}")
+
+            async def create():
+                response = await self.client.post("/devices", json=device_data)
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(create)
+            logger.info(f"Device creation result: {result}")
+
+            # Clear cache for devices
+            manufacturer = device_data.get('manufacturer')
+            if manufacturer:
+                self.clear_cache_for_prefix(f"devices_by_manufacturer_{manufacturer}")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error creating device: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def delete_device(self, manufacturer: str, device_name: str) -> Dict[str, Any]:
+        """
+        Delete a device and all its presets
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device_name: Name of the device
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Deleting device: {device_name} for manufacturer {manufacturer}")
+
+            async def delete():
+                response = await self.client.delete(f"/devices/{manufacturer}/{device_name}")
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(delete)
+            logger.info(f"Device deletion result: {result}")
+
+            # Clear cache for devices and patches
+            self.clear_cache_for_prefix(f"devices_by_manufacturer_{manufacturer}")
+            self.clear_cache_for_prefix(f"patches_{manufacturer}_{device_name}")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error deleting device: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def create_preset(self, preset_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new preset
+
+        Args:
+            preset_data: Dictionary containing preset data
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Creating preset: {preset_data.get('preset_name')} for device {preset_data.get('device')}")
+
+            async def create():
+                response = await self.client.post("/presets", json=preset_data)
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(create)
+            logger.info(f"Preset creation result: {result}")
+
+            # Clear cache for patches
+            manufacturer = preset_data.get('manufacturer')
+            device = preset_data.get('device')
+            if manufacturer and device:
+                self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error creating preset: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def update_preset(self, preset_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update an existing preset
+
+        Args:
+            preset_data: Dictionary containing preset data
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Updating preset: {preset_data.get('preset_name')} for device {preset_data.get('device')}")
+
+            async def update():
+                response = await self.client.put("/presets", json=preset_data)
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(update)
+            logger.info(f"Preset update result: {result}")
+
+            # Clear cache for patches
+            manufacturer = preset_data.get('manufacturer')
+            device = preset_data.get('device')
+            if manufacturer and device:
+                self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error updating preset: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def delete_preset(self, manufacturer: str, device: str, collection: str, preset_name: str) -> Dict[str, Any]:
+        """
+        Delete a preset
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device: Name of the device
+            collection: Name of the collection
+            preset_name: Name of the preset
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Deleting preset: {preset_name} from collection {collection} for device {device}")
+
+            async def delete():
+                response = await self.client.delete(f"/presets/{manufacturer}/{device}/{collection}/{preset_name}")
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(delete)
+            logger.info(f"Preset deletion result: {result}")
+
+            # Clear cache for patches
+            self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error deleting preset: {str(e)}")
             if hasattr(e, 'response') and e.response is not None:
                 try:
                     error_data = e.response.json()

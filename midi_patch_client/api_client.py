@@ -754,6 +754,175 @@ class CachedApiClient:
                     pass
             return {"status": "error", "message": str(e)}
 
+    async def get_collections(self, manufacturer: str, device: str, force_refresh: bool = False) -> List[str]:
+        """
+        Fetch collections for a device from server with caching
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device: Name of the device
+            force_refresh: If True, bypass cache and fetch fresh data from server
+
+        Returns:
+            List of collection names
+        """
+        # Create cache key based on parameters
+        cache_key = f"collections_{manufacturer}_{device}"
+
+        # Check cache first if not forcing refresh
+        if not force_refresh:
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data is not None:
+                return cached_data
+
+        try:
+            logger.info(f"Fetching collections from server for {manufacturer}/{device}...")
+
+            # Use the specific endpoint with manufacturer and device
+            url = f"/collections/{manufacturer}/{device}"
+
+            async def fetch():
+                response = await self.client.get(url)
+                response.raise_for_status()
+                return response.json()
+
+            collections_data = await self._retry_request(fetch)
+            logger.info(f"Fetched {len(collections_data)} collections")
+
+            # Cache the result
+            self._set_cache(cache_key, collections_data)
+            return collections_data
+
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching collections: {str(e)}")
+            return ["default"]  # Return default collection on error
+
+    async def create_collection(self, manufacturer: str, device: str, collection_name: str) -> Dict[str, Any]:
+        """
+        Create a new collection
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device: Name of the device
+            collection_name: Name of the collection to create
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Creating collection: {collection_name} for device {device}")
+
+            # Use the specific endpoint with manufacturer and device
+            url = f"/collections/{manufacturer}/{device}/{collection_name}"
+
+            async def create():
+                response = await self.client.post(url)
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(create)
+            logger.info(f"Collection creation result: {result}")
+
+            # Clear cache for collections
+            self.clear_cache_for_prefix(f"collections_{manufacturer}_{device}")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error creating collection: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def update_collection(self, manufacturer: str, device: str, old_name: str, new_name: str) -> Dict[str, Any]:
+        """
+        Rename a collection
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device: Name of the device
+            old_name: Current name of the collection
+            new_name: New name for the collection
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Renaming collection: {old_name} to {new_name} for device {device}")
+
+            # Use the specific endpoint with manufacturer and device
+            url = f"/collections/{manufacturer}/{device}/{old_name}"
+            data = {"new_name": new_name}
+
+            async def update():
+                response = await self.client.put(url, json=data)
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(update)
+            logger.info(f"Collection update result: {result}")
+
+            # Clear cache for collections
+            self.clear_cache_for_prefix(f"collections_{manufacturer}_{device}")
+            # Also clear cache for patches as they might be affected
+            self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error updating collection: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
+    async def delete_collection(self, manufacturer: str, device: str, collection_name: str) -> Dict[str, Any]:
+        """
+        Delete a collection
+
+        Args:
+            manufacturer: Name of the manufacturer
+            device: Name of the device
+            collection_name: Name of the collection to delete
+
+        Returns:
+            Dictionary with status and message
+        """
+        try:
+            logger.info(f"Deleting collection: {collection_name} for device {device}")
+
+            # Use the specific endpoint with manufacturer and device
+            url = f"/collections/{manufacturer}/{device}/{collection_name}"
+
+            async def delete():
+                response = await self.client.delete(url)
+                response.raise_for_status()
+                return response.json()
+
+            result = await self._retry_request(delete)
+            logger.info(f"Collection deletion result: {result}")
+
+            # Clear cache for collections
+            self.clear_cache_for_prefix(f"collections_{manufacturer}_{device}")
+            # Also clear cache for patches as they might be affected
+            self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Error deleting collection: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                except json.JSONDecodeError:
+                    pass
+            return {"status": "error", "message": str(e)}
+
     async def close(self):
         """Close the HTTP client"""
         await self.client.aclose()

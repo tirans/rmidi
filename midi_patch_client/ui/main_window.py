@@ -64,6 +64,18 @@ class WIPAnimation(QLabel):
 
     def set_opacity(self, opacity):
         """Set the opacity of the widget"""
+        # Check if we're on the main thread
+        if QThread.currentThread() is QApplication.instance().thread():
+            # If we're on the main thread, set the effect directly
+            opacity_effect = QGraphicsOpacityEffect(self)
+            opacity_effect.setOpacity(opacity)
+            self.setGraphicsEffect(opacity_effect)
+        else:
+            # If we're not on the main thread, use QTimer.singleShot to ensure thread safety
+            QTimer.singleShot(0, lambda op=opacity: self._set_opacity_main_thread(op))
+
+    def _set_opacity_main_thread(self, opacity):
+        """Set the opacity of the widget on the main thread"""
         opacity_effect = QGraphicsOpacityEffect(self)
         opacity_effect.setOpacity(opacity)
         self.setGraphicsEffect(opacity_effect)
@@ -86,11 +98,14 @@ class AsyncWorker(QThread):
         self.coro = coro
         self.main_window = main_window
         self.loading_message = loading_message
+        self.result = None
+        self.error = None
 
         # Connect signals to UI update methods if main_window is provided
         if main_window:
-            self.start_loading_signal.connect(main_window._start_loading_direct)
-            self.stop_loading_signal.connect(main_window._stop_loading_direct)
+            # Use Qt.ConnectionType.QueuedConnection to ensure thread safety
+            self.start_loading_signal.connect(main_window._start_loading_direct, Qt.ConnectionType.QueuedConnection)
+            self.stop_loading_signal.connect(main_window._stop_loading_direct, Qt.ConnectionType.QueuedConnection)
 
     def emit_start_loading(self, message: str = "Loading..."):
         """Emit signal to start loading indicator"""
@@ -125,17 +140,21 @@ class AsyncWorker(QThread):
                             raise
 
                     # Run the wrapper coroutine in this thread's event loop
-                    result = thread_loop.run_until_complete(wrapped_coro())
-                    self.result_ready.emit(result)
+                    self.result = thread_loop.run_until_complete(wrapped_coro())
+                    # Use the signal to safely communicate the result back to the main thread
+                    self.result_ready.emit(self.result)
                 except asyncio.CancelledError:
                     logger.warning("Async operation was cancelled")
-                    self.error_occurred.emit("Operation was cancelled")
+                    self.error = "Operation was cancelled"
+                    self.error_occurred.emit(self.error)
                 except asyncio.TimeoutError:
                     logger.warning("Async operation timed out")
-                    self.error_occurred.emit("Operation timed out")
+                    self.error = "Operation timed out"
+                    self.error_occurred.emit(self.error)
                 except Exception as e:
                     logger.error(f"Error in async worker with main loop: {str(e)}")
-                    self.error_occurred.emit(str(e))
+                    self.error = str(e)
+                    self.error_occurred.emit(self.error)
                 finally:
                     thread_loop.close()
             else:
@@ -145,14 +164,20 @@ class AsyncWorker(QThread):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    result = loop.run_until_complete(self.coro)
-                    self.result_ready.emit(result)
+                    self.result = loop.run_until_complete(self.coro)
+                    # Use the signal to safely communicate the result back to the main thread
+                    self.result_ready.emit(self.result)
+                except Exception as e:
+                    logger.error(f"Error in async worker fallback: {str(e)}")
+                    self.error = str(e)
+                    self.error_occurred.emit(self.error)
                 finally:
                     # Clean up the loop properly
                     loop.close()
         except Exception as e:
             logger.error(f"Error in async worker: {str(e)}")
-            self.error_occurred.emit(str(e))
+            self.error = str(e)
+            self.error_occurred.emit(self.error)
         finally:
             # Stop loading indicator automatically when the coroutine is done
             self.emit_stop_loading()
@@ -278,25 +303,25 @@ class MainWindow(QMainWindow):
         if len(self._active_workers) > 10:  # Arbitrary limit, adjust as needed
             logger.warning(f"Too many active workers ({len(self._active_workers)}), delaying new task")
             # Use a timer to retry after a short delay
-            QTimer.singleShot(500, lambda: self.run_async_task(coro, callback, error_callback))
+            QTimer.singleShot(500, lambda: self.run_async_task(coro, callback, error_callback, loading_message))
             return
 
         try:
             # Create a worker using QThread instead of a regular Python thread
             worker = AsyncWorker(coro, main_window=self, loading_message=loading_message)
 
-            # Connect signals
+            # Connect signals with QueuedConnection to ensure thread safety
             if callback:
-                worker.result_ready.connect(lambda result: callback(result))
+                worker.result_ready.connect(lambda result: callback(result), Qt.ConnectionType.QueuedConnection)
 
-            # Connect error signal
+            # Connect error signal with QueuedConnection
             if error_callback:
-                worker.error_occurred.connect(lambda error: error_callback(error))
+                worker.error_occurred.connect(lambda error: error_callback(error), Qt.ConnectionType.QueuedConnection)
             else:
-                worker.error_occurred.connect(lambda error: self.show_error(f"Error: {error}"))
+                worker.error_occurred.connect(lambda error: self.show_error(f"Error: {error}"), Qt.ConnectionType.QueuedConnection)
 
             # Connect finished signal to remove worker from active workers list
-            worker.finished.connect(lambda: self._remove_worker(worker))
+            worker.finished.connect(lambda: self._remove_worker(worker), Qt.ConnectionType.QueuedConnection)
 
             # Add to active workers list to prevent garbage collection
             self._active_workers.append(worker)
@@ -494,24 +519,10 @@ class MainWindow(QMainWindow):
             # If we're on the main thread, call the direct method
             self._start_loading_direct(message)
         else:
-            # If we're not on the main thread, use a signal-slot approach
-            # This is more reliable than QTimer.singleShot for cross-thread UI updates
-            try:
-                # Find the current worker thread
-                for worker in self._active_workers:
-                    if worker is QThread.currentThread():
-                        # Use the worker's signal to update the UI
-                        worker.start_loading_signal.emit(message)
-                        return
-
-                # If we couldn't find the worker, fall back to QTimer
-                # This is less reliable but better than nothing
-                logger.warning("Could not find worker thread, falling back to QTimer for UI update")
-                QTimer.singleShot(0, lambda: self._start_loading_direct(message))
-            except Exception as e:
-                logger.error(f"Error in _start_loading: {str(e)}")
-                # Last resort fallback
-                QTimer.singleShot(0, lambda: self._start_loading_direct(message))
+            # If we're not on the main thread, always use QTimer.singleShot
+            # This is the most reliable way to ensure the method is called on the main thread
+            # We don't need to search for the worker thread anymore
+            QTimer.singleShot(0, lambda msg=message: self._start_loading_direct(msg))
 
     def _stop_loading(self):
         """Stop loading indicator - safe to call from any thread"""
@@ -520,24 +531,10 @@ class MainWindow(QMainWindow):
             # If we're on the main thread, call the direct method
             self._stop_loading_direct()
         else:
-            # If we're not on the main thread, use a signal-slot approach
-            # This is more reliable than QTimer.singleShot for cross-thread UI updates
-            try:
-                # Find the current worker thread
-                for worker in self._active_workers:
-                    if worker is QThread.currentThread():
-                        # Use the worker's signal to update the UI
-                        worker.stop_loading_signal.emit()
-                        return
-
-                # If we couldn't find the worker, fall back to QTimer
-                # This is less reliable but better than nothing
-                logger.warning("Could not find worker thread, falling back to QTimer for UI update")
-                QTimer.singleShot(0, self._stop_loading_direct)
-            except Exception as e:
-                logger.error(f"Error in _stop_loading: {str(e)}")
-                # Last resort fallback
-                QTimer.singleShot(0, self._stop_loading_direct)
+            # If we're not on the main thread, always use QTimer.singleShot
+            # This is the most reliable way to ensure the method is called on the main thread
+            # We don't need to search for the worker thread anymore
+            QTimer.singleShot(0, self._stop_loading_direct)
 
     # Shortcut actions
     def focus_search(self):
@@ -745,6 +742,8 @@ class MainWindow(QMainWindow):
                 if not available:
                     logger.error("Server is still not available, aborting patch loading")
                     self.status_bar.showMessage("Server is not available, aborting patch loading")
+                    # Still set empty patches to clear any previous data
+                    self.patch_panel.set_patches([])
                     self._stop_loading()
                     return
                 else:
@@ -761,9 +760,9 @@ class MainWindow(QMainWindow):
                 logger.info(f"Loading patches for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
 
                 if not manufacturer or not device:
-                    logger.warning("No manufacturer or device selected, cannot load patches")
-                    self.status_bar.showMessage("Warning: No manufacturer or device selected")
-                    # Don't try to load patches if manufacturer or device is missing
+                    logger.info("No manufacturer or device selected, showing empty patch list")
+                    self.status_bar.showMessage("Please select a manufacturer and device to load patches")
+                    # Set empty patches to clear any previous data
                     patches = []
                 else:
                     # Load patches based on selected manufacturer, device, and community folder
@@ -782,10 +781,12 @@ class MainWindow(QMainWindow):
                 elif device:
                     self.status_bar.showMessage(f"Loaded {len(patches)} patches for {device}")
                 else:
-                    self.status_bar.showMessage(f"Loaded {len(patches)} patches")
+                    self.status_bar.showMessage("Please select a manufacturer and device to load patches")
             except Exception as e:
                 logger.error(f"Error loading patches: {str(e)}")
                 self.status_bar.showMessage(f"Error loading patches: {str(e)}")
+                # Set empty patches on error to clear any previous data
+                self.patch_panel.set_patches([])
             finally:
                 # Stop loading indicator immediately
                 self._stop_loading()
@@ -803,20 +804,11 @@ class MainWindow(QMainWindow):
 
             # Check if server is available
             if not self.server_available:
-                logger.warning("Server is not available, cannot run git sync")
-                self.status_bar.showMessage("Server is not available, cannot run git sync")
-                # Try to check server availability again
-                available = await self.check_server_availability()
-                if not available:
-                    logger.error("Server is still not available, aborting git sync")
-                    self.status_bar.showMessage("Server is not available, aborting git sync")
-                    self._stop_loading()
-                    return
-                else:
-                    # Server is now available, update flag
-                    self.server_available = True
-                    logger.info("Server is now available, continuing with git sync")
-                    self.status_bar.showMessage("Server is now available, continuing with git sync")
+                logger.info("Server is not available, skipping git sync")
+                self.status_bar.showMessage("Server is not available, skipping git sync")
+                # Don't show an error, just quietly skip the git sync
+                self._stop_loading()
+                return
 
             try:
                 logger.info("Running git sync...")
@@ -828,9 +820,14 @@ class MainWindow(QMainWindow):
                     logger.info("Git sync completed successfully")
                     self.status_bar.showMessage("Git sync completed successfully")
                 else:
-                    logger.error(f"Git sync failed: {message}")
+                    logger.warning(f"Git sync failed: {message}")
                     self.status_bar.showMessage(f"Git sync failed: {message}")
-                    self.show_error(f"Git sync failed: {message}")
+                    # Don't show an error dialog for git sync failures
+                    # Just log it and show in the status bar
+            except Exception as e:
+                logger.warning(f"Error during git sync: {str(e)}")
+                self.status_bar.showMessage(f"Error during git sync: {str(e)}")
+                # Don't show an error dialog for git sync exceptions
             finally:
                 # Stop loading indicator immediately
                 self._stop_loading()
@@ -880,6 +877,10 @@ class MainWindow(QMainWindow):
             logger.error(f"Server not available after {self.server_check_retries} retries, giving up")
             self.status_bar.showMessage("Server not available, giving up")
             self.show_error(f"Server not available after {self.server_check_retries} retries. Please check your connection and restart the application.")
+            # Even if server is not available, proceed with loading UI
+            # This allows the user to see the UI and potentially retry later
+            self.server_available = False
+            self.load_data()
             return
 
         # Increment retry counter

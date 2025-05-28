@@ -191,6 +191,32 @@ class EditDialog(QDialog):
         self.preset_collection_combo.currentTextChanged.connect(self.on_preset_collection_changed)
         selection_layout.addRow("Collection:", self.preset_collection_combo)
 
+        # Collection name edit field
+        self.collection_name_edit = QLineEdit()
+        self.collection_name_edit.setPlaceholderText("Enter collection name")
+
+        # Collection update button
+        self.collection_update_button = QPushButton("Update Collection")
+        self.collection_update_button.clicked.connect(self.update_collection)
+
+        # Collection remove button
+        self.collection_remove_button = QPushButton("Remove")
+        self.collection_remove_button.clicked.connect(self.remove_collection)
+
+        # Add collection name edit and update button to a horizontal layout
+        collection_edit_layout = QHBoxLayout()
+        collection_edit_layout.addWidget(self.collection_name_edit)
+        collection_edit_layout.addWidget(self.collection_update_button)
+
+        # Add the remove button to a separate layout
+        collection_remove_layout = QHBoxLayout()
+        collection_remove_layout.addStretch()
+        collection_remove_layout.addWidget(self.collection_remove_button)
+
+        # Add the layouts to the form
+        selection_layout.addRow("Edit Collection:", collection_edit_layout)
+        selection_layout.addRow("", collection_remove_layout)
+
         layout.addLayout(selection_layout)
 
         # Preset list
@@ -475,12 +501,77 @@ class EditDialog(QDialog):
             if manufacturer in self._loading_devices:
                 self._loading_devices.remove(manufacturer)
 
+    # Keep track of ongoing collection loading operations
+    _loading_collections = set()
+
     def load_collections(self, manufacturer, device):
         """Load collections for a device from the server"""
-        # For now, we only have the "default" collection
-        self.collections[f"{manufacturer}/{device}"] = ["default"]
-        self.preset_collection_combo.clear()
-        self.preset_collection_combo.addItem("default")
+        # Create a unique key for this loading operation
+        load_key = f"{manufacturer}/{device}"
+
+        # Check if we're already loading these collections
+        if load_key in self._loading_collections:
+            logger.info(f"Already loading collections for {load_key}, skipping duplicate request")
+            return
+
+        # Mark as loading
+        self._loading_collections.add(load_key)
+
+        def on_collections_loaded(collections):
+            try:
+                # Store collections
+                self.collections[f"{manufacturer}/{device}"] = collections
+
+                # Update collection combo box
+                self.preset_collection_combo.clear()
+                for collection in collections:
+                    self.preset_collection_combo.addItem(collection)
+
+                # If no collections were found, add a default one
+                if not collections:
+                    self.preset_collection_combo.addItem("default")
+
+                logger.info(f"Successfully loaded {len(collections)} collections for {manufacturer}/{device}")
+            except Exception as e:
+                logger.error(f"Error processing collections: {str(e)}")
+                # Add default collection on error
+                self.preset_collection_combo.clear()
+                self.preset_collection_combo.addItem("default")
+            finally:
+                # Mark as no longer loading
+                if load_key in self._loading_collections:
+                    self._loading_collections.remove(load_key)
+
+        def on_error(error_msg):
+            logger.error(f"Error loading collections for {load_key}: {error_msg}")
+            # Show error message to the user
+            QMessageBox.warning(self, "Error", f"Error loading collections: {error_msg}")
+            # Add default collection on error
+            self.preset_collection_combo.clear()
+            self.preset_collection_combo.addItem("default")
+            # Mark as no longer loading
+            if load_key in self._loading_collections:
+                self._loading_collections.remove(load_key)
+
+        try:
+            # Always force refresh to ensure we get fresh data from the server
+            logger.info(f"Loading collections for {load_key}")
+            self.run_async(
+                self.api_client.get_collections(manufacturer, device, force_refresh=True), 
+                on_collections_loaded,
+                on_error,
+                loading_message=f"Loading collections for {manufacturer}/{device}..."
+            )
+        except Exception as e:
+            logger.error(f"Error starting collection load: {str(e)}")
+            # Show error message to the user
+            QMessageBox.warning(self, "Error", f"Error loading collections: {str(e)}")
+            # Add default collection on error
+            self.preset_collection_combo.clear()
+            self.preset_collection_combo.addItem("default")
+            # Mark as no longer loading
+            if load_key in self._loading_collections:
+                self._loading_collections.remove(load_key)
 
     # Keep track of ongoing preset loading operations
     _loading_presets = set()
@@ -644,6 +735,9 @@ class EditDialog(QDialog):
     def on_preset_collection_changed(self, collection):
         """Handle collection selection change in the preset tab"""
         if collection:
+            # Update the collection name edit field with the selected collection name
+            self.collection_name_edit.setText(collection)
+
             manufacturer = self.preset_manufacturer_combo.currentText()
             device = self.preset_device_combo.currentText()
             if manufacturer and device:
@@ -661,6 +755,103 @@ class EditDialog(QDialog):
             else:
                 # If no manufacturer or device selected, just update the list from cache
                 self.update_preset_list()
+
+    def update_collection(self):
+        """Update the selected collection"""
+        manufacturer = self.preset_manufacturer_combo.currentText()
+        device = self.preset_device_combo.currentText()
+        current_collection = self.preset_collection_combo.currentText()
+        new_collection_name = self.collection_name_edit.text().strip()
+
+        if not manufacturer or not device:
+            QMessageBox.warning(self, "Error", "No manufacturer or device selected")
+            return
+
+        # If the new collection name is empty, show error
+        if not new_collection_name:
+            QMessageBox.warning(self, "Error", "Collection name cannot be empty")
+            return
+
+        # Check if the collection exists in preset_collections
+        key = f"{manufacturer}/{device}"
+        if key in self.collections and new_collection_name in self.collections[key]:
+            # Collection exists, update it
+            if current_collection and current_collection != "default":
+                # Rename the current collection
+                def on_collection_updated(result):
+                    if result.get('status') == 'success':
+                        QMessageBox.information(self, "Success", result.get('message', "Collection renamed successfully"))
+                        # Reload collections
+                        self.load_collections(manufacturer, device)
+                        self.changes_made.emit()
+                    else:
+                        QMessageBox.warning(self, "Error", result.get('message', "Failed to rename collection"))
+
+                self.run_async(
+                    self.api_client.update_collection(manufacturer, device, current_collection, new_collection_name),
+                    on_collection_updated,
+                    loading_message=f"Renaming collection {current_collection} to {new_collection_name}..."
+                )
+            else:
+                # Just select the existing collection
+                index = self.preset_collection_combo.findText(new_collection_name)
+                if index >= 0:
+                    self.preset_collection_combo.setCurrentIndex(index)
+        else:
+            # Collection doesn't exist, create it
+            def on_collection_created(result):
+                if result.get('status') == 'success':
+                    QMessageBox.information(self, "Success", result.get('message', "Collection created successfully"))
+                    # Reload collections
+                    self.load_collections(manufacturer, device)
+                    self.changes_made.emit()
+                else:
+                    QMessageBox.warning(self, "Error", result.get('message', "Failed to create collection"))
+
+            self.run_async(
+                self.api_client.create_collection(manufacturer, device, new_collection_name),
+                on_collection_created,
+                loading_message=f"Creating collection {new_collection_name}..."
+            )
+
+    def remove_collection(self):
+        """Remove the selected collection"""
+        manufacturer = self.preset_manufacturer_combo.currentText()
+        device = self.preset_device_combo.currentText()
+        collection = self.preset_collection_combo.currentText()
+
+        if not manufacturer or not device:
+            QMessageBox.warning(self, "Error", "No manufacturer or device selected")
+            return
+
+        if not collection or collection == "default":
+            QMessageBox.warning(self, "Error", "Cannot remove the default collection")
+            return
+
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self, 
+            "Confirm Deletion", 
+            f"Are you sure you want to delete collection '{collection}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            def on_collection_deleted(result):
+                if result.get('status') == 'success':
+                    QMessageBox.information(self, "Success", result.get('message', "Collection deleted successfully"))
+                    # Reload collections
+                    self.load_collections(manufacturer, device)
+                    self.changes_made.emit()
+                else:
+                    QMessageBox.warning(self, "Error", result.get('message', "Failed to delete collection"))
+
+            self.run_async(
+                self.api_client.delete_collection(manufacturer, device, collection),
+                on_collection_deleted,
+                loading_message=f"Deleting collection {collection}..."
+            )
 
     def on_preset_selected(self, item):
         """Handle preset selection in the preset tab"""

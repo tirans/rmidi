@@ -5,6 +5,8 @@ import uvicorn
 import threading
 import time
 import socket
+import json
+from datetime import datetime
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional, Any
@@ -447,6 +449,232 @@ async def delete_preset(manufacturer: str, device: str, collection: str, preset_
     except Exception as e:
         logger.error(f"Error deleting preset: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting preset: {str(e)}")
+
+# Collection management endpoints
+@app.get("/collections/{manufacturer}/{device}", response_model=List[str])
+async def get_collections(manufacturer: str, device: str):
+    """Get all collections for a device"""
+    try:
+        # Check if manufacturer exists
+        if manufacturer not in device_manager.manufacturers:
+            logger.warning(f"Manufacturer not found: {manufacturer}")
+            raise HTTPException(status_code=404, detail=f"Manufacturer '{manufacturer}' not found")
+
+        # Check if device exists
+        devices = device_manager.get_devices_by_manufacturer(manufacturer)
+        if device not in devices:
+            logger.warning(f"Device not found: {device}")
+            raise HTTPException(status_code=404, detail=f"Device '{device}' not found")
+
+        # Get the device data
+        device_data = device_manager.get_device_by_name(device)
+        if not device_data:
+            logger.warning(f"Device data not found: {device}")
+            raise HTTPException(status_code=404, detail=f"Device data for '{device}' not found")
+
+        # Get collections
+        collections = list(device_data.get('preset_collections', {}).keys())
+        logger.info(f"Returning {len(collections)} collections for {manufacturer}/{device}")
+        return collections
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting collections: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting collections: {str(e)}")
+
+@app.post("/collections/{manufacturer}/{device}/{collection_name}")
+async def create_collection(manufacturer: str, device: str, collection_name: str):
+    """Create a new collection"""
+    try:
+        # Check if manufacturer exists
+        if manufacturer not in device_manager.manufacturers:
+            logger.warning(f"Manufacturer not found: {manufacturer}")
+            raise HTTPException(status_code=404, detail=f"Manufacturer '{manufacturer}' not found")
+
+        # Check if device exists
+        devices = device_manager.get_devices_by_manufacturer(manufacturer)
+        if device not in devices:
+            logger.warning(f"Device not found: {device}")
+            raise HTTPException(status_code=404, detail=f"Device '{device}' not found")
+
+        # Get the device data
+        device_data = device_manager.get_device_by_name(device)
+        if not device_data:
+            logger.warning(f"Device data not found: {device}")
+            raise HTTPException(status_code=404, detail=f"Device data for '{device}' not found")
+
+        # Check if preset_collections exists, create it if it doesn't
+        if 'preset_collections' not in device_data:
+            device_data['preset_collections'] = {}
+            logger.info(f"Created preset_collections for device '{device}'")
+
+        # Check if collection already exists
+        preset_collections = device_data.get('preset_collections', {})
+        if collection_name in preset_collections:
+            logger.info(f"Collection '{collection_name}' already exists for device '{device}'")
+            return {"status": "success", "message": f"Collection '{collection_name}' already exists"}
+
+        # Create the collection
+        collection_display_name = "Factory Presets" if collection_name == "factory_presets" else collection_name
+        preset_collections[collection_name] = {
+            "metadata": {
+                "name": collection_display_name,
+                "version": "1.0",
+                "revision": 1,
+                "author": "r2midi",
+                "description": f"{collection_display_name} for {device}",
+                "readonly": False,
+                "preset_count": 0,
+                "parent_collections": [],
+                "sync_status": "synced",
+                "created_at": datetime.now().isoformat(),
+                "modified_at": datetime.now().isoformat()
+            },
+            "presets": [],
+            "preset_metadata": {}
+        }
+        logger.info(f"Created collection '{collection_name}' for device '{device}'")
+
+        # Update the device data
+        device_data['preset_collections'] = preset_collections
+
+        # Save the device data
+        device_path = os.path.join(device_manager.devices_folder, manufacturer, device)
+        json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+
+        if not json_files:
+            raise HTTPException(status_code=404, detail=f"No JSON file found for device '{device}'")
+
+        json_path = os.path.join(device_path, json_files[0])
+
+        with open(json_path, 'w') as f:
+            json.dump(device_data, f, indent=2)
+
+        logger.info(f"Saved collection '{collection_name}' for device '{device}'")
+        return {"status": "success", "message": f"Collection '{collection_name}' created successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating collection: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating collection: {str(e)}")
+
+@app.put("/collections/{manufacturer}/{device}/{collection_name}")
+async def update_collection(manufacturer: str, device: str, collection_name: str, data: Dict[str, str]):
+    """Update a collection (rename)"""
+    try:
+        new_name = data.get('new_name')
+        if not new_name:
+            raise HTTPException(status_code=400, detail="New name is required")
+
+        # Check if manufacturer exists
+        if manufacturer not in device_manager.manufacturers:
+            logger.warning(f"Manufacturer not found: {manufacturer}")
+            raise HTTPException(status_code=404, detail=f"Manufacturer '{manufacturer}' not found")
+
+        # Check if device exists
+        devices = device_manager.get_devices_by_manufacturer(manufacturer)
+        if device not in devices:
+            logger.warning(f"Device not found: {device}")
+            raise HTTPException(status_code=404, detail=f"Device '{device}' not found")
+
+        # Get the device data
+        device_data = device_manager.get_device_by_name(device)
+        if not device_data:
+            logger.warning(f"Device data not found: {device}")
+            raise HTTPException(status_code=404, detail=f"Device data for '{device}' not found")
+
+        # Check if collection exists
+        preset_collections = device_data.get('preset_collections', {})
+        if collection_name not in preset_collections:
+            logger.warning(f"Collection not found: {collection_name}")
+            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+
+        # Check if new name already exists
+        if new_name in preset_collections:
+            logger.warning(f"Collection with name '{new_name}' already exists")
+            raise HTTPException(status_code=400, detail=f"Collection with name '{new_name}' already exists")
+
+        # Rename the collection
+        preset_collections[new_name] = preset_collections[collection_name]
+        preset_collections[new_name]['metadata']['name'] = new_name
+        preset_collections[new_name]['metadata']['modified_at'] = datetime.now().isoformat()
+        del preset_collections[collection_name]
+
+        # Update the device data
+        device_data['preset_collections'] = preset_collections
+
+        # Save the device data
+        device_path = os.path.join(device_manager.devices_folder, manufacturer, device)
+        json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+
+        if not json_files:
+            raise HTTPException(status_code=404, detail=f"No JSON file found for device '{device}'")
+
+        json_path = os.path.join(device_path, json_files[0])
+
+        with open(json_path, 'w') as f:
+            json.dump(device_data, f, indent=2)
+
+        logger.info(f"Renamed collection '{collection_name}' to '{new_name}' for device '{device}'")
+        return {"status": "success", "message": f"Collection '{collection_name}' renamed to '{new_name}' successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating collection: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error updating collection: {str(e)}")
+
+@app.delete("/collections/{manufacturer}/{device}/{collection_name}")
+async def delete_collection(manufacturer: str, device: str, collection_name: str):
+    """Delete a collection"""
+    try:
+        # Check if manufacturer exists
+        if manufacturer not in device_manager.manufacturers:
+            logger.warning(f"Manufacturer not found: {manufacturer}")
+            raise HTTPException(status_code=404, detail=f"Manufacturer '{manufacturer}' not found")
+
+        # Check if device exists
+        devices = device_manager.get_devices_by_manufacturer(manufacturer)
+        if device not in devices:
+            logger.warning(f"Device not found: {device}")
+            raise HTTPException(status_code=404, detail=f"Device '{device}' not found")
+
+        # Get the device data
+        device_data = device_manager.get_device_by_name(device)
+        if not device_data:
+            logger.warning(f"Device data not found: {device}")
+            raise HTTPException(status_code=404, detail=f"Device data for '{device}' not found")
+
+        # Check if collection exists
+        preset_collections = device_data.get('preset_collections', {})
+        if collection_name not in preset_collections:
+            logger.warning(f"Collection not found: {collection_name}")
+            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+
+        # Delete the collection
+        del preset_collections[collection_name]
+
+        # Update the device data
+        device_data['preset_collections'] = preset_collections
+
+        # Save the device data
+        device_path = os.path.join(device_manager.devices_folder, manufacturer, device)
+        json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+
+        if not json_files:
+            raise HTTPException(status_code=404, detail=f"No JSON file found for device '{device}'")
+
+        json_path = os.path.join(device_path, json_files[0])
+
+        with open(json_path, 'w') as f:
+            json.dump(device_data, f, indent=2)
+
+        logger.info(f"Deleted collection '{collection_name}' for device '{device}'")
+        return {"status": "success", "message": f"Collection '{collection_name}' deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting collection: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting collection: {str(e)}")
 
 # Run the application
 if __name__ == '__main__':

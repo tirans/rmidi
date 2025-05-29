@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import time
+import traceback
 from typing import Optional, Callable, Any, Coroutine
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -230,15 +231,21 @@ class MainWindow(QMainWindow):
         # Apply configuration
         self.apply_configuration()
 
-        # Run git sync if enabled
-        if self.sync_enabled:
-            QTimer.singleShot(0, lambda: self.run_async_task(self.run_git_sync()))
+        # Add a small delay before scheduling async tasks to ensure the async loop is fully ready
+        # This helps prevent threading issues with Qt objects
 
-        # Wait for server to be available before loading data
-        QTimer.singleShot(100, self.wait_for_server)
+        # Run git sync if enabled - with a delay to ensure async loop is ready
+        if self.sync_enabled:
+            QTimer.singleShot(500, lambda: self.run_async_task(self.run_git_sync()))
+
+        # Wait for server to be available before loading data - with a delay to ensure async loop is ready
+        QTimer.singleShot(1000, self.wait_for_server)
 
     def _setup_async_loop(self):
         """Set up a dedicated thread with an event loop for async operations"""
+        # Create an event to signal when the loop is ready
+        loop_ready = threading.Event()
+
         def run_loop():
             try:
                 # Create a new event loop
@@ -251,6 +258,9 @@ class MainWindow(QMainWindow):
                 self._async_loop.set_default_executor(
                     concurrent.futures.ThreadPoolExecutor(max_workers=4)
                 )
+
+                # Signal that the loop is ready
+                loop_ready.set()
 
                 # Run the event loop forever
                 self._async_loop.run_forever()
@@ -268,8 +278,11 @@ class MainWindow(QMainWindow):
         self._async_thread = threading.Thread(target=run_loop, daemon=True, name="AsyncLoopThread")
         self._async_thread.start()
 
-        # Wait a bit for the loop to start
-        time.sleep(0.2)  # Increased wait time to ensure loop is ready
+        # Wait for the loop to be ready, with a timeout
+        # This ensures that the async loop is properly initialized before it's used
+        # which prevents Qt threading violations
+        if not loop_ready.wait(timeout=5.0):  # Increased timeout for even slower systems
+            logger.warning("Async loop thread may not have started properly")
 
         logger.info("Async loop thread started")
 
@@ -453,6 +466,12 @@ class MainWindow(QMainWindow):
         self.edit_button.setToolTip("Edit manufacturers, devices, and presets")
         self.edit_button.clicked.connect(self.show_edit_dialog)
         button_layout.addWidget(self.edit_button)
+
+        # Devices Remote GitHub Sync button
+        self.git_remote_sync_button = QPushButton("Devices Remote GitHub Sync")
+        self.git_remote_sync_button.setToolTip("Add, commit, and push changes to the midi-presets GitHub repo")
+        self.git_remote_sync_button.clicked.connect(self.on_git_remote_sync_button_clicked)
+        button_layout.addWidget(self.git_remote_sync_button)
 
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
@@ -832,6 +851,253 @@ class MainWindow(QMainWindow):
                 # Stop loading indicator immediately
                 self._stop_loading()
 
+    def on_git_remote_sync_button_clicked(self):
+        """Handle Devices Remote GitHub Sync button click"""
+        try:
+            # Log at ERROR level to ensure it's captured, and use a distinctive message
+            logger.error("SYNC BUTTON PRESSED: Devices Remote GitHub Sync button clicked")
+            # Force flush all handlers to ensure the log is written immediately
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+
+            # Create a simple worker thread instead of using the async framework
+            class GitSyncWorker(QThread):
+                finished = pyqtSignal(bool, str)
+
+                def run(self):
+                    import os
+                    import subprocess
+                    import traceback
+
+                    # Log that we're in the worker thread
+                    logger.error("GIT SYNC WORKER: Starting in thread")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+
+                    # Get the current directory to return to it later
+                    current_dir = os.getcwd()
+                    success = False
+                    message = ""
+
+                    try:
+                        # Change to the midi-presets directory
+                        midi_presets_dir = os.path.join(current_dir, "midi-presets")
+                        logger.error(f"GIT SYNC WORKER: Changing to directory {midi_presets_dir}")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        if not os.path.exists(midi_presets_dir):
+                            message = f"Midi-presets directory not found at {midi_presets_dir}"
+                            logger.error(f"GIT SYNC WORKER: {message}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+                            self.finished.emit(False, message)
+                            return
+
+                        os.chdir(midi_presets_dir)
+                        logger.error(f"GIT SYNC WORKER: Changed to directory {midi_presets_dir}")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        # Add all changes
+                        logger.error("GIT SYNC WORKER: Adding all changes")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        add_result = subprocess.run(
+                            ["git", "add", "."],
+                            capture_output=True,
+                            text=True
+                        )
+
+                        if add_result.returncode != 0:
+                            message = f"Git add failed: {add_result.stderr}"
+                            logger.error(f"GIT SYNC WORKER: {message}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+                            self.finished.emit(False, message)
+                            return
+
+                        logger.error(f"GIT SYNC WORKER: Git add output: {add_result.stdout}")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        # Check if there are changes to commit
+                        logger.error("GIT SYNC WORKER: Checking for changes to commit")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        status_result = subprocess.run(
+                            ["git", "status", "--porcelain"],
+                            capture_output=True,
+                            text=True
+                        )
+
+                        if status_result.returncode != 0:
+                            message = f"Git status failed: {status_result.stderr}"
+                            logger.error(f"GIT SYNC WORKER: {message}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+                            self.finished.emit(False, message)
+                            return
+
+                        if not status_result.stdout.strip():
+                            message = "No changes to commit"
+                            logger.error(f"GIT SYNC WORKER: {message}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+                            self.finished.emit(True, message)
+                            return
+
+                        # Commit changes
+                        logger.error("GIT SYNC WORKER: Committing changes")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        commit_result = subprocess.run(
+                            ["git", "commit", "-m", "new patches"],
+                            capture_output=True,
+                            text=True
+                        )
+
+                        if commit_result.returncode != 0:
+                            message = f"Git commit failed: {commit_result.stderr}"
+                            logger.error(f"GIT SYNC WORKER: {message}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+                            self.finished.emit(False, message)
+                            return
+
+                        logger.error(f"GIT SYNC WORKER: Git commit output: {commit_result.stdout}")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        # Push changes
+                        logger.error("GIT SYNC WORKER: Pushing changes")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        push_result = subprocess.run(
+                            ["git", "push"],
+                            capture_output=True,
+                            text=True
+                        )
+
+                        if push_result.returncode != 0:
+                            message = f"Git push failed: {push_result.stderr}"
+                            logger.error(f"GIT SYNC WORKER: {message}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+                            self.finished.emit(False, message)
+                            return
+
+                        logger.error(f"GIT SYNC WORKER: Git push output: {push_result.stdout}")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        # Success
+                        message = "Successfully added, committed, and pushed changes to the midi-presets GitHub repo"
+                        logger.error(f"GIT SYNC WORKER: {message}")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+                        success = True
+
+                    except Exception as e:
+                        message = f"Error during git sync: {str(e)}"
+                        logger.error(f"GIT SYNC WORKER: {message}")
+                        logger.error(f"GIT SYNC WORKER: Exception type: {type(e).__name__}")
+                        logger.error(f"GIT SYNC WORKER: Traceback: {traceback.format_exc()}")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+                        success = False
+                    finally:
+                        # Return to original directory
+                        try:
+                            os.chdir(current_dir)
+                            logger.error(f"GIT SYNC WORKER: Returned to directory {current_dir}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+                        except Exception as e:
+                            logger.error(f"GIT SYNC WORKER: Error returning to original directory: {str(e)}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+
+                        # Signal completion
+                        self.finished.emit(success, message)
+
+            # Start loading indicator
+            self._start_loading("Running devices remote GitHub sync...")
+
+            # Create and start the worker thread
+            worker = GitSyncWorker()
+
+            # Connect signals
+            def on_finished(success, message):
+                logger.error(f"GIT SYNC WORKER FINISHED: success={success}, message={message}")
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
+
+                # Stop loading indicator
+                self._stop_loading()
+
+                # Update status bar
+                self.status_bar.showMessage(message)
+
+                # Show message to user
+                try:
+                    if success:
+                        QMessageBox.information(self, "Success", message)
+                    else:
+                        QMessageBox.warning(self, "Warning", message)
+                except Exception as dialog_error:
+                    logger.error(f"Failed to show dialog: {str(dialog_error)}")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+
+            worker.finished.connect(on_finished)
+
+            # Keep a reference to the worker to prevent garbage collection
+            self._git_sync_worker = worker
+
+            # Start the worker
+            logger.error("SYNC BUTTON: Starting worker thread")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            worker.start()
+
+            logger.error("SYNC BUTTON: Worker thread started")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+
+        except Exception as e:
+            # Log any exceptions that occur
+            error_msg = f"SYNC BUTTON ERROR: {str(e)}"
+            logger.error(error_msg)
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Force flush all handlers to ensure the log is written immediately
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            # Show an error message to the user
+            try:
+                QMessageBox.critical(self, "Error", error_msg)
+            except Exception as dialog_error:
+                logger.error(f"Failed to show error dialog: {str(dialog_error)}")
+                # Force flush all handlers to ensure the log is written immediately
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
+
+            # Stop loading indicator if it was started
+            try:
+                self._stop_loading()
+            except Exception as stop_error:
+                logger.error(f"Failed to stop loading indicator: {str(stop_error)}")
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
+
+    # The async version of run_git_remote_sync has been replaced by a direct QThread implementation
+    # in the on_git_remote_sync_button_clicked method
+
     async def check_server_availability(self) -> bool:
         """
         Check if the server is available by querying the manufacturers endpoint
@@ -1093,19 +1359,73 @@ class MainWindow(QMainWindow):
 
     def show_error(self, message: str):
         """Show an error message dialog"""
-        # Update status bar - this is thread-safe
-        self.status_bar.showMessage(f"Error: {message}")
+        try:
+            # Log the error message
+            logger.error(f"SHOW_ERROR: {message}")
 
-        # Use QTimer to ensure the QMessageBox is created and shown on the main thread
-        def show_message_box():
-            error_box = QMessageBox()
-            error_box.setIcon(QMessageBox.Icon.Critical)
-            error_box.setWindowTitle("Error")
-            error_box.setText(message)
-            error_box.exec()
+            # Update status bar - this is thread-safe
+            self.status_bar.showMessage(f"Error: {message}")
 
-        # Use QTimer.singleShot to run on the main thread
-        QTimer.singleShot(0, show_message_box)
+            # Force flush all handlers to ensure the log is written immediately
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+
+            # Use QTimer to ensure the QMessageBox is created and shown on the main thread
+            def show_message_box():
+                try:
+                    # Log that we're about to create the QMessageBox
+                    logger.error("SHOW_ERROR: Creating QMessageBox")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+
+                    # Create and show the QMessageBox
+                    error_box = QMessageBox()
+                    error_box.setIcon(QMessageBox.Icon.Critical)
+                    error_box.setWindowTitle("Error")
+                    error_box.setText(message)
+
+                    # Log that we're about to show the QMessageBox
+                    logger.error("SHOW_ERROR: About to show QMessageBox")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+
+                    # Show the QMessageBox
+                    error_box.exec()
+
+                    # Log that the QMessageBox was shown successfully
+                    logger.error("SHOW_ERROR: QMessageBox shown successfully")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+                except Exception as e:
+                    # Log any exceptions that occur when showing the QMessageBox
+                    error_msg = f"SHOW_ERROR: Failed to show error dialog: {str(e)}"
+                    logger.error(error_msg)
+                    logger.error(f"Exception type: {type(e).__name__}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    # Force flush all handlers to ensure the log is written immediately
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+
+            # Use QTimer.singleShot to run on the main thread
+            logger.error("SHOW_ERROR: Scheduling QMessageBox creation with QTimer.singleShot")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+
+            QTimer.singleShot(0, show_message_box)
+
+            # Log that QTimer.singleShot was called successfully
+            logger.error("SHOW_ERROR: QTimer.singleShot called successfully")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+        except Exception as e:
+            # Log any exceptions that occur in the show_error method
+            error_msg = f"SHOW_ERROR: Exception in show_error method: {str(e)}"
+            logger.error(error_msg)
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Force flush all handlers to ensure the log is written immediately
+            for handler in logging.getLogger().handlers:
+                handler.flush()
 
     def closeEvent(self, event):
         """Handle window close event"""

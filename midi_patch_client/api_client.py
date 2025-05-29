@@ -287,40 +287,210 @@ class CachedApiClient:
 
     async def run_git_sync(self) -> Tuple[bool, str]:
         """
-        Run git submodule sync to update the midi-presets submodule
+        Run git sync to update the midi-presets submodule by calling the server REST API
 
         Returns:
             Tuple of (success, message)
         """
         try:
-            logger.info("Running git submodule sync...")
-            result = subprocess.run(
-                ["git", "submodule", "sync"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.info(f"Git submodule sync output: {result.stdout}")
+            logger.info("Calling server REST API for git sync...")
 
-            # Also run git submodule update to ensure the submodule is up to date
-            update_result = subprocess.run(
-                ["git", "submodule", "update", "--init", "--recursive"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.info(f"Git submodule update output: {update_result.stdout}")
+            async def fetch():
+                response = await self.client.get("/git/sync")
+                response.raise_for_status()
+                return response.json()
 
-            # Clear cache after sync as data might have changed
-            self.clear_cache()
+            result = await self._retry_request(fetch)
 
-            return True, "Git submodule sync and update completed successfully"
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Git submodule sync failed: {e.stderr}")
-            return False, f"Git submodule sync failed: {e.stderr}"
+            if result.get("status") == "success":
+                logger.info("Git sync completed successfully via REST API")
+
+                # Clear cache after sync as data might have changed
+                self.clear_cache()
+
+                return True, result.get("message", "Git sync completed successfully")
+            else:
+                error_msg = result.get("message", "Unknown error during git sync")
+                logger.error(f"Git sync failed via REST API: {error_msg}")
+                return False, error_msg
         except Exception as e:
-            logger.error(f"Error running git submodule sync: {str(e)}")
-            return False, f"Error running git submodule sync: {str(e)}"
+            logger.error(f"Error calling git sync REST API: {str(e)}")
+            return False, f"Error calling git sync REST API: {str(e)}"
+
+    async def run_git_remote_sync(self) -> Tuple[bool, str]:
+        """
+        Add, commit, and push changes to the midi-presets submodule
+
+        This function:
+        1. Changes directory to the midi-presets submodule
+        2. Adds all changes with git add .
+        3. Commits the changes with the message "new patches"
+        4. Pushes the changes to the remote repository
+
+        Returns:
+            Tuple of (success, message)
+        """
+        import os
+        import sys
+        import traceback
+
+        # Get the current directory to return to it later
+        current_dir = os.getcwd()
+        logger.info(f"Starting git remote sync from directory: {current_dir}")
+        logger.info(f"Python executable: {sys.executable}")
+        logger.info(f"Python version: {sys.version}")
+        logger.info(f"Platform: {sys.platform}")
+
+        # Log environment variables that might be relevant
+        env_vars = {k: v for k, v in os.environ.items() if k.startswith(('GIT_', 'PATH', 'HOME', 'USER'))}
+        logger.info(f"Relevant environment variables: {env_vars}")
+
+        try:
+            # Change to the midi-presets directory
+            midi_presets_dir = os.path.join(current_dir, "midi-presets")
+            logger.info(f"Attempting to change to midi-presets directory: {midi_presets_dir}")
+
+            if not os.path.exists(midi_presets_dir):
+                error_msg = f"Midi-presets directory not found at {midi_presets_dir}"
+                logger.error(error_msg)
+                return False, error_msg
+
+            # Check if it's a directory
+            if not os.path.isdir(midi_presets_dir):
+                error_msg = f"Path exists but is not a directory: {midi_presets_dir}"
+                logger.error(error_msg)
+                return False, error_msg
+
+            # Check if we have permission to access it
+            try:
+                os.listdir(midi_presets_dir)
+            except PermissionError:
+                error_msg = f"Permission denied when accessing directory: {midi_presets_dir}"
+                logger.error(error_msg)
+                return False, error_msg
+
+            # Change to the midi-presets directory
+            os.chdir(midi_presets_dir)
+            logger.info(f"Successfully changed directory to {midi_presets_dir}")
+
+            # Check if it's a git repository
+            try:
+                git_check = subprocess.run(
+                    ["git", "rev-parse", "--is-inside-work-tree"],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                logger.info(f"Git repository check: {git_check.stdout.strip()}")
+            except subprocess.CalledProcessError as e:
+                error_msg = f"Not a git repository: {midi_presets_dir}. Error: {e.stderr}"
+                logger.error(error_msg)
+                return False, error_msg
+
+            try:
+                # Log git status before making changes
+                logger.info("Checking git status before making changes...")
+                pre_status = subprocess.run(
+                    ["git", "status"],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                logger.info(f"Git status before changes:\n{pre_status.stdout}")
+
+                # Add all changes
+                logger.info("Adding all changes in midi-presets...")
+                add_cmd = ["git", "add", "."]
+                logger.info(f"Executing command: {' '.join(add_cmd)}")
+                add_result = subprocess.run(
+                    add_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                logger.info(f"Git add output (stdout): {add_result.stdout}")
+                if add_result.stderr:
+                    logger.info(f"Git add output (stderr): {add_result.stderr}")
+
+                # Check if there are changes to commit
+                logger.info("Checking if there are changes to commit...")
+                status_cmd = ["git", "status", "--porcelain"]
+                logger.info(f"Executing command: {' '.join(status_cmd)}")
+                status_result = subprocess.run(
+                    status_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                logger.info(f"Git status output: {status_result.stdout}")
+
+                if not status_result.stdout.strip():
+                    logger.info("No changes to commit in midi-presets")
+                    return True, "No changes to commit in midi-presets"
+
+                # Commit changes
+                logger.info("Committing changes in midi-presets...")
+                commit_cmd = ["git", "commit", "-m", "new patches"]
+                logger.info(f"Executing command: {' '.join(commit_cmd)}")
+                commit_result = subprocess.run(
+                    commit_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                logger.info(f"Git commit output (stdout): {commit_result.stdout}")
+                if commit_result.stderr:
+                    logger.info(f"Git commit output (stderr): {commit_result.stderr}")
+
+                # Push changes
+                logger.info("Pushing changes in midi-presets...")
+                push_cmd = ["git", "push"]
+                logger.info(f"Executing command: {' '.join(push_cmd)}")
+                push_result = subprocess.run(
+                    push_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                logger.info(f"Git push output (stdout): {push_result.stdout}")
+                if push_result.stderr:
+                    logger.info(f"Git push output (stderr): {push_result.stderr}")
+
+                # Clear cache after push as data might have changed
+                logger.info("Clearing cache after successful push")
+                self.clear_cache()
+
+                logger.info("Git remote sync completed successfully")
+                return True, "Successfully added, committed, and pushed changes to midi-presets"
+            except subprocess.CalledProcessError as e:
+                error_msg = f"Git remote sync failed: Command '{' '.join(e.cmd)}' returned non-zero exit status {e.returncode}. Stderr: {e.stderr}"
+                logger.error(error_msg)
+                logger.error(f"Stdout: {e.stdout}")
+                return False, error_msg
+            except Exception as e:
+                error_msg = f"Error running git remote sync: {str(e)}"
+                logger.error(error_msg)
+                logger.error(f"Exception type: {type(e).__name__}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                return False, error_msg
+        except Exception as e:
+            error_msg = f"Unexpected error in run_git_remote_sync: {str(e)}"
+            logger.error(error_msg)
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False, error_msg
+        finally:
+            # Always return to the original directory, even if an exception occurs
+            try:
+                logger.info(f"Attempting to return to original directory: {current_dir}")
+                os.chdir(current_dir)
+                logger.info(f"Successfully returned to original directory: {current_dir}")
+            except Exception as e:
+                error_msg = f"Error returning to original directory: {str(e)}"
+                logger.error(error_msg)
+                logger.error(f"Exception type: {type(e).__name__}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                # Don't re-raise the exception, as we want to return the original error if there was one
 
     def save_ui_state(self, state: UIState) -> None:
         """

@@ -676,6 +676,117 @@ async def delete_collection(manufacturer: str, device: str, collection_name: str
         logger.error(f"Error deleting collection: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting collection: {str(e)}")
 
+# Git operations
+@app.get("/git/sync")
+async def git_sync():
+    """
+    Perform a git pull and merge for the midi-presets submodule
+
+    This endpoint:
+    1. Changes directory to the midi-presets submodule
+    2. Performs a git pull to get the latest changes
+    3. Merges any changes
+    4. Logs each step of the operation
+
+    Returns:
+        JSON response with status and message
+    """
+    import subprocess
+
+    logger.info("Starting git sync operation")
+
+    try:
+        # Get the current directory to return to it later
+        current_dir = os.getcwd()
+
+        # Change to the midi-presets directory
+        midi_presets_dir = os.path.join(current_dir, "midi-presets")
+        if not os.path.exists(midi_presets_dir):
+            error_msg = f"Midi-presets directory not found at {midi_presets_dir}"
+            logger.error(error_msg)
+            return {"status": "error", "message": error_msg}
+
+        os.chdir(midi_presets_dir)
+        logger.info(f"Changed directory to {midi_presets_dir}")
+
+        # Fetch the latest changes
+        logger.info("Fetching latest changes from remote repository...")
+        fetch_result = subprocess.run(
+            ["git", "fetch", "--all"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        logger.info(f"Git fetch output: {fetch_result.stdout}")
+
+        # Check if there are changes to pull
+        logger.info("Checking for changes to pull...")
+        status_result = subprocess.run(
+            ["git", "status", "-uno"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        logger.info(f"Git status output: {status_result.stdout}")
+
+        # Pull the latest changes
+        logger.info("Pulling latest changes from remote repository...")
+        pull_result = subprocess.run(
+            ["git", "pull", "--ff-only"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        logger.info(f"Git pull output: {pull_result.stdout}")
+
+        # If fast-forward only pull fails, try with merge
+        if "fatal" in pull_result.stderr or "error" in pull_result.stderr:
+            logger.warning("Fast-forward pull failed, trying with merge...")
+            pull_merge_result = subprocess.run(
+                ["git", "pull"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            logger.info(f"Git pull with merge output: {pull_merge_result.stdout}")
+
+            # Check if there were merge conflicts
+            if "CONFLICT" in pull_merge_result.stdout or "CONFLICT" in pull_merge_result.stderr:
+                logger.error("Merge conflicts detected, aborting merge")
+                abort_result = subprocess.run(
+                    ["git", "merge", "--abort"],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                logger.info(f"Git merge abort output: {abort_result.stdout}")
+
+                # Return to original directory
+                os.chdir(current_dir)
+                return {"status": "error", "message": "Merge conflicts detected, aborting merge"}
+
+        # Return to original directory
+        os.chdir(current_dir)
+
+        logger.info("Git sync completed successfully")
+        return {"status": "success", "message": "Git sync completed successfully"}
+    except subprocess.CalledProcessError as e:
+        # Return to original directory in case of error
+        if 'current_dir' in locals():
+            os.chdir(current_dir)
+
+        error_msg = f"Git operation failed: {e.stderr}"
+        logger.error(error_msg)
+        return {"status": "error", "message": error_msg}
+    except Exception as e:
+        # Return to original directory in case of error
+        if 'current_dir' in locals():
+            os.chdir(current_dir)
+
+        error_msg = f"Error during git sync: {str(e)}"
+        logger.error(error_msg)
+        return {"status": "error", "message": error_msg}
+
 # Run the application
 if __name__ == '__main__':
     # Get port from environment variable with default of 7777

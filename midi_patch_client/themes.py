@@ -13,7 +13,7 @@ class ThemeManager:
     QWidget {
         background-color: #f0f0f0;
         color: #333333;
-        font-family: Roboto, Arial, sans-serif;
+        font-family: Arial, sans-serif;
         font-size: 13px;
     }
 
@@ -185,7 +185,7 @@ class ThemeManager:
     QWidget {
         background-color: #1e1e1e;
         color: #cccccc;
-        font-family: Roboto, Arial, sans-serif;
+        font-family: Arial, sans-serif;
         font-size: 13px;
     }
 

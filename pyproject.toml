@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "r2midi"
 # Version is managed in version.py and automatically updated by GitHub Actions
 # The version here should match the one in version.py
-version = "0.1.14"
+version = "0.1.15"
 description = "MIDI 2.0 Patch Selection Application"
 authors = [
     {name = "R2MIDI Team", email = "example@example.com"}

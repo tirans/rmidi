@@ -1,4 +1,5 @@
 import logging
+import logging.handlers
 import sys
 import os
 import uvicorn
@@ -30,34 +31,77 @@ from version import __version__
 # Create logs directory if it doesn't exist
 os.makedirs('logs', exist_ok=True)
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(os.path.join('logs', 'main.log'), mode='a'),
-        logging.FileHandler(os.path.join('logs', 'all.log'), mode='a')
-    ]
+# Define log format
+log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+formatter = logging.Formatter(log_format)
+
+# Set up rotating file handlers for log rotation
+# Each log file will be limited to 10 MB, and we'll keep 10 backup files
+# This ensures logs don't exceed 100 MB in total (10 files * 10 MB)
+max_bytes = 10 * 1024 * 1024  # 10 MB
+backup_count = 10
+
+# Configure root logger with rotating file handlers
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# Console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(formatter)
+root_logger.addHandler(console_handler)
+
+# Main log rotating file handler
+main_log_handler = logging.handlers.RotatingFileHandler(
+    os.path.join('logs', 'main.log'),
+    maxBytes=max_bytes,
+    backupCount=backup_count,
+    mode='a'
 )
+main_log_handler.setFormatter(formatter)
+root_logger.addHandler(main_log_handler)
+
+# All log rotating file handler
+all_log_handler = logging.handlers.RotatingFileHandler(
+    os.path.join('logs', 'all.log'),
+    maxBytes=max_bytes,
+    backupCount=backup_count,
+    mode='a'
+)
+all_log_handler.setFormatter(formatter)
+root_logger.addHandler(all_log_handler)
 
 # Configure module-specific loggers
 device_manager_logger = logging.getLogger('device_manager')
 device_manager_logger.setLevel(logging.INFO)
-device_manager_handler = logging.FileHandler(os.path.join('logs', 'device_manager.log'), mode='a')
-device_manager_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+device_manager_handler = logging.handlers.RotatingFileHandler(
+    os.path.join('logs', 'device_manager.log'),
+    maxBytes=max_bytes,
+    backupCount=backup_count,
+    mode='a'
+)
+device_manager_handler.setFormatter(formatter)
 device_manager_logger.addHandler(device_manager_handler)
 
 midi_utils_logger = logging.getLogger('midi_utils')
 midi_utils_logger.setLevel(logging.INFO)
-midi_utils_handler = logging.FileHandler(os.path.join('logs', 'midi_utils.log'), mode='a')
-midi_utils_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+midi_utils_handler = logging.handlers.RotatingFileHandler(
+    os.path.join('logs', 'midi_utils.log'),
+    maxBytes=max_bytes,
+    backupCount=backup_count,
+    mode='a'
+)
+midi_utils_handler.setFormatter(formatter)
 midi_utils_logger.addHandler(midi_utils_handler)
 
 ui_launcher_logger = logging.getLogger('ui_launcher')
 ui_launcher_logger.setLevel(logging.INFO)
-ui_launcher_handler = logging.FileHandler(os.path.join('logs', 'ui_launcher.log'), mode='a')
-ui_launcher_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+ui_launcher_handler = logging.handlers.RotatingFileHandler(
+    os.path.join('logs', 'ui_launcher.log'),
+    maxBytes=max_bytes,
+    backupCount=backup_count,
+    mode='a'
+)
+ui_launcher_handler.setFormatter(formatter)
 ui_launcher_logger.addHandler(ui_launcher_handler)
 
 logger = logging.getLogger(__name__)
@@ -822,11 +866,13 @@ if __name__ == '__main__':
     uvicorn_log_config["handlers"]["default"]["stream"] = sys.stdout
     uvicorn_log_config["handlers"]["access"]["stream"] = sys.stdout
 
-    # Add a file handler for uvicorn logs
+    # Add a rotating file handler for uvicorn logs
     uvicorn_log_config["handlers"]["file"] = {
-        "class": "logging.FileHandler",
+        "class": "logging.handlers.RotatingFileHandler",
         "formatter": "default",
         "filename": os.path.join('logs', 'uvicorn.log'),
+        "maxBytes": max_bytes,
+        "backupCount": backup_count,
         "mode": "a"
     }
     uvicorn_log_config["loggers"]["uvicorn"]["handlers"].append("file")

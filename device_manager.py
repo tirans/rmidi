@@ -3,9 +3,11 @@ import json
 import logging
 import subprocess
 import shutil
+import time
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from models import Device, Patch, DirectoryStructureResponse
+from optimized_get_all_patches import get_all_patches as optimized_get_all_patches
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -19,6 +21,48 @@ class DeviceManager:
         self.devices = {}  # Map of device name to device data
         self.manufacturers = []  # List of manufacturer names
         self.device_structure = {}  # Map of manufacturer to list of devices
+        self._json_cache = {}  # Cache for loaded JSON files
+        self._cache_timeout = 300  # Cache timeout in seconds (5 minutes)
+
+    def _load_json_file(self, file_path: str) -> Dict:
+        """
+        Load a JSON file with caching to improve performance
+
+        Args:
+            file_path: Path to the JSON file
+
+        Returns:
+            Dictionary containing the JSON data
+        """
+        # Check if file exists
+        if not os.path.exists(file_path):
+            logger.warning(f"JSON file not found: {file_path}")
+            return {}
+
+        # Check if file is in cache and not expired
+        if file_path in self._json_cache:
+            timestamp, data = self._json_cache[file_path]
+            if time.time() - timestamp < self._cache_timeout:
+                logger.debug(f"Using cached JSON data for {file_path}")
+                return data
+
+        # Load file and update cache
+        try:
+            start_time = time.time()
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+            load_time = time.time() - start_time
+            logger.debug(f"Loaded JSON file {file_path} in {load_time:.4f} seconds")
+
+            # Update cache
+            self._json_cache[file_path] = (time.time(), data)
+            return data
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in file {file_path}: {str(e)}")
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading JSON file {file_path}: {str(e)}")
+            return {}
 
     def run_git_sync(self) -> Tuple[bool, str]:
         """
@@ -285,6 +329,11 @@ class DeviceManager:
             logger.error(f"Error getting all devices: {str(e)}")
             return result
 
+    def clear_cache(self):
+        """Clear the JSON cache to force reloading of all files"""
+        self._json_cache = {}
+        logger.info("JSON cache cleared")
+
     def get_all_patches(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Patch]:
         """
         Get all patches from all devices or a specific device
@@ -297,137 +346,33 @@ class DeviceManager:
         Returns:
             A list of Patch objects
         """
-        if manufacturer and device_name:
-            logger.info(f"Getting patches for manufacturer: {manufacturer}, device: {device_name}")
-        elif manufacturer:
-            logger.info(f"Getting patches for manufacturer: {manufacturer}")
-        elif device_name:
-            logger.info(f"Getting patches for device: {device_name}")
-        else:
-            logger.info("Getting all patches from all devices")
-
-        result = []
-
+        # Use the optimized version of get_all_patches
+        start_time = time.time()
         try:
-            patch_count = 0
+            # Call the optimized version with the necessary parameters
+            result = optimized_get_all_patches(
+                devices_folder=self.devices_folder,
+                devices=self.devices,
+                device_structure=self.device_structure,
+                device_name=device_name,
+                community_folder=community_folder,
+                manufacturer=manufacturer,
+                json_cache=self._json_cache
+            )
 
-            # Filter devices by manufacturer and/or device_name
-            devices_to_process = {}
-
-            # If both manufacturer and device_name are provided
-            if manufacturer and device_name:
-                # Find the device with the matching name and manufacturer
-                for name, data in self.devices.items():
-                    if name == device_name and data.get('manufacturer') == manufacturer:
-                        devices_to_process = {name: data}
-                        break
-
-                if not devices_to_process:
-                    logger.warning(f"Device not found: {device_name} for manufacturer: {manufacturer}")
-                    return []
-
-            # If only manufacturer is provided
-            elif manufacturer:
-                # Filter devices by manufacturer
-                for name, data in self.devices.items():
-                    if data.get('manufacturer') == manufacturer:
-                        devices_to_process[name] = data
-
-                if not devices_to_process:
-                    logger.warning(f"No devices found for manufacturer: {manufacturer}")
-                    return []
-
-            # If only device_name is provided
-            elif device_name:
-                if device_name in self.devices:
-                    devices_to_process = {device_name: self.devices[device_name]}
-                else:
-                    logger.warning(f"Device not found: {device_name}")
-                    return []
-            else:
-                devices_to_process = self.devices
-
-            for device_name, device_data in devices_to_process.items():
-                logger.debug(f"Processing device: {device_name}")
-                manufacturer = device_data.get('manufacturer', '')
-
-                # Process default presets
-                preset_collections = device_data.get('preset_collections', {})
-                for collection_name, collection_data in preset_collections.items():
-                    presets = collection_data.get('presets', [])
-                    logger.debug(f"Device {device_name} collection {collection_name} has {len(presets)} presets")
-
-                    for preset in presets:
-                        try:
-                            patch = Patch(
-                                preset_name=preset.get('preset_name', ''),
-                                category=preset.get('category', ''),
-                                characters=preset.get('characters', []),
-                                sendmidi_command=preset.get('sendmidi_command', ''),
-                                cc_0=preset.get('cc_0'),
-                                pgm=preset.get('pgm'),
-                                source='default'
-                            )
-                            result.append(patch)
-                            patch_count += 1
-                            logger.debug(f"Added patch: {patch.preset_name} ({patch.category})")
-                        except Exception as e:
-                            preset_name = preset.get('preset_name', 'unknown')
-                            logger.error(f"Error creating Patch object for {preset_name}: {str(e)}")
-
-                # Process community presets if requested
-                if community_folder:
-                    logger.debug(f"Processing community folder: {community_folder} for device: {device_name}")
-
-                    # Construct path to community folder
-                    community_path = os.path.join(
-                        self.devices_folder, 
-                        manufacturer, 
-                        'community', 
-                        f"{community_folder}.json"
-                    )
-
-                    if os.path.exists(community_path):
-                        try:
-                            with open(community_path, 'r') as f:
-                                community_data = json.load(f)
-
-                                # Process presets from community folder
-                                community_presets = community_data.get('presets', [])
-                                logger.debug(f"Community folder {community_folder} has {len(community_presets)} presets")
-
-                                for preset in community_presets:
-                                    try:
-                                        patch = Patch(
-                                            preset_name=preset.get('preset_name', ''),
-                                            category=preset.get('category', ''),
-                                            characters=preset.get('characters', []),
-                                            sendmidi_command=preset.get('sendmidi_command', ''),
-                                            cc_0=preset.get('cc_0'),
-                                            pgm=preset.get('pgm'),
-                                            source=community_folder
-                                        )
-                                        result.append(patch)
-                                        patch_count += 1
-                                        logger.debug(f"Added community patch: {patch.preset_name} ({patch.category})")
-                                    except Exception as e:
-                                        preset_name = preset.get('preset_name', 'unknown')
-                                        logger.error(f"Error creating Patch object for community preset {preset_name}: {str(e)}")
-                        except json.JSONDecodeError as e:
-                            logger.error(f"Invalid JSON in community file '{community_path}': {str(e)}")
-                        except Exception as e:
-                            logger.error(f"Error loading community file '{community_path}': {str(e)}")
-                    else:
-                        logger.warning(f"Community folder not found: {community_path}")
-
-            logger.info(f"Returning {patch_count} patches")
+            # Log performance metrics
+            load_time = time.time() - start_time
+            logger.info(f"Returning {len(result)} patches (loaded in {load_time:.4f} seconds using optimized version)")
             return result
         except Exception as e:
-            logger.error(f"Error getting patches: {str(e)}")
-            return result
+            load_time = time.time() - start_time
+            logger.error(f"Error getting patches: {str(e)} (failed in {load_time:.4f} seconds)")
+            return []
 
     def get_patch_by_name(self, preset_name: str) -> Optional[Dict]:
         """Get patch data by preset name"""
+        start_time = time.time()
+
         for device_name, device_data in self.devices.items():
             # Check in preset collections
             preset_collections = device_data.get('preset_collections', {})
@@ -435,6 +380,8 @@ class DeviceManager:
                 presets = collection_data.get('presets', [])
                 for preset in presets:
                     if preset.get('preset_name') == preset_name:
+                        load_time = time.time() - start_time
+                        logger.debug(f"Found preset {preset_name} in device {device_name} collection {collection_name} in {load_time:.4f} seconds")
                         return preset
 
             # Check in community folders
@@ -451,16 +398,20 @@ class DeviceManager:
 
                 if os.path.exists(community_path):
                     try:
-                        with open(community_path, 'r') as f:
-                            community_data = json.load(f)
-                            community_presets = community_data.get('presets', [])
+                        # Use cached JSON loading for better performance
+                        community_data = self._load_json_file(community_path)
+                        community_presets = community_data.get('presets', [])
 
-                            for preset in community_presets:
-                                if preset.get('preset_name') == preset_name:
-                                    return preset
-                    except Exception:
-                        pass
+                        for preset in community_presets:
+                            if preset.get('preset_name') == preset_name:
+                                load_time = time.time() - start_time
+                                logger.debug(f"Found preset {preset_name} in community folder {folder} in {load_time:.4f} seconds")
+                                return preset
+                    except Exception as e:
+                        logger.error(f"Error loading community file '{community_path}': {str(e)}")
 
+        load_time = time.time() - start_time
+        logger.debug(f"Preset {preset_name} not found (searched in {load_time:.4f} seconds)")
         return None
 
     def check_directory_structure(self, manufacturer: str, device: str, create_if_missing: bool = True) -> DirectoryStructureResponse:

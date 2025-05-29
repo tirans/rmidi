@@ -468,8 +468,8 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.edit_button)
 
         # Devices Remote GitHub Sync button
-        self.git_remote_sync_button = QPushButton("Devices Remote GitHub Sync")
-        self.git_remote_sync_button.setToolTip("Add, commit, and push changes to the midi-presets GitHub repo")
+        self.git_remote_sync_button = QPushButton("Pull Presets from GitHub")
+        self.git_remote_sync_button.setToolTip("Pull the latest changes from the midi-presets GitHub repo")
         self.git_remote_sync_button.clicked.connect(self.on_git_remote_sync_button_clicked)
         button_layout.addWidget(self.git_remote_sync_button)
 
@@ -899,104 +899,77 @@ class MainWindow(QMainWindow):
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        # Add all changes
-                        logger.error("GIT SYNC WORKER: Adding all changes")
+                        # Set the remote URL to use HTTPS without authentication
+                        logger.error("GIT SYNC WORKER: Setting remote URL to use HTTPS without authentication")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        add_result = subprocess.run(
-                            ["git", "add", "."],
+                        set_url_result = subprocess.run(
+                            ["git", "remote", "set-url", "origin", "https://github.com/tirans/midi-presets.git"],
                             capture_output=True,
                             text=True
                         )
 
-                        if add_result.returncode != 0:
-                            message = f"Git add failed: {add_result.stderr}"
+                        if set_url_result.returncode != 0:
+                            message = f"Git set-url failed: {set_url_result.stderr}"
                             logger.error(f"GIT SYNC WORKER: {message}")
                             for handler in logging.getLogger().handlers:
                                 handler.flush()
                             self.finished.emit(False, message)
                             return
 
-                        logger.error(f"GIT SYNC WORKER: Git add output: {add_result.stdout}")
+                        logger.error(f"GIT SYNC WORKER: Git set-url output: {set_url_result.stdout}")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        # Check if there are changes to commit
-                        logger.error("GIT SYNC WORKER: Checking for changes to commit")
+                        # Fetch the latest remote state
+                        logger.error("GIT SYNC WORKER: Fetching latest remote state")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        status_result = subprocess.run(
-                            ["git", "status", "--porcelain"],
+                        fetch_result = subprocess.run(
+                            ["git", "fetch"],
                             capture_output=True,
                             text=True
                         )
 
-                        if status_result.returncode != 0:
-                            message = f"Git status failed: {status_result.stderr}"
+                        if fetch_result.returncode != 0:
+                            message = f"Git fetch failed: {fetch_result.stderr}"
                             logger.error(f"GIT SYNC WORKER: {message}")
                             for handler in logging.getLogger().handlers:
                                 handler.flush()
                             self.finished.emit(False, message)
                             return
 
-                        if not status_result.stdout.strip():
-                            message = "No changes to commit"
-                            logger.error(f"GIT SYNC WORKER: {message}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-                            self.finished.emit(True, message)
-                            return
-
-                        # Commit changes
-                        logger.error("GIT SYNC WORKER: Committing changes")
+                        logger.error(f"GIT SYNC WORKER: Git fetch output: {fetch_result.stdout}")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        commit_result = subprocess.run(
-                            ["git", "commit", "-m", "new patches"],
+                        # Pull the latest changes from the remote repository
+                        logger.error("GIT SYNC WORKER: Pulling latest changes from remote repository")
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+
+                        pull_result = subprocess.run(
+                            ["git", "pull", "--ff-only"],
                             capture_output=True,
                             text=True
                         )
 
-                        if commit_result.returncode != 0:
-                            message = f"Git commit failed: {commit_result.stderr}"
+                        if pull_result.returncode != 0:
+                            message = f"Git pull failed: {pull_result.stderr}"
                             logger.error(f"GIT SYNC WORKER: {message}")
                             for handler in logging.getLogger().handlers:
                                 handler.flush()
                             self.finished.emit(False, message)
                             return
 
-                        logger.error(f"GIT SYNC WORKER: Git commit output: {commit_result.stdout}")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-
-                        # Push changes
-                        logger.error("GIT SYNC WORKER: Pushing changes")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-
-                        push_result = subprocess.run(
-                            ["git", "push"],
-                            capture_output=True,
-                            text=True
-                        )
-
-                        if push_result.returncode != 0:
-                            message = f"Git push failed: {push_result.stderr}"
-                            logger.error(f"GIT SYNC WORKER: {message}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-                            self.finished.emit(False, message)
-                            return
-
-                        logger.error(f"GIT SYNC WORKER: Git push output: {push_result.stdout}")
+                        logger.error(f"GIT SYNC WORKER: Git pull output: {pull_result.stdout}")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
                         # Success
-                        message = "Successfully added, committed, and pushed changes to the midi-presets GitHub repo"
+                        message = "Successfully pulled latest changes from the midi-presets repository"
                         logger.error(f"GIT SYNC WORKER: {message}")
                         for handler in logging.getLogger().handlers:
                             handler.flush()

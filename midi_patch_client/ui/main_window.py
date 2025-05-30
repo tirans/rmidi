@@ -735,6 +735,9 @@ class MainWindow(QMainWindow):
                 logger.info("Loading patches based on selected device and community folder...")
                 await self.load_patches()
 
+                # Change loading message to "loaded" after JSON is loaded
+                self._start_loading("Loaded")
+
                 # Update status
                 self.status_bar.showMessage(f"Loaded {len(manufacturers)} manufacturers")
             except Exception as e:
@@ -742,8 +745,8 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(f"Error loading data: {str(e)}")
                 self.show_error(f"Error loading data: {str(e)}")
             finally:
-                # Stop loading indicator immediately
-                self._stop_loading()
+                # Stop loading indicator after a short delay to show "Loaded" message
+                QTimer.singleShot(500, self._stop_loading)
 
     async def load_patches(self):
         """Load patches based on selected manufacturer, device, and community folder"""
@@ -792,6 +795,9 @@ class MainWindow(QMainWindow):
                 # Set patches in the patch panel immediately
                 self.patch_panel.set_patches(patches)
 
+                # Change loading message to "loaded" after JSON is loaded
+                self._start_loading("Loaded")
+
                 # Update status
                 if manufacturer and device:
                     self.status_bar.showMessage(f"Loaded {len(patches)} patches for {manufacturer} {device}")
@@ -807,8 +813,8 @@ class MainWindow(QMainWindow):
                 # Set empty patches on error to clear any previous data
                 self.patch_panel.set_patches([])
             finally:
-                # Stop loading indicator immediately
-                self._stop_loading()
+                # Stop loading indicator after a short delay to show "Loaded" message
+                QTimer.singleShot(500, self._stop_loading)
 
     async def run_git_sync(self):
         """Run git submodule sync if enabled"""
@@ -835,9 +841,11 @@ class MainWindow(QMainWindow):
 
                 success, message = await self.api_client.run_git_sync()
 
+                # Change loading message to "loaded" after git sync completes
                 if success:
                     logger.info("Git sync completed successfully")
                     self.status_bar.showMessage("Git sync completed successfully")
+                    self._start_loading("Loaded")
                 else:
                     logger.warning(f"Git sync failed: {message}")
                     self.status_bar.showMessage(f"Git sync failed: {message}")
@@ -848,8 +856,8 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(f"Error during git sync: {str(e)}")
                 # Don't show an error dialog for git sync exceptions
             finally:
-                # Stop loading indicator immediately
-                self._stop_loading()
+                # Stop loading indicator after a short delay to show "Loaded" message
+                QTimer.singleShot(500, self._stop_loading)
 
     def on_git_remote_sync_button_clicked(self):
         """Handle Devices Remote GitHub Sync button click"""
@@ -1010,8 +1018,9 @@ class MainWindow(QMainWindow):
                 for handler in logging.getLogger().handlers:
                     handler.flush()
 
-                # Stop loading indicator
-                self._stop_loading()
+                # Change loading message to "loaded" if successful
+                if success:
+                    self._start_loading("Loaded")
 
                 # Update status bar
                 self.status_bar.showMessage(message)
@@ -1026,6 +1035,9 @@ class MainWindow(QMainWindow):
                     logger.error(f"Failed to show dialog: {str(dialog_error)}")
                     for handler in logging.getLogger().handlers:
                         handler.flush()
+
+                # Stop loading indicator after a short delay to show "Loaded" message
+                QTimer.singleShot(500, self._stop_loading)
 
             worker.finished.connect(on_finished)
 
@@ -1316,14 +1328,16 @@ class MainWindow(QMainWindow):
 
                 if result.get("status") == "success":
                     self.status_bar.showMessage(f"Preset sent: {self.selected_patch.get_display_name()}")
+                    # Change loading message to "loaded" after preset is sent successfully
+                    self._start_loading("Loaded")
                 else:
                     self.show_error(f"Error sending preset: {result.get('message', 'Unknown error')}")
 
             except Exception as e:
                 self.show_error(f"Error sending preset: {str(e)}")
             finally:
-                # Stop loading indicator immediately
-                self._stop_loading()
+                # Stop loading indicator after a short delay to show "Loaded" message
+                QTimer.singleShot(500, self._stop_loading)
 
     def send_preset(self):
         """Send the selected preset to the server"""

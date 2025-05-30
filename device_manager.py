@@ -22,7 +22,42 @@ class DeviceManager:
         self.manufacturers = []  # List of manufacturer names
         self.device_structure = {}  # Map of manufacturer to list of devices
         self._json_cache = {}  # Cache for loaded JSON files
-        self._cache_timeout = 300  # Cache timeout in seconds (5 minutes)
+        self._cache_timeout = 3600  # Cache timeout in seconds (1 hour)
+
+        # Validate that the midi-presets submodule exists and is up to date
+        self._validate_midi_presets_submodule()
+
+    def _validate_midi_presets_submodule(self):
+        """
+        Validate that the midi-presets git submodule exists and is up to date.
+        If not, attempt to initialize it using git_operations.
+        """
+        import os
+        from git_operations import git_sync
+
+        logger.info("Validating midi-presets git submodule")
+
+        # Check if the midi-presets directory exists
+        midi_presets_dir = os.path.join(os.getcwd(), "midi-presets")
+        if not os.path.exists(midi_presets_dir):
+            logger.warning("midi-presets directory does not exist, attempting to initialize it")
+            success, message, _ = git_sync()
+            if not success:
+                logger.error(f"Failed to initialize midi-presets submodule: {message}")
+                return
+            logger.info(f"Successfully initialized midi-presets submodule: {message}")
+        else:
+            # Check if it's a valid git repository
+            git_dir = os.path.join(midi_presets_dir, ".git")
+            if not (os.path.exists(git_dir) or os.path.exists(os.path.join(midi_presets_dir, "..", ".git", "modules", "midi-presets"))):
+                logger.warning("midi-presets directory exists but is not a valid git repository, attempting to reinitialize it")
+                success, message, _ = git_sync()
+                if not success:
+                    logger.error(f"Failed to reinitialize midi-presets submodule: {message}")
+                    return
+                logger.info(f"Successfully reinitialized midi-presets submodule: {message}")
+            else:
+                logger.info("midi-presets git submodule exists and appears to be valid")
 
     def _load_json_file(self, file_path: str) -> Dict:
         """
@@ -54,7 +89,7 @@ class DeviceManager:
             load_time = time.time() - start_time
             logger.debug(f"Loaded JSON file {file_path} in {load_time:.4f} seconds")
 
-            # Update cache
+            # Update cache with the new timeout
             self._json_cache[file_path] = (time.time(), data)
             return data
         except json.JSONDecodeError as e:
@@ -69,32 +104,18 @@ class DeviceManager:
         Run git submodule sync to update the midi-presets submodule
         Returns a tuple of (success, message)
         """
-        logger.info("Running git submodule sync")
-        try:
-            result = subprocess.run(
-                ["git", "submodule", "sync"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.info(f"Git submodule sync output: {result.stdout}")
+        logger.info("Running git submodule sync using git_operations module")
+        from git_operations import git_sync
 
-            # Also run git submodule update to ensure the submodule is up to date
-            update_result = subprocess.run(
-                ["git", "submodule", "update", "--init", "--recursive"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.info(f"Git submodule update output: {update_result.stdout}")
+        # Use the more robust git_sync function from git_operations
+        success, message, _ = git_sync()
 
-            return True, "Git submodule sync and update completed successfully"
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Git submodule sync failed: {e.stderr}")
-            return False, f"Git submodule sync failed: {e.stderr}"
-        except Exception as e:
-            logger.error(f"Error running git submodule sync: {str(e)}")
-            return False, f"Error running git submodule sync: {str(e)}"
+        if success:
+            logger.info(f"Git submodule sync completed successfully: {message}")
+        else:
+            logger.error(f"Git submodule sync failed: {message}")
+
+        return success, message
 
     def scan_devices(self) -> Dict[str, Dict]:
         """
@@ -112,6 +133,30 @@ class DeviceManager:
         if not os.path.exists(self.devices_folder):
             logger.warning(f"Devices folder '{self.devices_folder}' does not exist")
             return {}
+
+        # Use the optimized scan_devices function for better performance
+        try:
+            from optimized_scan_devices import optimized_scan_devices
+
+            start_time = time.time()
+            devices, manufacturers, device_structure = optimized_scan_devices(
+                self.devices_folder, 
+                self._json_cache, 
+                self._cache_timeout
+            )
+
+            # Update instance variables with the results
+            self.devices = devices
+            self.manufacturers = manufacturers
+            self.device_structure = device_structure
+
+            scan_time = time.time() - start_time
+            logger.info(f"Optimized scan completed in {scan_time:.4f} seconds, found {len(devices)} devices")
+
+            return self.devices
+        except ImportError:
+            logger.warning("Optimized scan_devices not available, falling back to standard implementation")
+            # Continue with the standard implementation
 
         try:
             # Get list of manufacturer directories

@@ -19,7 +19,7 @@ R2MIDI is a PyQt6-based application that provides an intuitive interface for bro
 ### Enhanced Features
 
 #### 🚀 Performance Optimizations
-- **Intelligent Caching**: 5-minute cache for API responses reduces server load
+- **Intelligent Caching**: 1-hour cache for API responses significantly reduces server load
 - **Retry Logic**: Automatic retry with exponential backoff for failed requests
 - **Debounced Controls**: Prevents rapid API calls during UI interactions
 - **Performance Monitoring**: Real-time CPU and memory usage tracking in debug mode
@@ -74,7 +74,18 @@ Available on PyPI: https://pypi.org/project/r2midi or follow the instructions be
    cd r2midi
    ```
 
-2. Install dependencies:
+2. Initialize and update the midi-presets submodule:
+   ```bash
+   git submodule init
+   git submodule update --init --recursive
+   ```
+
+   If you encounter issues with the submodule, you can also manually clone it:
+   ```bash
+   git clone https://github.com/tirans/midi-presets.git midi-presets
+   ```
+
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
@@ -84,7 +95,7 @@ Available on PyPI: https://pypi.org/project/r2midi or follow the instructions be
    pip install -e .
    ```
 
-3. Run the application:
+4. Run the application:
    ```bash
    python main.py
    ```
@@ -106,7 +117,7 @@ Configuration is stored in `~/.r2midi_config.json` with the following options:
 ```json
 {
     "server_url": "http://localhost:7777",
-    "cache_timeout": 300,
+    "cache_timeout": 3600,
     "dark_mode": false,
     "enable_favorites": true,
     "enable_search": true,
@@ -199,6 +210,7 @@ The application provides a REST API that can be used by other applications:
 - `GET /patches` - Get a list of all patches
 - `GET /midi_port` - Get a list of available MIDI ports
 - `POST /preset` - Send a preset to a MIDI port/channel
+- `GET /git/sync` - Sync the midi-presets submodule
 
 Example API usage with curl:
 
@@ -216,6 +228,9 @@ curl http://localhost:7777/midi_port
 curl -X POST http://localhost:7777/preset \
   -H "Content-Type: application/json" \
   -d '{"preset_name": "Preset Name", "midi_port": "MIDI Port Name", "midi_channel": 1}'
+
+# Sync the midi-presets submodule
+curl http://localhost:7777/git/sync
 ```
 
 ## Architecture
@@ -236,8 +251,12 @@ r2midi/
 │       ├── main_window.py            # Main application window
 │       ├── patch_panel_enhanced.py   # Patch display with search
 │       └── preferences_dialog.py     # Settings management
+├── midi-presets/                # Git submodule containing device definitions
+│   └── devices/                 # Device definitions and presets
 ├── main.py                      # Main entry point and API server
 ├── device_manager.py            # Handles device scanning and management
+├── git_operations.py            # Handles git submodule operations
+├── optimized_scan_devices.py    # Optimized parallel device scanning
 ├── midi_utils.py                # MIDI utility functions
 ├── models.py                    # Data models
 ├── ui_launcher.py               # Launches the GUI client
@@ -301,10 +320,11 @@ python -m pytest tests/ --cov=midi_patch_client --cov-report=html
 - **Memory Usage**: ~50MB baseline, ~100MB with 1000+ patches
 
 ### Optimization Tips
-1. Enable caching in preferences (default: on)
+1. Enable caching in preferences (default: on, now with 1-hour timeout)
 2. Adjust debounce delay for your network speed
 3. Use lazy loading for large patch collections
 4. Enable performance monitoring in debug mode
+5. The application now uses parallel processing for device scanning, significantly improving load times
 
 ## Troubleshooting
 
@@ -314,6 +334,8 @@ python -m pytest tests/ --cov=midi_patch_client --cov-report=html
    - Check that your MIDI devices are connected and powered on
    - Some devices may require specific drivers
    - Verify MIDI port names in the device configuration
+   - The application now automatically validates and initializes the midi-presets submodule on startup
+   - If you still have issues, manually run the git sync operation via the API: `curl http://localhost:7777/git/sync`
 
 2. **UI client fails to start**
    - Check the logs in the `logs` directory for error messages

@@ -412,12 +412,17 @@ class TestApiClient:
         mock_post.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('subprocess.run')
-    async def test_run_git_sync(self, mock_run, api_client):
+    @patch('httpx.AsyncClient.get')
+    async def test_run_git_sync(self, mock_get, api_client):
         """Test running git sync"""
-        # Set up mock to return success
-        mock_run.return_value.stdout = "Git sync output"
-        mock_run.return_value.stderr = ""
+        # Set up mock response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "success",
+            "message": "Git sync completed successfully"
+        }
+        mock_get.return_value = mock_response
 
         # Call the method under test
         success, message = await api_client.run_git_sync()
@@ -426,42 +431,27 @@ class TestApiClient:
         assert success is True
         assert "successfully" in message
 
-        # Verify that subprocess.run was called correctly
-        assert mock_run.call_count == 2
-        mock_run.assert_any_call(
-            ["git", "submodule", "sync"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        mock_run.assert_any_call(
-            ["git", "submodule", "update", "--init", "--recursive"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        # Verify that the API was called correctly
+        mock_get.assert_called_once_with("/git/sync")
+        mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('subprocess.run')
-    async def test_run_git_sync_error(self, mock_run, api_client):
+    @patch('httpx.AsyncClient.get')
+    async def test_run_git_sync_error(self, mock_get, api_client):
         """Test running git sync with an error"""
         # Set up mock to raise an exception
-        mock_run.side_effect = subprocess.CalledProcessError(1, "git", stderr="Git error")
+        mock_error = httpx.HTTPError("Test error")
+        mock_get.side_effect = mock_error
 
         # Call the method under test
         success, message = await api_client.run_git_sync()
 
         # Verify the results
         assert success is False
-        assert "Git submodule sync failed" in message
+        assert "Error calling git sync REST API" in message
 
-        # Verify that subprocess.run was called correctly
-        mock_run.assert_called_once_with(
-            ["git", "submodule", "sync"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        # Verify that the API was called correctly
+        mock_get.assert_called_once_with("/git/sync")
 
     def test_save_ui_state(self, api_client):
         """Test saving UI state"""

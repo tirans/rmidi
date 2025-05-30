@@ -322,10 +322,11 @@ class CachedApiClient:
         Add, commit, and push changes to the midi-presets submodule
 
         This function:
-        1. Changes directory to the midi-presets submodule
+        1. Enters the midi-presets submodule directory
         2. Adds all changes with git add .
         3. Commits the changes with the message "new patches"
         4. Pushes the changes to the remote repository
+        5. Updates the submodule in the parent repository
 
         Returns:
             Tuple of (success, message)
@@ -333,6 +334,8 @@ class CachedApiClient:
         import os
         import sys
         import traceback
+        import git
+        from git import Repo, GitCommandError
 
         # Get the current directory to return to it later
         current_dir = os.getcwd()
@@ -346,12 +349,32 @@ class CachedApiClient:
         logger.info(f"Relevant environment variables: {env_vars}")
 
         try:
-            # Change to the midi-presets directory
+            # First, make sure the submodule is properly initialized
+            logger.info("Ensuring midi-presets submodule is properly initialized...")
+
+            # Open the parent repository
+            try:
+                parent_repo = Repo(current_dir)
+            except git.InvalidGitRepositoryError:
+                error_msg = f"Not a valid git repository: {current_dir}"
+                logger.error(error_msg)
+                return False, error_msg
+
+            # Sync the submodule
+            with parent_repo.git.custom_environment(GIT_TERMINAL_PROMPT="0"):
+                sync_output = parent_repo.git.submodule("sync")
+                logger.info(f"Git submodule sync output: {sync_output}")
+
+                # Update the submodule
+                update_output = parent_repo.git.submodule("update", "--init", "--recursive")
+                logger.info(f"Git submodule update output: {update_output}")
+
+            # Check if the midi-presets directory exists
             midi_presets_dir = os.path.join(current_dir, "midi-presets")
-            logger.info(f"Attempting to change to midi-presets directory: {midi_presets_dir}")
+            logger.info(f"Checking midi-presets directory: {midi_presets_dir}")
 
             if not os.path.exists(midi_presets_dir):
-                error_msg = f"Midi-presets directory not found at {midi_presets_dir}"
+                error_msg = f"Midi-presets directory not found at {midi_presets_dir} even after submodule initialization"
                 logger.error(error_msg)
                 return False, error_msg
 
@@ -375,97 +398,73 @@ class CachedApiClient:
 
             # Check if it's a git repository
             try:
-                git_check = subprocess.run(
-                    ["git", "rev-parse", "--is-inside-work-tree"],
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                logger.info(f"Git repository check: {git_check.stdout.strip()}")
-            except subprocess.CalledProcessError as e:
-                error_msg = f"Not a git repository: {midi_presets_dir}. Error: {e.stderr}"
+                # Open the submodule repository
+                submodule_repo = Repo(midi_presets_dir)
+                logger.info(f"Git repository check: True")
+            except git.InvalidGitRepositoryError:
+                error_msg = f"Not a git repository: {midi_presets_dir}"
                 logger.error(error_msg)
                 return False, error_msg
 
             try:
                 # Log git status before making changes
                 logger.info("Checking git status before making changes...")
-                pre_status = subprocess.run(
-                    ["git", "status"],
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                logger.info(f"Git status before changes:\n{pre_status.stdout}")
+                pre_status = submodule_repo.git.status()
+                logger.info(f"Git status before changes:\n{pre_status}")
 
                 # Add all changes
                 logger.info("Adding all changes in midi-presets...")
-                add_cmd = ["git", "add", "."]
-                logger.info(f"Executing command: {' '.join(add_cmd)}")
-                add_result = subprocess.run(
-                    add_cmd,
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                logger.info(f"Git add output (stdout): {add_result.stdout}")
-                if add_result.stderr:
-                    logger.info(f"Git add output (stderr): {add_result.stderr}")
+                add_cmd = "git add ."
+                logger.info(f"Executing command: {add_cmd}")
+                add_output = submodule_repo.git.add(".")
+                logger.info(f"Git add output: {add_output if add_output else 'No output'}")
 
                 # Check if there are changes to commit
                 logger.info("Checking if there are changes to commit...")
-                status_cmd = ["git", "status", "--porcelain"]
-                logger.info(f"Executing command: {' '.join(status_cmd)}")
-                status_result = subprocess.run(
-                    status_cmd,
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                logger.info(f"Git status output: {status_result.stdout}")
+                status_cmd = "git status --porcelain"
+                logger.info(f"Executing command: {status_cmd}")
+                status_output = submodule_repo.git.status(porcelain=True)
+                logger.info(f"Git status output: {status_output}")
 
-                if not status_result.stdout.strip():
+                if not status_output.strip():
                     logger.info("No changes to commit in midi-presets")
                     return True, "No changes to commit in midi-presets"
 
                 # Commit changes
                 logger.info("Committing changes in midi-presets...")
-                commit_cmd = ["git", "commit", "-m", "new patches"]
-                logger.info(f"Executing command: {' '.join(commit_cmd)}")
-                commit_result = subprocess.run(
-                    commit_cmd,
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                logger.info(f"Git commit output (stdout): {commit_result.stdout}")
-                if commit_result.stderr:
-                    logger.info(f"Git commit output (stderr): {commit_result.stderr}")
+                commit_cmd = "git commit -m 'new patches'"
+                logger.info(f"Executing command: {commit_cmd}")
+                commit_output = submodule_repo.git.commit(m="new patches")
+                logger.info(f"Git commit output: {commit_output}")
 
                 # Push changes
                 logger.info("Pushing changes in midi-presets...")
-                push_cmd = ["git", "push"]
-                logger.info(f"Executing command: {' '.join(push_cmd)}")
-                push_result = subprocess.run(
-                    push_cmd,
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                logger.info(f"Git push output (stdout): {push_result.stdout}")
-                if push_result.stderr:
-                    logger.info(f"Git push output (stderr): {push_result.stderr}")
+                push_cmd = "git push"
+                logger.info(f"Executing command: {push_cmd}")
+                push_output = submodule_repo.git.push()
+                logger.info(f"Git push output: {push_output if push_output else 'No output'}")
+
+                # Return to the parent repository
+                os.chdir(current_dir)
+                logger.info(f"Returned to parent repository: {current_dir}")
+
+                # Update the submodule reference in the parent repository
+                logger.info("Updating submodule reference in parent repository...")
+                parent_add_cmd = "git add midi-presets"
+                logger.info(f"Executing command: {parent_add_cmd}")
+                parent_add_output = parent_repo.git.add("midi-presets")
+                logger.info(f"Git add output: {parent_add_output if parent_add_output else 'No output'}")
 
                 # Clear cache after push as data might have changed
                 logger.info("Clearing cache after successful push")
                 self.clear_cache()
 
                 logger.info("Git remote sync completed successfully")
-                return True, "Successfully added, committed, and pushed changes to midi-presets"
-            except subprocess.CalledProcessError as e:
-                error_msg = f"Git remote sync failed: Command '{' '.join(e.cmd)}' returned non-zero exit status {e.returncode}. Stderr: {e.stderr}"
+                return True, "Successfully added, committed, and pushed changes to midi-presets submodule"
+            except GitCommandError as e:
+                error_msg = f"Git remote sync failed: {e.stderr}"
                 logger.error(error_msg)
-                logger.error(f"Stdout: {e.stdout}")
+                logger.error(f"Command: {e.command}")
                 return False, error_msg
             except Exception as e:
                 error_msg = f"Error running git remote sync: {str(e)}"
@@ -473,6 +472,11 @@ class CachedApiClient:
                 logger.error(f"Exception type: {type(e).__name__}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 return False, error_msg
+        except GitCommandError as e:
+            error_msg = f"Git submodule operation failed: {e.stderr}"
+            logger.error(error_msg)
+            logger.error(f"Command: {e.command}")
+            return False, error_msg
         except Exception as e:
             error_msg = f"Unexpected error in run_git_remote_sync: {str(e)}"
             logger.error(error_msg)

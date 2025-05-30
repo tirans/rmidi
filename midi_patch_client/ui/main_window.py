@@ -880,96 +880,96 @@ class MainWindow(QMainWindow):
                     message = ""
 
                     try:
-                        # Change to the midi-presets directory
-                        midi_presets_dir = os.path.join(current_dir, "midi-presets")
-                        logger.error(f"GIT SYNC WORKER: Changing to directory {midi_presets_dir}")
+                        # Treat midi-presets as a submodule
+                        logger.error("GIT SYNC WORKER: Syncing midi-presets submodule")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        if not os.path.exists(midi_presets_dir):
-                            message = f"Midi-presets directory not found at {midi_presets_dir}"
-                            logger.error(f"GIT SYNC WORKER: {message}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-                            self.finished.emit(False, message)
-                            return
-
-                        os.chdir(midi_presets_dir)
-                        logger.error(f"GIT SYNC WORKER: Changed to directory {midi_presets_dir}")
+                        # Step 1: Sync the submodule
+                        logger.error("GIT SYNC WORKER: Running git submodule sync")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        # Set the remote URL to use HTTPS without authentication
-                        logger.error("GIT SYNC WORKER: Setting remote URL to use HTTPS without authentication")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-
-                        set_url_result = subprocess.run(
-                            ["git", "remote", "set-url", "origin", "https://github.com/tirans/midi-presets.git"],
+                        sync_result = subprocess.run(
+                            ["git", "submodule", "sync"],
                             capture_output=True,
                             text=True
                         )
 
-                        if set_url_result.returncode != 0:
-                            message = f"Git set-url failed: {set_url_result.stderr}"
+                        if sync_result.returncode != 0:
+                            message = f"Git submodule sync failed: {sync_result.stderr}"
                             logger.error(f"GIT SYNC WORKER: {message}")
                             for handler in logging.getLogger().handlers:
                                 handler.flush()
                             self.finished.emit(False, message)
                             return
 
-                        logger.error(f"GIT SYNC WORKER: Git set-url output: {set_url_result.stdout}")
+                        logger.error(f"GIT SYNC WORKER: Git submodule sync output: {sync_result.stdout}")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        # Fetch the latest remote state
-                        logger.error("GIT SYNC WORKER: Fetching latest remote state")
+                        # Step 2: Update the submodule
+                        logger.error("GIT SYNC WORKER: Running git submodule update --init --recursive")
                         for handler in logging.getLogger().handlers:
                             handler.flush()
 
-                        fetch_result = subprocess.run(
-                            ["git", "fetch"],
+                        update_result = subprocess.run(
+                            ["git", "submodule", "update", "--init", "--recursive"],
                             capture_output=True,
                             text=True
                         )
 
-                        if fetch_result.returncode != 0:
-                            message = f"Git fetch failed: {fetch_result.stderr}"
-                            logger.error(f"GIT SYNC WORKER: {message}")
+                        if update_result.returncode != 0:
+                            # If normal update fails, try with force
+                            logger.error(f"GIT SYNC WORKER: Normal submodule update failed: {update_result.stderr}")
+                            logger.error("GIT SYNC WORKER: Trying with force flag")
                             for handler in logging.getLogger().handlers:
                                 handler.flush()
-                            self.finished.emit(False, message)
-                            return
 
-                        logger.error(f"GIT SYNC WORKER: Git fetch output: {fetch_result.stdout}")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
+                            # Reset the submodule state
+                            reset_result = subprocess.run(
+                                ["git", "submodule", "deinit", "-f", "--", "midi-presets"],
+                                capture_output=True,
+                                text=True
+                            )
 
-                        # Pull the latest changes from the remote repository
-                        logger.error("GIT SYNC WORKER: Pulling latest changes from remote repository")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
+                            if reset_result.returncode != 0:
+                                message = f"Git submodule deinit failed: {reset_result.stderr}"
+                                logger.error(f"GIT SYNC WORKER: {message}")
+                                for handler in logging.getLogger().handlers:
+                                    handler.flush()
+                                self.finished.emit(False, message)
+                                return
 
-                        pull_result = subprocess.run(
-                            ["git", "pull", "--ff-only"],
-                            capture_output=True,
-                            text=True
-                        )
-
-                        if pull_result.returncode != 0:
-                            message = f"Git pull failed: {pull_result.stderr}"
-                            logger.error(f"GIT SYNC WORKER: {message}")
+                            logger.error(f"GIT SYNC WORKER: Git submodule deinit output: {reset_result.stdout}")
                             for handler in logging.getLogger().handlers:
                                 handler.flush()
-                            self.finished.emit(False, message)
-                            return
 
-                        logger.error(f"GIT SYNC WORKER: Git pull output: {pull_result.stdout}")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
+                            # Re-initialize and update with force
+                            force_update_result = subprocess.run(
+                                ["git", "submodule", "update", "--init", "--recursive", "--force"],
+                                capture_output=True,
+                                text=True
+                            )
+
+                            if force_update_result.returncode != 0:
+                                message = f"Git submodule force update failed: {force_update_result.stderr}"
+                                logger.error(f"GIT SYNC WORKER: {message}")
+                                for handler in logging.getLogger().handlers:
+                                    handler.flush()
+                                self.finished.emit(False, message)
+                                return
+
+                            logger.error(f"GIT SYNC WORKER: Git submodule force update output: {force_update_result.stdout}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
+                        else:
+                            logger.error(f"GIT SYNC WORKER: Git submodule update output: {update_result.stdout}")
+                            for handler in logging.getLogger().handlers:
+                                handler.flush()
 
                         # Success
-                        message = "Successfully pulled latest changes from the midi-presets repository"
+                        message = "Successfully synced midi-presets submodule"
                         logger.error(f"GIT SYNC WORKER: {message}")
                         for handler in logging.getLogger().handlers:
                             handler.flush()

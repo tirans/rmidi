@@ -127,7 +127,7 @@ jobs:
       - name: Install system and project dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libegl1 
+          sudo apt-get install -y libasound2-dev libegl1 libjack-dev librtmidi-dev
 
       - name: Install Python dependencies
         run: |
@@ -263,7 +263,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev
+          sudo apt-get install -y libasound2-dev libjack-dev librtmidi-dev
 
       - name: Create themes directory and placeholder icons (Linux/macOS)
         if: matrix.platform == 'linux' || matrix.platform == 'macos'

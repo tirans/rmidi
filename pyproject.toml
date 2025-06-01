@@ -8,7 +8,7 @@ name = "r2midi"
 # The version here should match the one in version.py
 version = "0.1.41"
 description = "MIDI 2.0 Preset Selection Application"
-version = "0.1.43"
+version = "0.1.44"
 description = "MIDI 2.0 Patch Selection Application"
 authors = [
     {name = "R2MIDI Team", email = "example@example.com"}

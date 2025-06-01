@@ -401,23 +401,68 @@ jobs:
           # Create a directory for release files
           New-Item -ItemType Directory -Force -Path release_files
 
-          # For Windows, copy the .exe file
+          # For Windows, zip the .exe file and all necessary files
           if (Test-Path "dist\r2midi.exe") {
-            Write-Host "Copying Windows executable"
-            Copy-Item "dist\r2midi.exe" -Destination "release_files\r2midi-windows.exe"
+            Write-Host "Zipping Windows executable and dependencies"
+            Compress-Archive -Path "dist\r2midi.exe", "dist\*.dll", "dist\*.pyd", "dist\*.manifest", "dist\*.pkg", "dist\_internal" -DestinationPath "release_files\r2midi-windows.zip" -Force
           }
 
           # List files in release_files directory
           Write-Host "Files prepared for release:"
           Get-ChildItem -Path release_files -Force
 
+      - name: Debug release files
+        run: |
+          echo "Contents of release_files directory:"
+          ls -la release_files/ || dir release_files
+        shell: bash
+
+      - name: Upload release files as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-files-${{ matrix.platform }}
+          path: release_files/*
+          retention-days: 7
+
+  publish-release:
+    needs: [build-executables, increment-version]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.increment-version.result == 'success'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-files-*
+          path: combined_release_files
+          merge-multiple: true
+
+      - name: Debug combined release files
+        run: |
+          echo "Contents of combined_release_files directory:"
+          ls -la combined_release_files/
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: Release v${{ steps.get_version.outputs.version }}
-          files: release_files/*
+          files: combined_release_files/*
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true

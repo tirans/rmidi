@@ -351,9 +351,8 @@ jobs:
 
           # Create a new spec file directly in the workflow
           echo "Creating a new spec file directly in the workflow"
-          python -c "
-with open('r2midi.spec', 'w') as f:
-    f.write('''# -*- mode: python ; coding: utf-8 -*-
+          cat > r2midi.spec << 'EOL'
+# -*- mode: python ; coding: utf-8 -*-
 import os
 
 block_cipher = None
@@ -432,7 +431,7 @@ app = BUNDLE(
         \"CFBundleExecutable\": \"r2midi\",
     },
 )
-''')"
+EOL
 
           # Verify the spec file was created
           echo "Verifying the spec file was created:"
@@ -463,9 +462,8 @@ app = BUNDLE(
 
           # Create a new spec file directly in the workflow
           Write-Host "Creating a new spec file directly in the workflow"
-          python -c "
-with open('r2midi.spec', 'w') as f:
-    f.write('''# -*- mode: python ; coding: utf-8 -*-
+          @'
+# -*- mode: python ; coding: utf-8 -*-
 import os
 
 block_cipher = None
@@ -544,7 +542,7 @@ app = BUNDLE(
         \"CFBundleExecutable\": \"r2midi\",
     },
 )
-''')"
+'@ | Out-File -FilePath r2midi.spec -Encoding utf8
 
           # Verify the spec file was created
           Write-Host "Verifying the spec file was created:"

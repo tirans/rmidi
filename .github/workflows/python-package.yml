@@ -216,10 +216,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest, windows-latest]
         include:
-         # - os: ubuntu-latest
-         #   platform: linux
           - os: macos-latest
             platform: macos
           - os: windows-latest
@@ -239,17 +237,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies (Linux/macOS)
-        if: matrix.platform == 'linux' || matrix.platform == 'macos'
+      - name: Install dependencies (macOS)
+        if: matrix.platform == 'macos'
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-
-          # For Linux, try to install rtmidi from wheel first
-          if [ "${{ matrix.platform }}" = "linux" ]; then
-            echo "Installing rtmidi from wheel for Linux..."
-            pip install --only-binary=:all: rtmidi || echo "Could not install rtmidi from wheel, will try from source later"
-          fi
 
           pip install -r requirements.txt
           if [ -f midi_preset_client/requirements.txt ]; then 
@@ -267,22 +259,15 @@ jobs:
             pip install -r midi_preset_client\requirements.txt
           }
 
-      - name: Install platform-specific dependencies (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libegl1 libjack-dev librtmidi-dev
-          # Verify ALSA headers are available
-          ls /usr/include/alsa/asoundlib.h || { echo "ALSA header missing"; exit 1; }
 
-      - name: Create themes directory and placeholder icons (Linux/macOS)
-        if: matrix.platform == 'linux' || matrix.platform == 'macos'
+      - name: Create themes directory and placeholder icons (macOS)
+        if: matrix.platform == 'macos'
         run: |
           # Create themes directory if it doesn't exist
           mkdir -p midi_preset_client/themes
 
           # Create placeholder icon files if they don't exist
-          if [ "${{ matrix.platform }}" = "macos" ] && [ ! -f "midi_preset_client/themes/icon.icns" ]; then
+          if [ ! -f "midi_preset_client/themes/icon.icns" ]; then
             echo "Creating placeholder icon.icns file"
             # Use a simple command to create a minimal .icns file
             python -c "with open('midi_preset_client/themes/icon.icns', 'wb') as f: f.write(b'icns\x00\x00\x00\x10')"
@@ -310,8 +295,8 @@ jobs:
           }
 
 
-      - name: Build executable (Linux/macOS)
-        if: matrix.platform == 'linux' || matrix.platform == 'macos'
+      - name: Build executable (macOS)
+        if: matrix.platform == 'macos'
         run: |
           # Print current directory and list files to help diagnose issues
           echo "Current directory: $(pwd)"
@@ -320,51 +305,24 @@ jobs:
 
           # Run PyInstaller directly with command line options
           echo "Running PyInstaller with command line options"
-          if [ "${{ matrix.platform }}" = "macos" ]; then
-            # For macOS, create a .app bundle
-            pyinstaller --name=r2midi \
-              --windowed \
-              --noconfirm \
-              --clean \
-              --add-data="midi_preset_client/themes:midi_preset_client/themes" \
-              --add-data="midi_preset_client/ui:midi_preset_client/ui" \
-              --hidden-import=PyQt6.QtCore \
-              --hidden-import=PyQt6.QtWidgets \
-              --hidden-import=PyQt6.QtGui \
-              --hidden-import=asyncio \
-              --hidden-import=httpx \
-              --hidden-import=logging \
-              --hidden-import=json \
-              --hidden-import=git \
-              --icon="midi_preset_client/themes/icon.icns" \
-              --osx-bundle-identifier="com.r2midi.app" \
-              main.py
-          else
-            # For Linux
-            # Install rtmidi from wheel before running PyInstaller to avoid building from source
-            pip install --only-binary=:all: rtmidi || pip install rtmidi
-
-            # Set environment variables to help find ALSA headers
-            export CFLAGS="-I/usr/include/alsa"
-            export CPPFLAGS="-I/usr/include/alsa"
-
-            pyinstaller --name=r2midi \
-              --windowed \
-              --noconfirm \
-              --clean \
-              --add-data="midi_preset_client/themes:midi_preset_client/themes" \
-              --add-data="midi_preset_client/ui:midi_preset_client/ui" \
-              --hidden-import=PyQt6.QtCore \
-              --hidden-import=PyQt6.QtWidgets \
-              --hidden-import=PyQt6.QtGui \
-              --hidden-import=asyncio \
-              --hidden-import=httpx \
-              --hidden-import=logging \
-              --hidden-import=json \
-              --hidden-import=git \
-              --icon="midi_preset_client/themes/icon.ico" \
-              main.py
-          fi
+          # For macOS, create a .app bundle
+          pyinstaller --name=r2midi \
+            --windowed \
+            --noconfirm \
+            --clean \
+            --add-data="midi_preset_client/themes:midi_preset_client/themes" \
+            --add-data="midi_preset_client/ui:midi_preset_client/ui" \
+            --hidden-import=PyQt6.QtCore \
+            --hidden-import=PyQt6.QtWidgets \
+            --hidden-import=PyQt6.QtGui \
+            --hidden-import=asyncio \
+            --hidden-import=httpx \
+            --hidden-import=logging \
+            --hidden-import=json \
+            --hidden-import=git \
+            --icon="midi_preset_client/themes/icon.icns" \
+            --osx-bundle-identifier="com.r2midi.app" \
+            main.py
 
       - name: Build executable (Windows)
         if: matrix.platform == 'windows'
@@ -417,14 +375,14 @@ jobs:
           ls -la dist/
         shell: bash
 
-      - name: Prepare release files (macOS/Linux)
-        if: matrix.platform == 'macos' || matrix.platform == 'linux'
+      - name: Prepare release files (macOS)
+        if: matrix.platform == 'macos'
         run: |
           # Create a directory for release files
           mkdir -p release_files
 
           # For macOS, zip the .app bundle
-          if [ "${{ matrix.platform }}" = "macos" ] && [ -d "dist/r2midi.app" ]; then
+          if [ -d "dist/r2midi.app" ]; then
             echo "Zipping macOS .app bundle"
             cd dist
             zip -r ../release_files/r2midi-macos.zip r2midi.app

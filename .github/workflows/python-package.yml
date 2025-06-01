@@ -83,8 +83,8 @@ jobs:
               fi
             fi
 
-            # Try to push
-            git push origin master
+            # Try to push with force-with-lease to handle concurrent updates safely
+            git push --force-with-lease origin master
             PUSH_STATUS=$?
 
             if [ $PUSH_STATUS -eq 0 ]; then
@@ -94,6 +94,8 @@ jobs:
               RETRY_COUNT=$((RETRY_COUNT + 1))
               if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
                 echo "Push failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+                # Fetch the latest changes before retrying to update our reference
+                git fetch origin master
                 sleep 2  # Add a small delay before retrying
               else
                 echo "Failed to push after $MAX_RETRIES attempts"

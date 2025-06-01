@@ -333,24 +333,72 @@ jobs:
           Write-Host "Files in current directory:"
           Get-ChildItem -Force
 
+          # Check if PyInstaller is installed
+          Write-Host "PyInstaller version:"
+          python -m PyInstaller --version
+
+          # Check if main.py exists
+          if (Test-Path "main.py") {
+            Write-Host "main.py exists"
+          } else {
+            Write-Host "main.py does not exist"
+            Get-ChildItem -Path . -Filter *.py -Recurse | Select-Object FullName
+          }
+
+          # Check if theme directories exist
+          if (Test-Path "midi_preset_client\themes") {
+            Write-Host "midi_preset_client\themes exists"
+            Get-ChildItem -Path "midi_preset_client\themes" -Force
+          } else {
+            Write-Host "midi_preset_client\themes does not exist"
+          }
+
+          if (Test-Path "midi_preset_client\ui") {
+            Write-Host "midi_preset_client\ui exists"
+            Get-ChildItem -Path "midi_preset_client\ui" -Force
+          } else {
+            Write-Host "midi_preset_client\ui does not exist"
+          }
+
           # Run PyInstaller directly with command line options
           Write-Host "Running PyInstaller with command line options"
-          pyinstaller --name=r2midi `
-            --windowed `
-            --noconfirm `
-            --clean `
-            --add-data="midi_preset_client/themes;midi_preset_client/themes" `
-            --add-data="midi_preset_client/ui;midi_preset_client/ui" `
-            --hidden-import=PyQt6.QtCore `
-            --hidden-import=PyQt6.QtWidgets `
-            --hidden-import=PyQt6.QtGui `
-            --hidden-import=asyncio `
-            --hidden-import=httpx `
-            --hidden-import=logging `
-            --hidden-import=json `
-            --hidden-import=git `
-            --icon="midi_preset_client/themes/icon.ico" `
-            main.py
+
+          # Create a spec file first
+          Write-Host "Creating spec file"
+          python -m PyInstaller --name=r2midi --windowed --noconfirm --clean main.py
+
+          # Check if spec file was created
+          if (Test-Path "r2midi.spec") {
+            Write-Host "r2midi.spec created successfully"
+            Get-Content "r2midi.spec"
+          } else {
+            Write-Host "r2midi.spec was not created"
+          }
+
+          # Run PyInstaller with the spec file
+          Write-Host "Running PyInstaller with spec file"
+          python -m PyInstaller r2midi.spec
+
+          # If that doesn't work, try the direct command line approach
+          if (-not (Test-Path "dist\r2midi.exe")) {
+            Write-Host "Spec file approach failed, trying direct command line"
+            python -m PyInstaller --name=r2midi `
+              --windowed `
+              --noconfirm `
+              --clean `
+              --add-data="midi_preset_client\themes;midi_preset_client\themes" `
+              --add-data="midi_preset_client\ui;midi_preset_client\ui" `
+              --hidden-import=PyQt6.QtCore `
+              --hidden-import=PyQt6.QtWidgets `
+              --hidden-import=PyQt6.QtGui `
+              --hidden-import=asyncio `
+              --hidden-import=httpx `
+              --hidden-import=logging `
+              --hidden-import=json `
+              --hidden-import=git `
+              --icon="midi_preset_client\themes\icon.ico" `
+              main.py
+          }
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
@@ -369,11 +417,40 @@ jobs:
           echo "Using version: $VERSION (from increment-version job: ${{ needs.increment-version.outputs.version }})"
         shell: bash
 
-      - name: List files in dist directory
+      - name: List files in dist directory (macOS)
+        if: matrix.platform == 'macos'
         run: |
           echo "Files in dist directory:"
           ls -la dist/
         shell: bash
+
+      - name: List files in dist directory (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Write-Host "Files in dist directory:"
+          if (Test-Path "dist") {
+            Get-ChildItem -Path "dist" -Force -Recurse
+
+            # Check if r2midi.exe exists
+            if (Test-Path "dist\r2midi.exe") {
+              Write-Host "r2midi.exe exists"
+              $fileInfo = Get-Item "dist\r2midi.exe"
+              Write-Host "r2midi.exe size: $($fileInfo.Length) bytes"
+            } else {
+              Write-Host "r2midi.exe does not exist"
+            }
+
+            # Check if _internal directory exists
+            if (Test-Path "dist\_internal") {
+              Write-Host "_internal directory exists"
+              Get-ChildItem -Path "dist\_internal" -Force | Measure-Object | Select-Object -ExpandProperty Count
+            } else {
+              Write-Host "_internal directory does not exist"
+            }
+          } else {
+            Write-Host "dist directory does not exist"
+          }
 
       - name: Prepare release files (macOS)
         if: matrix.platform == 'macos'
@@ -401,10 +478,46 @@ jobs:
           # Create a directory for release files
           New-Item -ItemType Directory -Force -Path release_files
 
+          # Check what's in the dist directory
+          Write-Host "Contents of dist directory before zipping:"
+          Get-ChildItem -Path "dist" -Force -Recurse
+
           # For Windows, zip the .exe file and all necessary files
-          if (Test-Path "dist\r2midi.exe") {
+          # Check both possible locations for the executable
+          if (Test-Path "dist\r2midi.exe" -or Test-Path "dist\r2midi\r2midi.exe") {
             Write-Host "Zipping Windows executable and dependencies"
-            Compress-Archive -Path "dist\r2midi.exe", "dist\*.dll", "dist\*.pyd", "dist\*.manifest", "dist\*.pkg", "dist\_internal" -DestinationPath "release_files\r2midi-windows.zip" -Force
+
+            # Zip the entire dist directory regardless of the structure
+            Compress-Archive -Path "dist\*" -DestinationPath "release_files\r2midi-windows.zip" -Force
+
+            # Verify the zip file was created and has content
+            if (Test-Path "release_files\r2midi-windows.zip") {
+              $zipInfo = Get-Item "release_files\r2midi-windows.zip"
+              Write-Host "Created zip file: $($zipInfo.FullName), Size: $($zipInfo.Length) bytes"
+            } else {
+              Write-Host "Failed to create zip file"
+            }
+          } else {
+            # If neither location has the executable, try to find it anywhere in the dist directory
+            $exeFiles = Get-ChildItem -Path "dist" -Filter "*.exe" -Recurse
+            if ($exeFiles.Count -gt 0) {
+              Write-Host "Found executable files in different location:"
+              $exeFiles | ForEach-Object { Write-Host $_.FullName }
+
+              # Zip the entire dist directory
+              Compress-Archive -Path "dist\*" -DestinationPath "release_files\r2midi-windows.zip" -Force
+
+              # Verify the zip file was created and has content
+              if (Test-Path "release_files\r2midi-windows.zip") {
+                $zipInfo = Get-Item "release_files\r2midi-windows.zip"
+                Write-Host "Created zip file: $($zipInfo.FullName), Size: $($zipInfo.Length) bytes"
+              } else {
+                Write-Host "Failed to create zip file"
+              }
+            } else {
+              Write-Host "ERROR: No executable files found in dist directory. Cannot create release package."
+              exit 1
+            }
           }
 
           # List files in release_files directory

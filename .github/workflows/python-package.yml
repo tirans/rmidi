@@ -58,18 +58,20 @@ jobs:
           MAX_RETRIES=3
           RETRY_COUNT=0
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if git push; then
-              echo "Successfully pushed version bump"
-              break
-            else
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                echo "Push failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
-                git pull --rebase origin master
-              else
-                echo "Failed to push after $MAX_RETRIES attempts"
-                exit 1
+            git stash
+            if git pull --rebase origin master && git stash pop; then
+              if git push; then
+                echo "Successfully pushed version bump"
+                break
               fi
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "Push failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+            else
+              echo "Failed to push after $MAX_RETRIES attempts"
+              exit 1
             fi
           done
       # Setup Python environment and install dependencies in separate steps for clarity
@@ -81,7 +83,7 @@ jobs:
       - name: Install system and project dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev
+          sudo apt-get install -y libasound2-dev libegl1 
 
       - name: Install Python dependencies
         run: |

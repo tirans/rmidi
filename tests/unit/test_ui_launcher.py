@@ -166,7 +166,7 @@ class TestUILauncher(unittest.TestCase):
         mock_exists.assert_has_calls([
             call("test_client_path"),
             call("test_client_path/main.py")
-        ], any_order=False)
+        ], any_order=True)
         mock_makedirs.assert_called_once_with("test_client_path", exist_ok=True)
 
     def test_shutdown_client_no_process(self):

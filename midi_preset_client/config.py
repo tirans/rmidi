@@ -17,53 +17,56 @@ class AppConfig:
     server_url: str = "http://localhost:7777"
     server_check_timeout: int = 30
     server_check_retries: int = 30
-    
+
     # Cache settings
     cache_enabled: bool = True
     cache_timeout: int = 300  # 5 minutes
-    
+
     # UI settings
     debounce_delay_ms: int = 300
-    window_width: int = 1024
-    window_height: int = 800
+    window_width: int = 800
+    window_height: int = 600
     dark_mode: bool = False
-    
+
     # MIDI settings
     default_midi_channel: int = 1
     auto_select_midi_ports: bool = True
-    
+
     # Performance settings
     max_presets_display: int = 1000
     enable_lazy_loading: bool = True
-    
+
     # Debug settings
     debug_mode: bool = False
     log_level: str = "INFO"
-    
+
     # Feature flags
     enable_favorites: bool = True
     enable_search: bool = True
     enable_keyboard_shortcuts: bool = True
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary"""
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AppConfig':
         """Create config from dictionary"""
+        # Handle legacy config parameter names
+        if 'max_patches_display' in data:
+            data['max_presets_display'] = data.pop('max_patches_display')
         return cls(**data)
 
 
 class ConfigManager:
     """Manages application configuration with file persistence"""
-    
+
     DEFAULT_CONFIG_FILENAME = ".r2midi_config.json"
-    
+
     def __init__(self, config_path: Optional[str] = None):
         """
         Initialize config manager
-        
+
         Args:
             config_path: Optional path to config file. If not provided,
                         uses ~/.r2midi_config.json
@@ -73,10 +76,10 @@ class ConfigManager:
                 os.path.expanduser("~"), 
                 self.DEFAULT_CONFIG_FILENAME
             )
-        
+
         self.config_path = config_path
         self.config = self.load_config()
-        
+
     def load_config(self) -> AppConfig:
         """Load configuration from file or create default"""
         if os.path.exists(self.config_path):
@@ -89,14 +92,14 @@ class ConfigManager:
             except Exception as e:
                 logger.warning(f"Failed to load config from {self.config_path}: {e}")
                 logger.info("Using default configuration")
-        
+
         # Return default config
         return AppConfig()
-    
+
     def save_config(self) -> bool:
         """
         Save current configuration to file
-        
+
         Returns:
             True if successful, False otherwise
         """
@@ -108,11 +111,11 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"Failed to save config to {self.config_path}: {e}")
             return False
-    
+
     def update_config(self, **kwargs) -> None:
         """
         Update configuration values
-        
+
         Args:
             **kwargs: Configuration values to update
         """
@@ -122,32 +125,32 @@ class ConfigManager:
                 logger.debug(f"Updated config: {key} = {value}")
             else:
                 logger.warning(f"Unknown config key: {key}")
-    
+
     def reset_to_defaults(self) -> None:
         """Reset configuration to defaults"""
         self.config = AppConfig()
         logger.info("Reset configuration to defaults")
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """
         Get configuration value
-        
+
         Args:
             key: Configuration key
             default: Default value if key not found
-            
+
         Returns:
             Configuration value or default
         """
         return getattr(self.config, key, default)
-    
+
     def export_config(self, export_path: str) -> bool:
         """
         Export configuration to a different file
-        
+
         Args:
             export_path: Path to export configuration to
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -159,14 +162,14 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"Failed to export config to {export_path}: {e}")
             return False
-    
+
     def import_config(self, import_path: str) -> bool:
         """
         Import configuration from a file
-        
+
         Args:
             import_path: Path to import configuration from
-            
+
         Returns:
             True if successful, False otherwise
         """

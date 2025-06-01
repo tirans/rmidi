@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 import sys
+import os
 import argparse
 from PyQt6.QtWidgets import QApplication
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 # Import our fixed version of MainWindow (now copied to main_window.py)
 from midi_preset_client.ui.main_window import MainWindow

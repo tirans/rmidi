@@ -2,10 +2,10 @@ from typing import Dict, List, Optional, Set, Tuple
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, 
     QLabel, QTextEdit, QComboBox, QGroupBox, QLineEdit, QPushButton,
-    QCheckBox, QMenu
+    QCheckBox, QMenu, QStyledItemDelegate, QStyleOptionViewItem, QStyle
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer
-from PyQt6.QtGui import QColor, QBrush, QIcon, QAction, QFont
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QRect
+from PyQt6.QtGui import QColor, QBrush, QIcon, QAction, QFont, QPainter, QPen
 
 from ..models import Preset
 from ..config import get_config
@@ -16,6 +16,42 @@ import logging
 
 # Configure logger
 logger = logging.getLogger('midi_preset_client.ui.preset_panel')
+
+
+class PresetItemDelegate(QStyledItemDelegate):
+    """Custom delegate to ensure preset colors are properly displayed"""
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index):
+        # Get the item data
+        bg_color = index.data(Qt.ItemDataRole.BackgroundRole)
+        fg_color = index.data(Qt.ItemDataRole.ForegroundRole)
+        text = index.data(Qt.ItemDataRole.DisplayRole)
+
+        # Save painter state
+        painter.save()
+
+        # Fill background with category color
+        if bg_color and isinstance(bg_color, QColor):
+            painter.fillRect(option.rect, bg_color)
+
+        # Draw selection highlight
+        if option.state & QStyle.StateFlag.State_Selected:
+            # Draw a border instead of filling to preserve background color
+            painter.setPen(QPen(QColor(0, 120, 212), 2))
+            painter.drawRect(option.rect.adjusted(1, 1, -1, -1))
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            # Draw hover effect
+            painter.setPen(QPen(QColor(150, 150, 150), 1))
+            painter.drawRect(option.rect.adjusted(1, 1, -1, -1))
+
+        # Draw text with appropriate color
+        if text:
+            text_rect = option.rect.adjusted(5, 0, -5, 0)  # Add padding
+            painter.setPen(fg_color if fg_color and isinstance(fg_color, QColor) else QColor(0, 0, 0))
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+
+        # Restore painter state
+        painter.restore()
 
 
 class PresetPanel(QWidget):
@@ -142,6 +178,21 @@ class PresetPanel(QWidget):
         self.preset_list.itemClicked.connect(self.on_preset_clicked)
         self.preset_list.itemDoubleClicked.connect(self.on_preset_double_clicked)
 
+        # Set list widget style to ensure background colors are visible
+        self.preset_list.setAlternatingRowColors(False)  # Disable alternating row colors
+
+        # Use custom delegate to ensure colors are properly displayed
+        self.preset_delegate = PresetItemDelegate()
+        self.preset_list.setItemDelegate(self.preset_delegate)
+
+        # Set minimal styling to avoid conflicts
+        self.preset_list.setStyleSheet("""
+            QListWidget {
+                outline: none;
+                border: 1px solid #ccc;
+            }
+        """)
+
         # Enable context menu for favorites
         if self.config.enable_favorites:
             self.preset_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -208,18 +259,28 @@ class PresetPanel(QWidget):
             logger.info(f"Generating colors for {len(new_categories)} new categories")
 
             # Predefined color palette for better visual distinction
-            # Using a combination of varying hue, saturation, and value
+            # Using vibrant colors that are easy to distinguish
             predefined_colors = [
-                QColor(255, 153, 153),  # Light red
-                QColor(153, 204, 255),  # Light blue
-                QColor(153, 255, 153),  # Light green
-                QColor(255, 204, 153),  # Light orange
-                QColor(204, 153, 255),  # Light purple
-                QColor(255, 255, 153),  # Light yellow
-                QColor(153, 255, 204),  # Light teal
-                QColor(255, 153, 204),  # Light pink
-                QColor(204, 204, 153),  # Light olive
-                QColor(204, 153, 153),  # Light brown
+                QColor(220, 53, 69),    # Red
+                QColor(0, 123, 255),    # Blue
+                QColor(40, 167, 69),    # Green
+                QColor(255, 140, 0),    # Orange
+                QColor(128, 0, 128),    # Purple
+                QColor(255, 193, 7),    # Yellow
+                QColor(32, 201, 151),   # Teal
+                QColor(232, 62, 140),   # Pink
+                QColor(108, 117, 125),  # Gray
+                QColor(155, 89, 50),    # Brown
+                QColor(52, 58, 64),     # Dark gray
+                QColor(0, 188, 212),    # Cyan
+                QColor(156, 39, 176),   # Deep purple
+                QColor(76, 175, 80),    # Light green
+                QColor(255, 87, 34),    # Deep orange
+                QColor(96, 125, 139),   # Blue gray
+                QColor(121, 85, 72),    # Dark brown
+                QColor(63, 81, 181),    # Indigo
+                QColor(205, 220, 57),   # Lime
+                QColor(0, 150, 136),    # Dark teal
             ]
 
             # If we have more new categories than predefined colors, generate additional colors
@@ -353,20 +414,32 @@ class PresetPanel(QWidget):
             if preset.category in self.category_colors:
                 # Use cached color if available
                 if preset.category in color_cache:
-                    color, text_color = color_cache[preset.category]
+                    bg_color, text_color = color_cache[preset.category]
                 else:
-                    color = self.category_colors[preset.category]
-                    # Preserve the alpha value from the loaded color
+                    # Get the category color and create a fresh copy
+                    bg_color = QColor(self.category_colors[preset.category])
+                    bg_color.setAlpha(255)  # Make fully opaque
 
                     # Determine text color based on background brightness
-                    brightness = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000
-                    text_color = QColor(0, 0, 0) if brightness > 128 else QColor(255, 255, 255)
+                    # Using the standard formula for perceived luminance
+                    brightness = (bg_color.red() * 299 + bg_color.green() * 587 + bg_color.blue() * 114) / 1000
+
+                    # Use black text for light backgrounds, white for dark backgrounds
+                    if brightness > 128:
+                        text_color = QColor(0, 0, 0)  # Black text
+                    else:
+                        text_color = QColor(255, 255, 255)  # White text
 
                     # Cache the colors
-                    color_cache[preset.category] = (color, text_color)
+                    color_cache[preset.category] = (bg_color, text_color)
 
-                item.setBackground(QBrush(color))
+                # Apply the colors to the item
+                item.setBackground(QBrush(bg_color))
                 item.setForeground(QBrush(text_color))
+
+                # Also set the item data to ensure colors persist
+                item.setData(Qt.ItemDataRole.BackgroundRole, bg_color)
+                item.setData(Qt.ItemDataRole.ForegroundRole, text_color)
 
             # Add star icon for favorites
             if self._is_favorite(preset):

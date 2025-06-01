@@ -397,7 +397,7 @@ class MainWindow(QMainWindow):
         """Initialize the UI components"""
         # Set window properties
         self.setWindowTitle("r2midi")
-        self.setMinimumSize(1024, 800)
+        self.setMinimumSize(800, 600)
 
         # Create central widget and layout
         central_widget = QWidget()
@@ -1007,18 +1007,15 @@ class MainWindow(QMainWindow):
             logger.info(f"Loading devices for manufacturer: {manufacturer}")
 
             # Trigger the manufacturer changed event to load devices
+            # This already fetches devices asynchronously, so we don't need to fetch them again
             self.device_panel.on_manufacturer_changed(manufacturer)
 
-            # Get the devices for this manufacturer
-            devices = await self.api_client.get_devices(manufacturer)
+            # Wait a short time to allow the device panel to start its async operation
+            await asyncio.sleep(0.1)
 
-            if devices:
-                logger.info(f"Loaded {len(devices)} devices for {manufacturer}")
-            else:
-                logger.warning(f"No devices found for manufacturer: {manufacturer}")
-
-            # Return the devices in case the caller needs them
-            return devices
+            # Return an empty list as the actual loading is handled by the device panel
+            # The caller doesn't actually use the returned devices
+            return []
 
         except Exception as e:
             logger.error(f"Error loading devices for manufacturer {manufacturer}: {str(e)}")

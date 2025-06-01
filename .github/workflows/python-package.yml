@@ -351,8 +351,9 @@ jobs:
 
           # Create a new spec file directly in the workflow
           echo "Creating a new spec file directly in the workflow"
-          cat > r2midi.spec << 'EOL'
-# -*- mode: python ; coding: utf-8 -*-
+          python -c "
+with open('r2midi.spec', 'w') as f:
+    f.write('''# -*- mode: python ; coding: utf-8 -*-
 import os
 
 block_cipher = None
@@ -399,7 +400,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='r2midi',
+    name=\"r2midi\",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -412,26 +413,26 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='midi_patch_client/themes/icon.ico' if os.path.exists('midi_patch_client/themes/icon.ico') else None,
+    icon=\"midi_patch_client/themes/icon.ico\" if os.path.exists(\"midi_patch_client/themes/icon.ico\") else None,
 )
 
 # For macOS, create a .app bundle
 app = BUNDLE(
     exe,
-    name='r2midi.app',
-    icon='midi_patch_client/themes/icon.icns' if os.path.exists('midi_patch_client/themes/icon.icns') else None,
-    bundle_identifier='com.r2midi.app',
+    name=\"r2midi.app\",
+    icon=\"midi_patch_client/themes/icon.icns\" if os.path.exists(\"midi_patch_client/themes/icon.icns\") else None,
+    bundle_identifier=\"com.r2midi.app\",
     info_plist={
-        'CFBundleShortVersionString': '1.0.0',
-        'CFBundleVersion': '1.0.0',
-        'NSHighResolutionCapable': 'True',
-        'NSRequiresAquaSystemAppearance': 'False',  # Allow dark mode
-        'CFBundleName': 'r2midi',
-        'CFBundleDisplayName': 'r2midi',
-        'CFBundleExecutable': 'r2midi',
+        \"CFBundleShortVersionString\": \"1.0.0\",
+        \"CFBundleVersion\": \"1.0.0\",
+        \"NSHighResolutionCapable\": \"True\",
+        \"NSRequiresAquaSystemAppearance\": \"False\",  # Allow dark mode
+        \"CFBundleName\": \"r2midi\",
+        \"CFBundleDisplayName\": \"r2midi\",
+        \"CFBundleExecutable\": \"r2midi\",
     },
 )
-EOL
+''')"
 
           # Verify the spec file was created
           echo "Verifying the spec file was created:"
@@ -462,8 +463,9 @@ EOL
 
           # Create a new spec file directly in the workflow
           Write-Host "Creating a new spec file directly in the workflow"
-          @'
-# -*- mode: python ; coding: utf-8 -*-
+          python -c "
+with open('r2midi.spec', 'w') as f:
+    f.write('''# -*- mode: python ; coding: utf-8 -*-
 import os
 
 block_cipher = None
@@ -510,7 +512,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='r2midi',
+    name=\"r2midi\",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -523,26 +525,26 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='midi_patch_client/themes/icon.ico' if os.path.exists('midi_patch_client/themes/icon.ico') else None,
+    icon=\"midi_patch_client/themes/icon.ico\" if os.path.exists(\"midi_patch_client/themes/icon.ico\") else None,
 )
 
 # For macOS, create a .app bundle
 app = BUNDLE(
     exe,
-    name='r2midi.app',
-    icon='midi_patch_client/themes/icon.icns' if os.path.exists('midi_patch_client/themes/icon.icns') else None,
-    bundle_identifier='com.r2midi.app',
+    name=\"r2midi.app\",
+    icon=\"midi_patch_client/themes/icon.icns\" if os.path.exists(\"midi_patch_client/themes/icon.icns\") else None,
+    bundle_identifier=\"com.r2midi.app\",
     info_plist={
-        'CFBundleShortVersionString': '1.0.0',
-        'CFBundleVersion': '1.0.0',
-        'NSHighResolutionCapable': 'True',
-        'NSRequiresAquaSystemAppearance': 'False',  # Allow dark mode
-        'CFBundleName': 'r2midi',
-        'CFBundleDisplayName': 'r2midi',
-        'CFBundleExecutable': 'r2midi',
+        \"CFBundleShortVersionString\": \"1.0.0\",
+        \"CFBundleVersion\": \"1.0.0\",
+        \"NSHighResolutionCapable\": \"True\",
+        \"NSRequiresAquaSystemAppearance\": \"False\",  # Allow dark mode
+        \"CFBundleName\": \"r2midi\",
+        \"CFBundleDisplayName\": \"r2midi\",
+        \"CFBundleExecutable\": \"r2midi\",
     },
 )
-'@ | Out-File -FilePath r2midi.spec -Encoding utf8
+''')"
 
           # Verify the spec file was created
           Write-Host "Verifying the spec file was created:"

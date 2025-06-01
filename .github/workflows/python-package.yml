@@ -238,7 +238,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install dependencies (Linux/macOS)
+        if: matrix.platform == 'linux' || matrix.platform == 'macos'
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
@@ -247,14 +248,67 @@ jobs:
             pip install -r midi_patch_client/requirements.txt
           fi
 
+      - name: Install dependencies (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+          if (Test-Path "midi_patch_client\requirements.txt") {
+            pip install -r midi_patch_client\requirements.txt
+          }
+
       - name: Install platform-specific dependencies (Linux)
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev
 
-      - name: Build executable
+      - name: Create themes directory and placeholder icons (Linux/macOS)
+        if: matrix.platform == 'linux' || matrix.platform == 'macos'
         run: |
+          # Create themes directory if it doesn't exist
+          mkdir -p midi_patch_client/themes
+
+          # Create placeholder icon files if they don't exist
+          if [ "${{ matrix.platform }}" = "macos" ] && [ ! -f "midi_patch_client/themes/icon.icns" ]; then
+            echo "Creating placeholder icon.icns file"
+            # Use a simple command to create a minimal .icns file
+            python -c "with open('midi_patch_client/themes/icon.icns', 'wb') as f: f.write(b'icns\x00\x00\x00\x10')"
+          fi
+
+          if [ ! -f "midi_patch_client/themes/icon.ico" ]; then
+            echo "Creating placeholder icon.ico file"
+            # Use a simple command to create a minimal .ico file
+            python -c "with open('midi_patch_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
+          fi
+
+      - name: Create themes directory and placeholder icons (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          # Create themes directory if it doesn't exist
+          New-Item -ItemType Directory -Force -Path midi_patch_client\themes
+
+          # Create placeholder icon.ico file if it doesn't exist
+          if (-not (Test-Path "midi_patch_client\themes\icon.ico")) {
+            Write-Host "Creating placeholder icon.ico file"
+            # Use Python to create a minimal .ico file
+            python -c "with open('midi_patch_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
+          }
+
+      - name: Build executable (Linux/macOS)
+        if: matrix.platform == 'linux' || matrix.platform == 'macos'
+        run: |
+          # Run PyInstaller
+          pyinstaller r2midi.spec
+
+      - name: Build executable (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          # Run PyInstaller
           pyinstaller r2midi.spec
 
       - name: Upload executable artifact

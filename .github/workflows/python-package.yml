@@ -484,7 +484,7 @@ jobs:
 
           # For Windows, zip the .exe file and all necessary files
           # Check both possible locations for the executable
-          if (Test-Path "dist\r2midi.exe" -or Test-Path "dist\r2midi\r2midi.exe") {
+          if ((Test-Path "dist\r2midi.exe") -or (Test-Path "dist\r2midi\r2midi.exe")) {
             Write-Host "Zipping Windows executable and dependencies"
 
             # Zip the entire dist directory regardless of the structure

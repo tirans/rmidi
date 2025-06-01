@@ -4,10 +4,10 @@ import logging
 import subprocess
 import shutil
 import time
+import concurrent.futures
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from models import Device, Patch, DirectoryStructureResponse
-from optimized_get_all_patches import get_all_patches as optimized_get_all_patches
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -15,14 +15,21 @@ logger = logging.getLogger(__name__)
 class DeviceManager:
     """Handles scanning and managing device data"""
 
-    def __init__(self, devices_folder="midi-presets/devices"):
-        """Initialize the device manager with the path to the devices folder"""
+    def __init__(self, devices_folder="midi-presets/devices", sync_enabled=True):
+        """
+        Initialize the device manager with the path to the devices folder
+
+        Args:
+            devices_folder: Path to the devices folder
+            sync_enabled: Whether to sync with the remote repository
+        """
         self.devices_folder = devices_folder
         self.devices = {}  # Map of device name to device data
         self.manufacturers = []  # List of manufacturer names
         self.device_structure = {}  # Map of manufacturer to list of devices
         self._json_cache = {}  # Cache for loaded JSON files
         self._cache_timeout = 3600  # Cache timeout in seconds (1 hour)
+        self.sync_enabled = sync_enabled
 
         # Validate that the midi-presets submodule exists and is up to date
         self._validate_midi_presets_submodule()
@@ -36,6 +43,15 @@ class DeviceManager:
         from git_operations import git_sync
 
         logger.info("Validating midi-presets git submodule")
+
+        # Skip sync if disabled
+        if not self.sync_enabled:
+            logger.info("Sync is disabled, skipping git submodule validation")
+            # Still check if the directory exists
+            midi_presets_dir = os.path.join(os.getcwd(), "midi-presets")
+            if not os.path.exists(midi_presets_dir):
+                logger.warning("midi-presets directory does not exist and sync is disabled")
+            return
 
         # Check if the midi-presets directory exists
         midi_presets_dir = os.path.join(os.getcwd(), "midi-presets")
@@ -59,16 +75,21 @@ class DeviceManager:
             else:
                 logger.info("midi-presets git submodule exists and appears to be valid")
 
-    def _load_json_file(self, file_path: str) -> Dict:
+    def _load_json_file(self, file_path: str, cache_timeout: int = None) -> Dict:
         """
         Load a JSON file with caching to improve performance
 
         Args:
             file_path: Path to the JSON file
+            cache_timeout: Optional cache timeout in seconds (defaults to self._cache_timeout)
 
         Returns:
             Dictionary containing the JSON data
         """
+        # Use instance cache_timeout if not provided
+        if cache_timeout is None:
+            cache_timeout = self._cache_timeout
+
         # Check if file exists
         if not os.path.exists(file_path):
             logger.warning(f"JSON file not found: {file_path}")
@@ -77,7 +98,7 @@ class DeviceManager:
         # Check if file is in cache and not expired
         if file_path in self._json_cache:
             timestamp, data = self._json_cache[file_path]
-            if time.time() - timestamp < self._cache_timeout:
+            if time.time() - timestamp < cache_timeout:
                 logger.debug(f"Using cached JSON data for {file_path}")
                 return data
 
@@ -105,6 +126,12 @@ class DeviceManager:
         Returns a tuple of (success, message)
         """
         logger.info("Running git submodule sync using git_operations module")
+
+        # Skip sync if disabled
+        if not self.sync_enabled:
+            logger.info("Sync is disabled, skipping git submodule sync")
+            return False, "Sync is disabled"
+
         from git_operations import git_sync
 
         # Use the more robust git_sync function from git_operations
@@ -116,6 +143,134 @@ class DeviceManager:
             logger.error(f"Git submodule sync failed: {message}")
 
         return success, message
+
+    def _process_manufacturer(self, manufacturer: str) -> Tuple[Dict[str, Dict], List[str]]:
+        """
+        Process a single manufacturer directory
+
+        Args:
+            manufacturer: Name of the manufacturer
+
+        Returns:
+            Tuple of (devices, device_structure)
+        """
+        manufacturer_path = os.path.join(self.devices_folder, manufacturer)
+        logger.debug(f"Processing manufacturer directory: {manufacturer}")
+
+        # Initialize return values
+        manufacturer_devices = {}
+        manufacturer_device_structure = []
+
+        try:
+            # Get list of files and directories in manufacturer directory
+            items = os.listdir(manufacturer_path)
+
+            # Process device directories and JSON files
+            device_dirs = [d for d in items if os.path.isdir(os.path.join(manufacturer_path, d)) and d != 'community']
+            json_files = [f for f in items if f.endswith('.json')]
+
+            logger.debug(f"Found {len(device_dirs)} device directories and {len(json_files)} JSON files in {manufacturer} directory")
+
+            # Use a thread pool to process JSON files in parallel
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count() * 2)) as executor:
+                # Submit tasks for each JSON file
+                future_to_file = {
+                    executor.submit(self._load_json_file, os.path.join(manufacturer_path, filename)): filename
+                    for filename in json_files
+                }
+
+                # Process results as they complete
+                for future in concurrent.futures.as_completed(future_to_file):
+                    filename = future_to_file[future]
+                    try:
+                        device_data = future.result()
+
+                        # Check if device has device_info with a name
+                        if device_data and 'device_info' in device_data and 'name' in device_data['device_info']:
+                            device_name = device_data['device_info']['name']
+
+                            # Add manufacturer information
+                            device_data['manufacturer'] = manufacturer
+
+                            # Check for community folders
+                            community_path = os.path.join(manufacturer_path, 'community')
+                            community_folders = []
+
+                            if os.path.exists(community_path) and os.path.isdir(community_path):
+                                community_items = [f for f in os.listdir(community_path) 
+                                                 if f.endswith('.json')]
+                                community_folders = [os.path.splitext(f)[0] for f in community_items]
+                                logger.debug(f"Found {len(community_folders)} community folders for {device_name}")
+
+                            device_data['community_folders'] = community_folders
+
+                            # Store the device data
+                            manufacturer_devices[device_name] = device_data
+                            manufacturer_device_structure.append(device_name)
+
+                            logger.debug(f"Loaded device: {device_name} from manufacturer {manufacturer}")
+                        else:
+                            logger.warning(f"Device file '{filename}' does not have a device_info.name field")
+                    except Exception as e:
+                        logger.error(f"Error processing JSON file {filename}: {str(e)}")
+
+            # Process device directories
+            for device_dir in device_dirs:
+                device_path = os.path.join(manufacturer_path, device_dir)
+                logger.debug(f"Processing device directory: {device_dir}")
+
+                # Get JSON files in device directory
+                device_json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+
+                if device_json_files:
+                    # Use a thread pool to process JSON files in parallel
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count() * 2)) as executor:
+                        # Submit tasks for each JSON file
+                        future_to_file = {
+                            executor.submit(self._load_json_file, os.path.join(device_path, filename)): filename
+                            for filename in device_json_files
+                        }
+
+                        # Process results as they complete
+                        for future in concurrent.futures.as_completed(future_to_file):
+                            filename = future_to_file[future]
+                            try:
+                                device_data = future.result()
+
+                                # Check if device has device_info with a name
+                                if device_data and 'device_info' in device_data and 'name' in device_data['device_info']:
+                                    device_name = device_data['device_info']['name']
+
+                                    # Add manufacturer information
+                                    device_data['manufacturer'] = manufacturer
+
+                                    # Check for community folders
+                                    community_path = os.path.join(manufacturer_path, 'community')
+                                    community_folders = []
+
+                                    if os.path.exists(community_path) and os.path.isdir(community_path):
+                                        community_items = [f for f in os.listdir(community_path) 
+                                                         if f.endswith('.json')]
+                                        community_folders = [os.path.splitext(f)[0] for f in community_items]
+                                        logger.debug(f"Found {len(community_folders)} community folders for {device_name}")
+
+                                    device_data['community_folders'] = community_folders
+
+                                    # Store the device data
+                                    manufacturer_devices[device_name] = device_data
+                                    manufacturer_device_structure.append(device_name)
+
+                                    logger.debug(f"Loaded device: {device_name} from manufacturer {manufacturer}")
+                                else:
+                                    logger.warning(f"Device file '{filename}' does not have a device_info.name field")
+                            except Exception as e:
+                                logger.error(f"Error processing JSON file {filename}: {str(e)}")
+
+            return manufacturer_devices, manufacturer_device_structure
+
+        except Exception as e:
+            logger.error(f"Error processing manufacturer {manufacturer}: {str(e)}")
+            return {}, []
 
     def scan_devices(self) -> Dict[str, Dict]:
         """
@@ -134,29 +289,43 @@ class DeviceManager:
             logger.warning(f"Devices folder '{self.devices_folder}' does not exist")
             return {}
 
-        # Use the optimized scan_devices function for better performance
+        # Use the optimized scan implementation
+        start_time = time.time()
+
         try:
-            from optimized_scan_devices import optimized_scan_devices
-
-            start_time = time.time()
-            devices, manufacturers, device_structure = optimized_scan_devices(
-                self.devices_folder, 
-                self._json_cache, 
-                self._cache_timeout
-            )
-
-            # Update instance variables with the results
-            self.devices = devices
+            # Get list of manufacturer directories
+            manufacturers = [d for d in os.listdir(self.devices_folder) 
+                            if os.path.isdir(os.path.join(self.devices_folder, d))]
+            logger.info(f"Found {len(manufacturers)} manufacturer directories")
             self.manufacturers = manufacturers
-            self.device_structure = device_structure
+
+            # Use a thread pool to process manufacturers in parallel
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count() * 4)) as executor:
+                # Submit tasks for each manufacturer
+                future_to_manufacturer = {
+                    executor.submit(self._process_manufacturer, manufacturer): manufacturer
+                    for manufacturer in manufacturers
+                }
+
+                # Process results as they complete
+                for future in concurrent.futures.as_completed(future_to_manufacturer):
+                    manufacturer = future_to_manufacturer[future]
+                    try:
+                        manufacturer_devices, manufacturer_device_structure = future.result()
+                        self.devices.update(manufacturer_devices)
+                        self.device_structure[manufacturer] = manufacturer_device_structure
+                        logger.info(f"Processed manufacturer {manufacturer} with {len(manufacturer_device_structure)} devices")
+                    except Exception as e:
+                        logger.error(f"Error processing manufacturer {manufacturer}: {str(e)}")
 
             scan_time = time.time() - start_time
-            logger.info(f"Optimized scan completed in {scan_time:.4f} seconds, found {len(devices)} devices")
+            logger.info(f"Optimized scan completed in {scan_time:.4f} seconds, found {len(self.devices)} devices")
 
             return self.devices
-        except ImportError:
-            logger.warning("Optimized scan_devices not available, falling back to standard implementation")
-            # Continue with the standard implementation
+        except Exception as e:
+            scan_time = time.time() - start_time
+            logger.error(f"Error during optimized scan: {str(e)} (failed in {scan_time:.4f} seconds)")
+            logger.warning("Falling back to standard implementation")
 
         try:
             # Get list of manufacturer directories
@@ -379,6 +548,148 @@ class DeviceManager:
         self._json_cache = {}
         logger.info("JSON cache cleared")
 
+    def _optimized_get_all_patches(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Patch]:
+        """
+        Get all patches from all devices or a specific device with optimized JSON loading
+
+        Args:
+            device_name: Optional name of the device to get patches from
+            community_folder: Optional name of the community folder to get patches from
+            manufacturer: Optional name of the manufacturer to filter devices by
+
+        Returns:
+            A list of Patch objects
+        """
+        if manufacturer and device_name:
+            logger.info(f"Getting patches for manufacturer: {manufacturer}, device: {device_name}")
+        elif manufacturer:
+            logger.info(f"Getting patches for manufacturer: {manufacturer}")
+        elif device_name:
+            logger.info(f"Getting patches for device: {device_name}")
+        else:
+            logger.info("Getting all patches from all devices")
+
+        result = []
+
+        try:
+            patch_count = 0
+
+            # Filter devices by manufacturer and/or device_name
+            devices_to_process = {}
+
+            # If both manufacturer and device_name are provided
+            if manufacturer and device_name:
+                # Find the device with the matching name and manufacturer
+                for name, data in self.devices.items():
+                    if name == device_name and data.get('manufacturer') == manufacturer:
+                        devices_to_process = {name: data}
+                        break
+
+                if not devices_to_process:
+                    logger.warning(f"Device not found: {device_name} for manufacturer: {manufacturer}")
+                    return []
+
+            # If only manufacturer is provided
+            elif manufacturer:
+                # Filter devices by manufacturer
+                for name, data in self.devices.items():
+                    if data.get('manufacturer') == manufacturer:
+                        devices_to_process[name] = data
+
+                if not devices_to_process:
+                    logger.warning(f"No devices found for manufacturer: {manufacturer}")
+                    return []
+
+            # If only device_name is provided
+            elif device_name:
+                if device_name in self.devices:
+                    devices_to_process = {device_name: self.devices[device_name]}
+                else:
+                    logger.warning(f"Device not found: {device_name}")
+                    return []
+            else:
+                devices_to_process = self.devices
+
+            for device_name, device_data in devices_to_process.items():
+                logger.debug(f"Processing device: {device_name}")
+                manufacturer = device_data.get('manufacturer', '')
+
+                # Process default presets
+                preset_collections = device_data.get('preset_collections', {})
+                for collection_name, collection_data in preset_collections.items():
+                    presets = collection_data.get('presets', [])
+                    logger.debug(f"Device {device_name} collection {collection_name} has {len(presets)} presets")
+
+                    for preset in presets:
+                        try:
+                            patch = Patch(
+                                preset_name=preset.get('preset_name', ''),
+                                category=preset.get('category', ''),
+                                characters=preset.get('characters', []),
+                                sendmidi_command=preset.get('sendmidi_command', ''),
+                                cc_0=preset.get('cc_0'),
+                                pgm=preset.get('pgm'),
+                                source='default'
+                            )
+                            result.append(patch)
+                            patch_count += 1
+                            logger.debug(f"Added patch: {patch.preset_name} ({patch.category})")
+                        except Exception as e:
+                            preset_name = preset.get('preset_name', 'unknown')
+                            logger.error(f"Error creating Patch object for {preset_name}: {str(e)}")
+
+                # Process community presets if requested
+                if community_folder:
+                    logger.debug(f"Processing community folder: {community_folder} for device: {device_name}")
+
+                    # Construct path to community folder
+                    community_path = os.path.join(
+                        self.devices_folder,
+                        manufacturer,
+                        'community',
+                        f"{community_folder}.json"
+                    )
+
+                    if os.path.exists(community_path):
+                        try:
+                            # Use cached JSON loading
+                            community_data = self._load_json_file(community_path)
+
+                            # Process presets from community folder
+                            community_presets = community_data.get('presets', [])
+                            logger.debug(f"Community folder {community_folder} has {len(community_presets)} presets")
+
+                            for preset in community_presets:
+                                try:
+                                    patch = Patch(
+                                        preset_name=preset.get('preset_name', ''),
+                                        category=preset.get('category', ''),
+                                        characters=preset.get('characters', []),
+                                        sendmidi_command=preset.get('sendmidi_command', ''),
+                                        cc_0=preset.get('cc_0'),
+                                        pgm=preset.get('pgm'),
+                                        source=community_folder
+                                    )
+                                    result.append(patch)
+                                    patch_count += 1
+                                    logger.debug(f"Added community patch: {patch.preset_name} ({patch.category})")
+                                except Exception as e:
+                                    preset_name = preset.get('preset_name', 'unknown')
+                                    logger.error(
+                                        f"Error creating Patch object for community preset {preset_name}: {str(e)}")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Invalid JSON in community file '{community_path}': {str(e)}")
+                        except Exception as e:
+                            logger.error(f"Error loading community file '{community_path}': {str(e)}")
+                    else:
+                        logger.warning(f"Community folder not found: {community_path}")
+
+            logger.info(f"Returning {patch_count} patches")
+            return result
+        except Exception as e:
+            logger.error(f"Error getting patches: {str(e)}")
+            return result
+
     def get_all_patches(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Patch]:
         """
         Get all patches from all devices or a specific device
@@ -394,15 +705,11 @@ class DeviceManager:
         # Use the optimized version of get_all_patches
         start_time = time.time()
         try:
-            # Call the optimized version with the necessary parameters
-            result = optimized_get_all_patches(
-                devices_folder=self.devices_folder,
-                devices=self.devices,
-                device_structure=self.device_structure,
+            # Call the integrated optimized version with the necessary parameters
+            result = self._optimized_get_all_patches(
                 device_name=device_name,
                 community_folder=community_folder,
-                manufacturer=manufacturer,
-                json_cache=self._json_cache
+                manufacturer=manufacturer
             )
 
             # Log performance metrics

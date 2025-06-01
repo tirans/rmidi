@@ -723,7 +723,7 @@ async def delete_collection(manufacturer: str, device: str, collection_name: str
 
 # Git operations
 @app.get("/git/sync")
-async def git_sync():
+async def git_sync(sync_enabled: bool = True):
     """
     Perform a git submodule sync and update for the midi-presets submodule
 
@@ -733,9 +733,17 @@ async def git_sync():
     3. If that fails, tries more aggressive approaches including complete removal and re-cloning
     4. Logs each step of the operation
 
+    Args:
+        sync_enabled: Whether to perform the sync operation (default: True)
+
     Returns:
         JSON response with status and message
     """
+    # Skip sync if disabled
+    if not sync_enabled:
+        logger.info("Sync is disabled, skipping git submodule sync")
+        return {"status": "skipped", "message": "Sync is disabled"}
+
     # Call the git_sync function from the git_operations module
     success, message, _ = git_sync_operation()
 

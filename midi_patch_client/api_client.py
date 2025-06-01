@@ -155,6 +155,20 @@ class CachedApiClient:
             logger.error(f"Error fetching devices for manufacturer {manufacturer}: {str(e)}")
             return []
 
+    async def get_devices(self, manufacturer: str, force_refresh: bool = False) -> List[str]:
+        """
+        Alias for get_devices_by_manufacturer for backward compatibility
+
+        Args:
+            manufacturer: Name of the manufacturer
+            force_refresh: If True, bypass cache and fetch fresh data from server
+
+        Returns:
+            List of device names
+        """
+        logger.info(f"Using get_devices alias for manufacturer {manufacturer}")
+        return await self.get_devices_by_manufacturer(manufacturer, force_refresh)
+
     async def get_device_info(self, manufacturer: str, force_refresh: bool = False) -> List[Dict]:
         """
         Fetch device info for a specific manufacturer from server with caching
@@ -285,18 +299,21 @@ class CachedApiClient:
             logger.error(f"Error fetching patches: {str(e)}")
             return []
 
-    async def run_git_sync(self) -> Tuple[bool, str]:
+    async def run_git_sync(self, sync_enabled: bool = True) -> Tuple[bool, str]:
         """
         Run git sync to update the midi-presets submodule by calling the server REST API
+
+        Args:
+            sync_enabled: Whether to perform the sync operation (default: True)
 
         Returns:
             Tuple of (success, message)
         """
         try:
-            logger.info("Calling server REST API for git sync...")
+            logger.info(f"Calling server REST API for git sync (sync_enabled={sync_enabled})...")
 
             async def fetch():
-                response = await self.client.get("/git/sync")
+                response = await self.client.get("/git/sync", params={"sync_enabled": sync_enabled})
                 response.raise_for_status()
                 return response.json()
 

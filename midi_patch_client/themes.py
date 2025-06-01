@@ -91,11 +91,11 @@ class ThemeManager:
 
     QListWidget::item:selected {
         background-color: #007AFF;
-        color: white;
+        color: white !important;
     }
 
-    QListWidget::item:hover {
-        background-color: #f5f5f5;
+    QListWidget::item:hover:!selected {
+        background-color: rgba(245, 245, 245, 120);
     }
 
     QTextEdit {
@@ -271,11 +271,11 @@ class ThemeManager:
 
     QListWidget::item:selected {
         background-color: #094771;
-        color: white;
+        color: white !important;
     }
 
-    QListWidget::item:hover {
-        background-color: #2a2d2e;
+    QListWidget::item:hover:!selected {
+        background-color: rgba(42, 45, 46, 120);
     }
 
     QTextEdit {

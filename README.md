@@ -24,6 +24,7 @@ R2MIDI is a PyQt6-based application that provides an intuitive interface for bro
 - **Debounced Controls**: Prevents rapid API calls during UI interactions
 - **Performance Monitoring**: Real-time CPU and memory usage tracking in debug mode
 - **Lazy Loading**: Efficient handling of large patch datasets
+- **Parallel Processing**: Multi-threaded device scanning and patch loading
 
 #### 🎨 User Interface
 - **Dark Mode**: Professional dark theme with full UI integration
@@ -31,6 +32,8 @@ R2MIDI is a PyQt6-based application that provides an intuitive interface for bro
 - **Search Functionality**: Real-time patch search with debouncing
 - **Favorites System**: Mark and filter favorite patches
 - **Keyboard Shortcuts**: Comprehensive keyboard navigation
+- **Category Colors**: Visual categorization with persistent color assignments
+- **Offline Mode**: Work without syncing to remote repositories
 
 #### ⚙️ Configuration
 - **Preferences Dialog**: Comprehensive settings management
@@ -55,9 +58,30 @@ R2MIDI is a PyQt6-based application that provides an intuitive interface for bro
 
 ## Installation
 
-Available on PyPI: https://pypi.org/project/r2midi or follow the instructions below.
+R2MIDI can be installed in multiple ways:
 
-### Requirements
+### Pre-built Executables
+
+Download the latest pre-built executable for your platform from the [GitHub Releases](https://github.com/tirans/r2midi/releases) page:
+
+- **Windows**: Download `r2midi-windows.exe`
+- **macOS**: Download `r2midi-macos`
+- **Linux**: Download `r2midi-linux`
+
+The executables are self-contained and don't require Python or any dependencies to be installed.
+
+### PyPI Installation
+
+Available on PyPI: https://pypi.org/project/r2midi
+
+```bash
+pip install r2midi
+r2midi
+```
+
+### Manual Installation
+
+#### Requirements
 
 - Python 3.8+
 - PyQt6
@@ -66,7 +90,7 @@ Available on PyPI: https://pypi.org/project/r2midi or follow the instructions be
 - [SendMIDI](https://github.com/gbevin/SendMIDI) command-line tool
 - MIDI devices connected to your computer
 
-### Installation Steps
+#### Installation Steps
 
 1. Clone the repository:
    ```bash
@@ -123,9 +147,12 @@ Configuration is stored in `~/.r2midi_config.json` with the following options:
     "enable_search": true,
     "enable_keyboard_shortcuts": true,
     "debounce_delay_ms": 300,
-    "max_patches_display": 1000
+    "max_patches_display": 1000,
+    "sync_enabled": true
 }
 ```
+
+The `sync_enabled` option controls whether the application syncs with remote repositories. Set to `false` to enable offline mode.
 
 ### Device Configuration
 
@@ -240,31 +267,33 @@ curl http://localhost:7777/git/sync
 ```
 r2midi/
 ├── midi_patch_client/
-│   ├── api_client_enhanced.py    # Enhanced API client with caching
-│   ├── config.py                 # Configuration management
-│   ├── models.py                 # Data models
-│   ├── performance.py            # Performance monitoring
-│   ├── shortcuts.py              # Keyboard shortcuts
-│   ├── themes.py                 # Theme management
+│   ├── api_client.py            # Enhanced API client with caching
+│   ├── config.py                # Configuration management
+│   ├── models.py                # Data models
+│   ├── performance.py           # Performance monitoring
+│   ├── shortcuts.py             # Keyboard shortcuts
+│   ├── themes.py                # Theme management
 │   └── ui/
-│       ├── device_panel_enhanced.py   # Device selection with debouncing
-│       ├── main_window.py            # Main application window
-│       ├── patch_panel_enhanced.py   # Patch display with search
-│       └── preferences_dialog.py     # Settings management
+│       ├── device_panel.py      # Device selection with debouncing and offline mode
+│       ├── main_window.py       # Main application window
+│       ├── patch_panel.py       # Patch display with search and persistent category colors
+│       ├── edit_dialog.py       # Edit dialog for manufacturers, devices, and presets
+│       └── preferences_dialog.py # Settings management
 ├── midi-presets/                # Git submodule containing device definitions
 │   └── devices/                 # Device definitions and presets
 ├── main.py                      # Main entry point and API server
-├── device_manager.py            # Handles device scanning and management
+├── device_manager.py            # Handles device scanning and management with parallel processing
 ├── git_operations.py            # Handles git submodule operations
-├── optimized_scan_devices.py    # Optimized parallel device scanning
 ├── midi_utils.py                # MIDI utility functions
 ├── models.py                    # Data models
 ├── ui_launcher.py               # Launches the GUI client
 ├── version.py                   # Contains the current version of the application
 ├── pre-commit                   # Git hook script to increment version on commit
+├── .github/
+│   └── workflows/               # GitHub Actions workflows for CI/CD and executable building
 └── tests/
-    ├── test_enhanced_functionality.py
-    └── test_comprehensive_features.py
+    ├── unit/                    # Unit tests
+    └── temp/                    # Temporary test files
 ```
 
 ### Key Components
@@ -334,8 +363,9 @@ python -m pytest tests/ --cov=midi_patch_client --cov-report=html
    - Check that your MIDI devices are connected and powered on
    - Some devices may require specific drivers
    - Verify MIDI port names in the device configuration
-   - The application now automatically validates and initializes the midi-presets submodule on startup
-   - If you still have issues, manually run the git sync operation via the API: `curl http://localhost:7777/git/sync`
+   - The application automatically validates and initializes the midi-presets submodule on startup
+   - If you're having connectivity issues, try enabling offline mode in the UI
+   - If you still have issues, manually run the git sync operation via the API: `curl http://localhost:7777/git/sync?sync_enabled=true`
 
 2. **UI client fails to start**
    - Check the logs in the `logs` directory for error messages
@@ -381,6 +411,8 @@ The version incrementing is handled by the GitHub Actions workflow defined in `.
 4. Commits and pushes the version changes back to the repository
 5. Creates a GitHub release with the new version
 6. Publishes the package to PyPI
+7. Builds executable binaries for Windows, macOS, and Linux using PyInstaller
+8. Uploads the executables to the GitHub release
 
 For example, if the current version is `0.1.0`, after a push to master it will be `0.1.1`.
 

@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, 
     QLabel, QTextEdit, QComboBox, QGroupBox, QLineEdit, QPushButton,
@@ -12,6 +12,10 @@ from ..config import get_config
 
 import json
 import os
+import logging
+
+# Configure logger
+logger = logging.getLogger('midi_patch_client.ui.patch_panel')
 
 
 class PatchPanel(QWidget):
@@ -28,11 +32,15 @@ class PatchPanel(QWidget):
         self.patches = []
         self.filtered_patches = []
         self.current_category = None
-        self.category_colors = {}
         self.search_text = ""
         self.show_favorites_only = False
         self.favorites = self._load_favorites()
         self.config = get_config()
+
+        # Load category colors early in the UI lifecycle
+        logger.info("Loading category colors during initialization")
+        self.category_colors = self._load_category_colors()
+        logger.info(f"Loaded {len(self.category_colors)} category colors")
 
         # Search debounce timer
         self.search_timer = QTimer()
@@ -182,44 +190,59 @@ class PatchPanel(QWidget):
 
     def set_patches(self, patches: List[Patch]):
         """Set the patches to display"""
+        logger.info(f"Setting {len(patches)} patches")
         self.patches = patches
 
         # Extract unique categories and assign colors
         categories = sorted(set(patch.category for patch in patches))
+        logger.info(f"Found {len(categories)} unique categories")
 
-        # Generate distinct colors for categories
-        self.category_colors = {}
+        # Check if we need to generate new colors
+        new_categories = []
+        for category in categories:
+            if category not in self.category_colors:
+                new_categories.append(category)
+                logger.info(f"New category found: '{category}'")
 
-        # Predefined color palette for better visual distinction
-        # Using a combination of varying hue, saturation, and value
-        predefined_colors = [
-            QColor(255, 153, 153),  # Light red
-            QColor(153, 204, 255),  # Light blue
-            QColor(153, 255, 153),  # Light green
-            QColor(255, 204, 153),  # Light orange
-            QColor(204, 153, 255),  # Light purple
-            QColor(255, 255, 153),  # Light yellow
-            QColor(153, 255, 204),  # Light teal
-            QColor(255, 153, 204),  # Light pink
-            QColor(204, 204, 153),  # Light olive
-            QColor(204, 153, 153),  # Light brown
-        ]
+        if new_categories:
+            logger.info(f"Generating colors for {len(new_categories)} new categories")
 
-        # If we have more categories than predefined colors, generate additional colors
-        if len(categories) > len(predefined_colors):
-            hue_step = 360 / (len(categories) - len(predefined_colors) or 1)
-            for i in range(len(predefined_colors), len(categories)):
-                # Create additional colors with varying saturation and value
-                hue = (i - len(predefined_colors)) * hue_step
-                saturation = 150 + (i % 3) * 40  # Vary saturation between 150-230
-                value = 200 + (i % 2) * 55       # Vary value between 200-255
-                predefined_colors.append(QColor.fromHsv(int(hue), saturation, value))
+            # Predefined color palette for better visual distinction
+            # Using a combination of varying hue, saturation, and value
+            predefined_colors = [
+                QColor(255, 153, 153),  # Light red
+                QColor(153, 204, 255),  # Light blue
+                QColor(153, 255, 153),  # Light green
+                QColor(255, 204, 153),  # Light orange
+                QColor(204, 153, 255),  # Light purple
+                QColor(255, 255, 153),  # Light yellow
+                QColor(153, 255, 204),  # Light teal
+                QColor(255, 153, 204),  # Light pink
+                QColor(204, 204, 153),  # Light olive
+                QColor(204, 153, 153),  # Light brown
+            ]
 
-        # Assign colors to categories
-        for i, category in enumerate(categories):
-            self.category_colors[category] = predefined_colors[i % len(predefined_colors)]
+            # If we have more new categories than predefined colors, generate additional colors
+            if len(new_categories) > len(predefined_colors):
+                hue_step = 360 / (len(new_categories) - len(predefined_colors) or 1)
+                for i in range(len(predefined_colors), len(new_categories)):
+                    # Create additional colors with varying saturation and value
+                    hue = (i - len(predefined_colors)) * hue_step
+                    saturation = 150 + (i % 3) * 40  # Vary saturation between 150-230
+                    value = 200 + (i % 2) * 55       # Vary value between 200-255
+                    predefined_colors.append(QColor.fromHsv(int(hue), saturation, value))
+
+            # Assign colors to new categories
+            for i, category in enumerate(new_categories):
+                color = predefined_colors[i % len(predefined_colors)]
+                self.category_colors[category] = color
+                logger.info(f"Assigned color RGB({color.red()},{color.green()},{color.blue()}) to category '{category}'")
+
+            # Save the updated category colors
+            self._save_category_colors()
 
         # Update category combo box with color indicators
+        logger.info("Updating category combo box")
         self.category_combo.clear()
         self.category_combo.addItem("All Categories", None)
 
@@ -229,14 +252,24 @@ class PatchPanel(QWidget):
             pixmap_size = 16
             from PyQt6.QtGui import QPixmap, QPainter
             pixmap = QPixmap(pixmap_size, pixmap_size)
-            pixmap.fill(self.category_colors[category])
+            color = self.category_colors.get(category)
+            if color:
+                pixmap.fill(color)
+                logger.debug(f"Added category '{category}' with color RGB({color.red()},{color.green()},{color.blue()})")
+            else:
+                # Fallback to a default color if for some reason we don't have a color for this category
+                pixmap.fill(QColor(200, 200, 200))
+                logger.warning(f"No color found for category '{category}', using default gray")
 
             # Add the category with its color icon
             self.category_combo.addItem(QIcon(pixmap), category, category)
 
         # Update the category legend
+        logger.info("Updating category legend")
         self._update_category_legend(categories)
 
+        # Update the display
+        logger.info("Updating display with patches")
         self.update_display()
 
     def filter_by_category(self, category: Optional[str]):
@@ -269,51 +302,71 @@ class PatchPanel(QWidget):
 
     def update_display(self):
         """Update the patch display based on current filters"""
+        logger.info("Updating patch display")
+
+        # Temporarily disable UI updates to improve performance
+        self.patch_list.setUpdatesEnabled(False)
         self.patch_list.clear()
+
+        # Log the current state for debugging
+        logger.debug(f"Current state: {len(self.patches)} total patches, category filter: '{self.current_category}', search text: '{self.search_text}', favorites only: {self.show_favorites_only}")
 
         # Apply filters
         self.filtered_patches = self.patches.copy()  # Make a copy to avoid modifying the original
+        logger.debug(f"Starting with {len(self.filtered_patches)} patches")
+
+        # Apply filters one by one to log the effect of each filter
+        filtered_patches = self.filtered_patches
 
         # Category filter
         if self.current_category:
-            self.filtered_patches = [p for p in self.filtered_patches if p.category == self.current_category]
+            filtered_patches = [p for p in filtered_patches if p.category == self.current_category]
+            logger.debug(f"After category filter: {len(filtered_patches)} patches remaining")
 
         # Search filter
         if self.search_text:
             search_lower = self.search_text.lower()
-            self.filtered_patches = [
-                p for p in self.filtered_patches
-                if search_lower in p.preset_name.lower()
-            ]
+            filtered_patches = [p for p in filtered_patches if search_lower in p.preset_name.lower()]
+            logger.debug(f"After search filter: {len(filtered_patches)} patches remaining")
 
         # Favorites filter
         if self.show_favorites_only:
-            self.filtered_patches = [
-                p for p in self.filtered_patches
-                if self._is_favorite(p)
-            ]
+            filtered_patches = [p for p in filtered_patches if self._is_favorite(p)]
+            logger.debug(f"After favorites filter: {len(filtered_patches)} patches remaining")
+
+        self.filtered_patches = filtered_patches
 
         # Update results count
         self.results_label.setText(f"{len(self.filtered_patches)} patches")
+
+        # Prepare all items at once before adding to the list
+        items_to_add = []
+
+        # Cache for category colors to avoid repeated lookups
+        color_cache = {}
 
         # Add patches to list widget
         for patch in self.filtered_patches:
             item = QListWidgetItem(self._get_patch_display_name(patch))
 
-            # Set background color based on category with increased opacity for better visibility
+            # Set background color based on category
             if patch.category in self.category_colors:
-                color = self.category_colors[patch.category]
-                # Make the color more visible by increasing its opacity
-                color.setAlpha(200)  # 0-255, where 255 is fully opaque
-                item.setBackground(QBrush(color))
-
-                # Set text color to ensure good contrast with background
-                # Use dark text for light backgrounds and light text for dark backgrounds
-                brightness = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000
-                if brightness > 128:
-                    item.setForeground(QBrush(QColor(0, 0, 0)))  # Black text for light backgrounds
+                # Use cached color if available
+                if patch.category in color_cache:
+                    color, text_color = color_cache[patch.category]
                 else:
-                    item.setForeground(QBrush(QColor(255, 255, 255)))  # White text for dark backgrounds
+                    color = self.category_colors[patch.category]
+                    color.setAlpha(255)  # Make fully opaque
+
+                    # Determine text color based on background brightness
+                    brightness = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000
+                    text_color = QColor(0, 0, 0) if brightness > 128 else QColor(255, 255, 255)
+
+                    # Cache the colors
+                    color_cache[patch.category] = (color, text_color)
+
+                item.setBackground(QBrush(color))
+                item.setForeground(QBrush(text_color))
 
             # Add star icon for favorites
             if self._is_favorite(patch):
@@ -322,7 +375,28 @@ class PatchPanel(QWidget):
             # Store the patch object with the item
             item.setData(Qt.ItemDataRole.UserRole, patch)
 
-            self.patch_list.addItem(item)
+            items_to_add.append(item)
+
+        # Add all items one by one with error handling
+        if items_to_add:
+            try:
+                for i, item in enumerate(items_to_add):
+                    try:
+                        self.patch_list.addItem(item)
+                    except Exception as e:
+                        logger.error(f"Error adding item {i} to patch list: {str(e)}")
+                        logger.error(f"Item type: {type(item)}, Item text: {item.text() if hasattr(item, 'text') else 'N/A'}")
+                        raise
+                logger.debug(f"Added {len(items_to_add)} items to patch list")
+            except Exception as e:
+                logger.error(f"Error loading patches: {str(e)}")
+                # Show error in the results label for user feedback
+                self.results_label.setText(f"Error loading patches: {str(e)}")
+
+        # Re-enable UI updates
+        self.patch_list.setUpdatesEnabled(True)
+
+        logger.info("Patch display updated successfully")
 
     def _get_patch_display_name(self, patch: Patch) -> str:
         """Get display name for a patch with category"""
@@ -445,8 +519,49 @@ class PatchPanel(QWidget):
         try:
             with open(favorites_file, 'w') as f:
                 json.dump(list(self.favorites), f)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error saving favorites: {str(e)}")
+
+    def _load_category_colors(self) -> Dict[str, QColor]:
+        """Load category colors from file"""
+        logger.info("Loading category colors from file")
+        colors_file = os.path.join(os.path.expanduser("~"), ".r2midi_category_colors.json")
+        if os.path.exists(colors_file):
+            try:
+                with open(colors_file, 'r') as f:
+                    color_data = json.load(f)
+
+                # Convert serialized color data back to QColor objects
+                colors = {}
+                for category, color_tuple in color_data.items():
+                    r, g, b, a = color_tuple
+                    color = QColor(r, g, b, a)
+                    colors[category] = color
+                    logger.info(f"Loaded color for category '{category}': RGB({r},{g},{b},{a})")
+                return colors
+            except Exception as e:
+                logger.error(f"Error loading category colors: {str(e)}")
+
+        logger.info("No saved category colors found, returning empty dictionary")
+        return {}
+
+    def _save_category_colors(self):
+        """Save category colors to file"""
+        logger.info(f"Saving {len(self.category_colors)} category colors to file")
+        colors_file = os.path.join(os.path.expanduser("~"), ".r2midi_category_colors.json")
+        try:
+            # Convert QColor objects to serializable format (RGBA tuples)
+            color_data = {}
+            for category, color in self.category_colors.items():
+                color_tuple = (color.red(), color.green(), color.blue(), color.alpha())
+                color_data[category] = color_tuple
+                logger.info(f"Saving color for category '{category}': RGB{color_tuple}")
+
+            with open(colors_file, 'w') as f:
+                json.dump(color_data, f)
+            logger.info("Category colors saved successfully")
+        except Exception as e:
+            logger.error(f"Error saving category colors: {str(e)}")
 
     def _update_category_legend(self, categories):
         """Update the category legend with color information"""

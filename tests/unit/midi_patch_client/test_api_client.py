@@ -432,7 +432,7 @@ class TestApiClient:
         assert "successfully" in message
 
         # Verify that the API was called correctly
-        mock_get.assert_called_once_with("/git/sync")
+        mock_get.assert_called_once_with("/git/sync", params={"sync_enabled": True})
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
@@ -451,7 +451,7 @@ class TestApiClient:
         assert "Error calling git sync REST API" in message
 
         # Verify that the API was called correctly
-        mock_get.assert_called_once_with("/git/sync")
+        mock_get.assert_called_once_with("/git/sync", params={"sync_enabled": True})
 
     def test_save_ui_state(self, api_client):
         """Test saving UI state"""

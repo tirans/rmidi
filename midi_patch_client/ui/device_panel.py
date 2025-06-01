@@ -126,11 +126,11 @@ class DevicePanel(QWidget):
         self.community_combo.setMinimumWidth(200)
         device_layout.addRow("Community Folder:", self.community_combo)
 
-        # Sync checkbox
-        self.sync_checkbox = QCheckBox("Sync on startup")
-        self.sync_checkbox.setChecked(True)
+        # Off-line mode checkbox
+        self.sync_checkbox = QCheckBox("Off-line mode")
+        self.sync_checkbox.setChecked(False)
         self.sync_checkbox.stateChanged.connect(self.on_sync_changed)
-        self.sync_checkbox.setToolTip("Run git submodule sync on startup")
+        self.sync_checkbox.setToolTip("Enable to work without syncing to the remote repository")
         device_layout.addRow("", self.sync_checkbox)
 
         main_layout.addWidget(device_box)
@@ -277,49 +277,55 @@ class DevicePanel(QWidget):
 
     def update_community_folders(self, folders: List[str]):
         """Update the community folder dropdown based on the selected device"""
-        if isinstance(self.current_device, str):
-            device_name = self.current_device
-        elif hasattr(self.current_device, 'name'):
-            device_name = self.current_device.name
-        else:
-            device_name = str(self.current_device)
-
-        logger.info(f"Updating community folders for device {device_name}: {folders}")
-
-        # Set flag to prevent triggering signals
-        self._updating_programmatically = True
-
         try:
-            # Update community folder combo box
-            self.community_combo.clear()
-            self.community_combo.addItem("Default", None)
-
-            for folder in folders:
-                logger.info(f"Adding community folder to combo box: {folder}")
-                self.community_combo.addItem(folder, folder)
-
-            # Select community folder
-            if not self.current_community_folder:
-                logger.info("No current community folder, selecting Default")
-                self.community_combo.setCurrentIndex(0)
+            if isinstance(self.current_device, str):
+                device_name = self.current_device
+            elif hasattr(self.current_device, 'name'):
+                device_name = self.current_device.name
             else:
-                # Try to select the previously selected folder
-                index = self.community_combo.findText(self.current_community_folder)
-                if index >= 0:
-                    logger.info(f"Setting community folder dropdown to index {index}: {self.current_community_folder}")
-                    self.community_combo.setCurrentIndex(index)
-                else:
-                    logger.warning(f"Community folder {self.current_community_folder} not found in dropdown, selecting Default")
-                    self.current_community_folder = None
+                device_name = str(self.current_device)
+
+            logger.info(f"Updating community folders for device {device_name}: {folders}")
+
+            # Set flag to prevent triggering signals
+            self._updating_programmatically = True
+
+            try:
+                # Update community folder combo box
+                self.community_combo.clear()
+                self.community_combo.addItem("Default", None)
+
+                for folder in folders:
+                    logger.info(f"Adding community folder to combo box: {folder}")
+                    self.community_combo.addItem(folder, folder)
+
+                # Select community folder
+                if not self.current_community_folder:
+                    logger.info("No current community folder, selecting Default")
                     self.community_combo.setCurrentIndex(0)
+                else:
+                    # Try to select the previously selected folder
+                    index = self.community_combo.findText(self.current_community_folder)
+                    if index >= 0:
+                        logger.info(f"Setting community folder dropdown to index {index}: {self.current_community_folder}")
+                        self.community_combo.setCurrentIndex(index)
+                    else:
+                        logger.warning(f"Community folder {self.current_community_folder} not found in dropdown, selecting Default")
+                        self.current_community_folder = None
+                        self.community_combo.setCurrentIndex(0)
 
-            # Ensure the dropdown is visible and enabled
-            self.community_combo.setVisible(True)
-            self.community_combo.setEnabled(True)
+                # Ensure the dropdown is visible and enabled
+                self.community_combo.setVisible(True)
+                self.community_combo.setEnabled(True)
 
-            logger.info(f"Final community combo state: count={self.community_combo.count()}, current={self.community_combo.currentText()}")
-        finally:
-            self._updating_programmatically = False
+                logger.info(f"Final community combo state: count={self.community_combo.count()}, current={self.community_combo.currentText()}")
+            except Exception as e:
+                logger.error(f"Error updating community folder combo box: {str(e)}")
+            finally:
+                self._updating_programmatically = False
+        except Exception as e:
+            logger.error(f"Error in update_community_folders: {str(e)}")
+            # Continue execution to prevent UI crash
 
     def set_devices(self, devices: List[Device]):
         """Set the available devices"""
@@ -401,56 +407,85 @@ class DevicePanel(QWidget):
 
     def update_midi_channels(self):
         """Update MIDI channel based on selected device"""
-        # Check if current_device is a Device object
-        if self.current_device and hasattr(self.current_device, 'midi_channel') and self.current_device.midi_channel:
-            # Use the OUT channel if available
-            channel = self.current_device.midi_channel.get("OUT", 1)
-            self.channel_spin.setValue(channel)
+        try:
+            # Check if current_device is a string, which would indicate an error
+            if isinstance(self.current_device, str):
+                logger.warning(f"Current device is a string ({self.current_device}), not a Device object. Cannot update MIDI channels.")
+                return
+
+            # Check if current_device is a Device object
+            if self.current_device and hasattr(self.current_device, 'midi_channel') and self.current_device.midi_channel:
+                # Use the OUT channel if available
+                channel = self.current_device.midi_channel.get("OUT", 1)
+                self.channel_spin.setValue(channel)
+        except Exception as e:
+            logger.error(f"Error in update_midi_channels: {str(e)}")
+            # Continue execution to prevent UI crash
 
     def update_midi_ports_from_device(self):
         """Update MIDI ports based on selected device"""
-        if not self.current_device:
-            logger.info("No current device selected, cannot update MIDI ports")
-            return
-        if not hasattr(self.current_device, 'midi_port') or not self.current_device.midi_port:
-            logger.info(f"Device {self.current_device.name if hasattr(self.current_device, 'name') else self.current_device} has no MIDI ports defined")
-            return
+        try:
+            if not self.current_device:
+                logger.info("No current device selected, cannot update MIDI ports")
+                return
 
-        device_name = self.current_device.name if hasattr(self.current_device, 'name') else self.current_device
-        logger.info(f"Updating MIDI ports from device: {device_name}, ports: {self.current_device.midi_port}")
+            # Check if current_device is a string, which would indicate an error
+            if isinstance(self.current_device, str):
+                logger.warning(f"Current device is a string ({self.current_device}), not a Device object. Cannot update MIDI ports.")
+                return
 
-        # Set MIDI in port if available
-        in_port = self.current_device.midi_port.get("IN")
-        if in_port and self.midi_in_combo.count() > 0:
-            logger.info(f"Setting MIDI in port to: {in_port}")
-            index = self.midi_in_combo.findText(in_port)
-            if index >= 0:
-                logger.info(f"Found MIDI in port at index {index}")
-                self.midi_in_combo.setCurrentIndex(index)
-            else:
-                logger.info(f"MIDI in port {in_port} not found in combo box")
+            if not hasattr(self.current_device, 'midi_port') or not self.current_device.midi_port:
+                logger.info(f"Device {self.current_device.name if hasattr(self.current_device, 'name') else self.current_device} has no MIDI ports defined")
+                return
 
-        # Set MIDI out port if available
-        out_port = self.current_device.midi_port.get("OUT")
-        if out_port and self.midi_out_combo.count() > 0:
-            logger.info(f"Setting MIDI out port to: {out_port}")
-            index = self.midi_out_combo.findText(out_port)
-            if index >= 0:
-                logger.info(f"Found MIDI out port at index {index}")
-                self.midi_out_combo.setCurrentIndex(index)
-            else:
-                logger.info(f"MIDI out port {out_port} not found in combo box")
+            device_name = self.current_device.name if hasattr(self.current_device, 'name') else str(self.current_device)
+            logger.info(f"Updating MIDI ports from device: {device_name}, ports: {self.current_device.midi_port}")
 
-        # Set sequencer port if available (use OUT port by default)
-        sequencer_port = self.current_device.midi_port.get("SEQUENCER", out_port)
-        if sequencer_port and self.sequencer_combo.count() > 0:
-            logger.info(f"Setting sequencer port to: {sequencer_port}")
-            index = self.sequencer_combo.findText(sequencer_port)
-            if index >= 0:
-                logger.info(f"Found sequencer port at index {index}")
-                self.sequencer_combo.setCurrentIndex(index)
-            else:
-                logger.info(f"Sequencer port {sequencer_port} not found in combo box")
+            # Set MIDI in port if available
+            try:
+                in_port = self.current_device.midi_port.get("IN")
+                if in_port and self.midi_in_combo.count() > 0:
+                    logger.info(f"Setting MIDI in port to: {in_port}")
+                    index = self.midi_in_combo.findText(in_port)
+                    if index >= 0:
+                        logger.info(f"Found MIDI in port at index {index}")
+                        self.midi_in_combo.setCurrentIndex(index)
+                    else:
+                        logger.info(f"MIDI in port {in_port} not found in combo box")
+            except Exception as e:
+                logger.error(f"Error setting MIDI in port: {str(e)}")
+
+            # Set MIDI out port if available
+            try:
+                out_port = self.current_device.midi_port.get("OUT")
+                if out_port and self.midi_out_combo.count() > 0:
+                    logger.info(f"Setting MIDI out port to: {out_port}")
+                    index = self.midi_out_combo.findText(out_port)
+                    if index >= 0:
+                        logger.info(f"Found MIDI out port at index {index}")
+                        self.midi_out_combo.setCurrentIndex(index)
+                    else:
+                        logger.info(f"MIDI out port {out_port} not found in combo box")
+            except Exception as e:
+                logger.error(f"Error setting MIDI out port: {str(e)}")
+
+            # Set sequencer port if available (use OUT port by default)
+            try:
+                out_port = self.current_device.midi_port.get("OUT")
+                sequencer_port = self.current_device.midi_port.get("SEQUENCER", out_port)
+                if sequencer_port and self.sequencer_combo.count() > 0:
+                    logger.info(f"Setting sequencer port to: {sequencer_port}")
+                    index = self.sequencer_combo.findText(sequencer_port)
+                    if index >= 0:
+                        logger.info(f"Found sequencer port at index {index}")
+                        self.sequencer_combo.setCurrentIndex(index)
+                    else:
+                        logger.info(f"Sequencer port {sequencer_port} not found in combo box")
+            except Exception as e:
+                logger.error(f"Error setting sequencer port: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error in update_midi_ports_from_device: {str(e)}")
+            # Continue execution to prevent UI crash
 
     def get_selected_manufacturer(self) -> Optional[str]:
         """Get the name of the selected manufacturer"""
@@ -553,17 +588,23 @@ class DevicePanel(QWidget):
             if state.midi_channel:
                 self.channel_spin.setValue(state.midi_channel)
 
-            # Set sync checkbox
-            self.sync_checkbox.setChecked(state.sync_enabled)
+            # Set sync checkbox (inverted logic: sync_enabled=True means offline_mode=False)
+            self.sync_checkbox.setChecked(not state.sync_enabled)
 
             self._updating_programmatically = False
 
             # Explicitly update MIDI ports from device if we have a Device object
-            if hasattr(self.current_device, 'midi_port') and self.current_device.midi_port:
-                logger.info("Explicitly updating MIDI ports from device after loading UI state")
-                self.update_midi_ports_from_device()
-            else:
-                logger.info("Cannot update MIDI ports from device (no Device object or no midi_port attribute)")
+            try:
+                if isinstance(self.current_device, str):
+                    logger.warning(f"Current device is a string ({self.current_device}), not a Device object. Cannot update MIDI ports.")
+                elif hasattr(self.current_device, 'midi_port') and self.current_device.midi_port:
+                    logger.info("Explicitly updating MIDI ports from device after loading UI state")
+                    self.update_midi_ports_from_device()
+                else:
+                    logger.info("Cannot update MIDI ports from device (no Device object or no midi_port attribute)")
+            except Exception as e:
+                logger.error(f"Error checking device for MIDI ports: {str(e)}")
+                # Continue execution to prevent UI crash
 
                 # If we have MIDI port information in the UI state, set it directly
                 if state.midi_in_port and self.midi_in_combo.count() > 0:
@@ -665,85 +706,117 @@ class DevicePanel(QWidget):
 
     def on_device_changed(self, device_name: str):
         """Handle device selection change"""
-        if not device_name or self._updating_programmatically:
-            return
+        try:
+            if not device_name or self._updating_programmatically:
+                return
 
-        self.current_device = device_name
-        logger.info(f"Device changed to: {device_name}")
+            self.current_device = device_name
+            logger.info(f"Device changed to: {device_name}")
 
-        # Find the selected device
-        device_found = False
-        for device in self.devices:
-            if device.name == device_name:
-                # Set current_device to the Device object
-                self.current_device = device
-                device_found = True
-                logger.info(f"Found exact match for device: {device_name}")
+            # Find the selected device
+            device_found = False
+            try:
+                for device in self.devices:
+                    if device.name == device_name:
+                        # Set current_device to the Device object
+                        self.current_device = device
+                        device_found = True
+                        logger.info(f"Found exact match for device: {device_name}")
 
-                # Update MIDI channels and ports
-                self.update_midi_channels()
-                self.update_midi_ports_from_device()
+                        # Update MIDI channels and ports
+                        self.update_midi_channels()
+                        self.update_midi_ports_from_device()
 
-                # Update community folders
-                if self.api_client and hasattr(device, 'community_folders') and device.community_folders:
-                    logger.info(f"Updating community folders for device {device_name}: {device.community_folders}")
-                    self.update_community_folders(device.community_folders)
-                else:
-                    logger.info(f"No community folders found for device {device_name} in device object")
-                    # Get community folders from the server
-                    if self.api_client:
-                        def on_folders_loaded(folders):
-                            if folders:
-                                logger.info(f"Async loaded {len(folders)} community folders")
-                                QTimer.singleShot(0, lambda: self.update_community_folders(folders))
-                        self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device_name}...")
-                break
+                        # Update community folders
+                        try:
+                            if self.api_client and hasattr(device, 'community_folders') and device.community_folders:
+                                logger.info(f"Updating community folders for device {device_name}: {device.community_folders}")
+                                self.update_community_folders(device.community_folders)
+                            else:
+                                logger.info(f"No community folders found for device {device_name} in device object")
+                                # Get community folders from the server
+                                if self.api_client:
+                                    def on_folders_loaded(folders):
+                                        try:
+                                            if folders:
+                                                logger.info(f"Async loaded {len(folders)} community folders")
+                                                QTimer.singleShot(0, lambda: self.update_community_folders(folders))
+                                        except Exception as e:
+                                            logger.error(f"Error in on_folders_loaded callback: {str(e)}")
+                                    self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device_name}...")
+                        except Exception as e:
+                            logger.error(f"Error updating community folders: {str(e)}")
+                        break
+            except Exception as e:
+                logger.error(f"Error searching for exact device match: {str(e)}")
 
-        if not device_found:
-            logger.warning(f"Device not found in devices list: {device_name}")
-            # Try to find a device with a similar name
-            for device in self.devices:
-                if device_name.lower() in device.name.lower() or device.name.lower() in device_name.lower():
-                    logger.info(f"Found similar device: {device.name}")
-                    # Set current_device to the Device object
-                    self.current_device = device
-                    device_found = True
-
-                    # Update MIDI channels and ports
-                    self.update_midi_channels()
-                    self.update_midi_ports_from_device()
-
-                    # Update community folders
-                    if self.api_client and hasattr(device, 'community_folders') and device.community_folders:
-                        logger.info(f"Updating community folders for similar device {device.name}: {device.community_folders}")
-                        self.update_community_folders(device.community_folders)
-                    else:
-                        logger.info(f"No community folders found for similar device {device.name} in device object")
-                        # Get community folders from the server
-                        if self.api_client:
-                            def on_folders_loaded(folders):
-                                if folders:
-                                    logger.info(f"Async loaded {len(folders)} community folders")
-                                    QTimer.singleShot(0, lambda: self.update_community_folders(folders))
-                            self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device.name}...")
-                    break
-
-            # If still not found, keep the string value for filtering patches
             if not device_found:
-                logger.info(f"No matching device found, using device name as string: {device_name}")
-                # Get community folders for this device if available
-                if self.api_client:
-                    logger.info(f"Getting community folders for device {device_name} from server")
-                    def on_folders_loaded(folders):
-                        if folders:
-                            logger.info(f"Async loaded {len(folders)} community folders")
-                            QTimer.singleShot(0, lambda: self.update_community_folders(folders))
-                    self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device_name}...")
+                logger.warning(f"Device not found in devices list: {device_name}")
+                # Try to find a device with a similar name
+                try:
+                    for device in self.devices:
+                        try:
+                            if device_name.lower() in device.name.lower() or device.name.lower() in device_name.lower():
+                                logger.info(f"Found similar device: {device.name}")
+                                # Set current_device to the Device object
+                                self.current_device = device
+                                device_found = True
 
-        self.device_changed.emit(device_name)
+                                # Update MIDI channels and ports
+                                self.update_midi_channels()
+                                self.update_midi_ports_from_device()
 
-        # Save UI state
-        self.save_ui_state()
+                                # Update community folders
+                                try:
+                                    if self.api_client and hasattr(device, 'community_folders') and device.community_folders:
+                                        logger.info(f"Updating community folders for similar device {device.name}: {device.community_folders}")
+                                        self.update_community_folders(device.community_folders)
+                                    else:
+                                        logger.info(f"No community folders found for similar device {device.name} in device object")
+                                        # Get community folders from the server
+                                        if self.api_client:
+                                            def on_folders_loaded(folders):
+                                                try:
+                                                    if folders:
+                                                        logger.info(f"Async loaded {len(folders)} community folders")
+                                                        QTimer.singleShot(0, lambda: self.update_community_folders(folders))
+                                                except Exception as e:
+                                                    logger.error(f"Error in on_folders_loaded callback: {str(e)}")
+                                            self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device.name}...")
+                                except Exception as e:
+                                    logger.error(f"Error updating community folders for similar device: {str(e)}")
+                                break
+                        except Exception as e:
+                            logger.error(f"Error checking similar device: {str(e)}")
+                            continue
+                except Exception as e:
+                    logger.error(f"Error searching for similar device: {str(e)}")
+
+                # If still not found, keep the string value for filtering patches
+                if not device_found:
+                    logger.info(f"No matching device found, using device name as string: {device_name}")
+                    # Get community folders for this device if available
+                    try:
+                        if self.api_client:
+                            logger.info(f"Getting community folders for device {device_name} from server")
+                            def on_folders_loaded(folders):
+                                try:
+                                    if folders:
+                                        logger.info(f"Async loaded {len(folders)} community folders")
+                                        QTimer.singleShot(0, lambda: self.update_community_folders(folders))
+                                except Exception as e:
+                                    logger.error(f"Error in on_folders_loaded callback: {str(e)}")
+                            self.run_async(self._get_community_folders(device_name), callback=on_folders_loaded, loading_message=f"Loading community folders for {device_name}...")
+                    except Exception as e:
+                        logger.error(f"Error getting community folders from server: {str(e)}")
+
+            self.device_changed.emit(device_name)
+
+            # Save UI state
+            self.save_ui_state()
+        except Exception as e:
+            logger.error(f"Error in on_device_changed: {str(e)}")
+            # Continue execution to prevent UI crash
 
     async def _get_community_folders(self, device_name: str):
         """Get community folders for a device asynchronously"""
@@ -779,10 +852,12 @@ class DevicePanel(QWidget):
 
     def on_sync_changed(self, state: int):
         """Handle sync checkbox state change"""
-        enabled = state > 0
-        logger.info(f"Sync changed to: {enabled}")
+        offline_mode = state > 0
+        # Invert the logic: sync is enabled when offline mode is disabled
+        sync_enabled = not offline_mode
+        logger.info(f"Off-line mode changed to: {offline_mode}, sync enabled: {sync_enabled}")
 
-        self.sync_changed.emit(enabled)
+        self.sync_changed.emit(sync_enabled)
 
         # Save UI state
         self.save_ui_state()

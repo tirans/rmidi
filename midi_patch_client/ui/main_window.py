@@ -101,6 +101,7 @@ class AsyncWorker(QThread):
         self.loading_message = loading_message
         self.result = None
         self.error = None
+        self.future = None
 
         # Connect signals to UI update methods if main_window is provided
         if main_window:
@@ -126,54 +127,44 @@ class AsyncWorker(QThread):
             if main_window and hasattr(main_window, '_async_loop'):
                 loop = main_window._async_loop
                 try:
-                    # Create a new event loop for this thread
-                    thread_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(thread_loop)
+                    # Run the coroutine directly in the main async loop
+                    # This avoids creating a new event loop for each worker
+                    self.future = asyncio.run_coroutine_threadsafe(self.coro, loop)
 
-                    # Create a wrapper coroutine that handles loading signals
-                    async def wrapped_coro():
-                        try:
-                            # Run the actual coroutine in the main event loop
-                            future = asyncio.run_coroutine_threadsafe(self.coro, loop)
-                            return await asyncio.wrap_future(future)
-                        except Exception as e:
-                            logger.error(f"Error in wrapped coroutine: {str(e)}")
-                            raise
+                    # Wait for the future to complete with a timeout
+                    # This prevents blocking indefinitely if the coroutine hangs
+                    try:
+                        self.result = self.future.result(timeout=60.0)  # 60 second timeout
+                        self.result_ready.emit(self.result)
+                    except concurrent.futures.TimeoutError:
+                        logger.error("Async operation timed out after 60 seconds")
+                        self.error = "Operation timed out after 60 seconds"
+                        self.error_occurred.emit(self.error)
+                        # Cancel the future to prevent it from continuing to run
+                        self.future.cancel()
 
-                    # Run the wrapper coroutine in this thread's event loop
-                    self.result = thread_loop.run_until_complete(wrapped_coro())
-                    # Use the signal to safely communicate the result back to the main thread
-                    self.result_ready.emit(self.result)
                 except asyncio.CancelledError:
                     logger.warning("Async operation was cancelled")
                     self.error = "Operation was cancelled"
                     self.error_occurred.emit(self.error)
-                except asyncio.TimeoutError:
-                    logger.warning("Async operation timed out")
-                    self.error = "Operation timed out"
-                    self.error_occurred.emit(self.error)
                 except Exception as e:
-                    logger.error(f"Error in async worker with main loop: {str(e)}")
+                    logger.error(f"Error in async worker: {str(e)}")
                     self.error = str(e)
                     self.error_occurred.emit(self.error)
-                finally:
-                    thread_loop.close()
             else:
                 # Fallback to creating a new event loop if main loop not available
                 # This should be avoided if possible as it can lead to event loop conflicts
-                logger.warning("Creating new event loop - this may cause conflicts")
+                logger.warning("Main async loop not available - using fallback method")
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     self.result = loop.run_until_complete(self.coro)
-                    # Use the signal to safely communicate the result back to the main thread
                     self.result_ready.emit(self.result)
                 except Exception as e:
                     logger.error(f"Error in async worker fallback: {str(e)}")
                     self.error = str(e)
                     self.error_occurred.emit(self.error)
                 finally:
-                    # Clean up the loop properly
                     loop.close()
         except Exception as e:
             logger.error(f"Error in async worker: {str(e)}")
@@ -212,6 +203,9 @@ class MainWindow(QMainWindow):
         self.server_available = False
         self.server_check_retries = 0
         self.max_server_check_retries = self.config.server_check_retries
+
+        # Flag to track if a refresh operation is in progress
+        self._refresh_in_progress = False
 
         # List to keep references to active worker threads
         self._active_workers = []
@@ -383,8 +377,8 @@ class MainWindow(QMainWindow):
         if self.config.debug_mode:
             logging.getLogger().setLevel(getattr(logging, self.config.log_level))
 
-        # Force light mode as per requirements
-        self.config.dark_mode = False
+        # Allow user to choose theme
+        # self.config.dark_mode = False  # Commented out to allow user preference
 
         # Apply theme
         app = QApplication.instance()
@@ -402,7 +396,7 @@ class MainWindow(QMainWindow):
     def initUI(self):
         """Initialize the UI components"""
         # Set window properties
-        self.setWindowTitle("MIDI Patch Selection")
+        self.setWindowTitle("r2midi")
         self.setMinimumSize(800, 600)
 
         # Create central widget and layout
@@ -575,11 +569,56 @@ class MainWindow(QMainWindow):
 
     def refresh_all_data(self):
         """Refresh all data from server"""
+        # Check if a refresh operation is already in progress
+        if self._refresh_in_progress:
+            logger.info("Refresh operation already in progress, ignoring request")
+            self.status_bar.showMessage("Refresh already in progress, please wait...", 3000)
+            return
+
         logger.info("Refreshing all data...")
+
+        # Set the flag to indicate a refresh operation is in progress
+        self._refresh_in_progress = True
+
+        # Disable the refresh button to prevent multiple clicks
+        if hasattr(self, 'refresh_button'):
+            self.refresh_button.setEnabled(False)
+
         # Clear cache
         self.api_client.clear_cache()
-        # Reload data
-        self.load_data()
+
+        # Define a callback to reset the flag when the operation is complete
+        def on_refresh_complete(*args):
+            logger.info("Refresh operation completed")
+            self._refresh_in_progress = False
+            # Re-enable the refresh button
+            if hasattr(self, 'refresh_button'):
+                self.refresh_button.setEnabled(True)
+
+        def on_refresh_error(error):
+            logger.error(f"Error during refresh: {error}")
+            self._refresh_in_progress = False
+            # Re-enable the refresh button
+            if hasattr(self, 'refresh_button'):
+                self.refresh_button.setEnabled(True)
+            self.status_bar.showMessage(f"Refresh failed: {error}", 5000)
+
+        # Reload data with callbacks
+        try:
+            # Use run_async_task directly with the _load_data_async coroutine
+            self.run_async_task(
+                self._load_data_async(),
+                callback=on_refresh_complete,
+                error_callback=on_refresh_error,
+                loading_message="Refreshing data from server..."
+            )
+        except Exception as e:
+            logger.error(f"Error starting refresh: {str(e)}")
+            self._refresh_in_progress = False
+            # Re-enable the refresh button
+            if hasattr(self, 'refresh_button'):
+                self.refresh_button.setEnabled(True)
+            self.status_bar.showMessage(f"Refresh failed: {str(e)}", 5000)
 
     def show_preferences(self):
         """Show preferences dialog"""
@@ -720,11 +759,8 @@ class MainWindow(QMainWindow):
                 if manufacturer:
                     logger.info(f"Triggering device load for manufacturer: {manufacturer}")
                     # Trigger manufacturer changed to load devices
-                    self.device_panel.on_manufacturer_changed(manufacturer)
-
-                    # Wait a moment for devices to load
-                    await asyncio.sleep(0.5)
-                    logger.info("Waited for devices to load")
+                    # Use a proper async approach instead of sleep
+                    await self.load_devices_for_manufacturer(manufacturer)
 
                 # Load UI state after manufacturers and devices are loaded
                 logger.info("Loading UI state after manufacturers and devices...")
@@ -839,7 +875,8 @@ class MainWindow(QMainWindow):
                 logger.info("Running git sync...")
                 self.status_bar.showMessage("Running git sync...")
 
-                success, message = await self.api_client.run_git_sync()
+                # Pass the sync_enabled parameter to the API client
+                success, message = await self.api_client.run_git_sync(sync_enabled=self.sync_enabled)
 
                 # Change loading message to "loaded" after git sync completes
                 if success:
@@ -862,161 +899,22 @@ class MainWindow(QMainWindow):
     def on_git_remote_sync_button_clicked(self):
         """Handle Devices Remote GitHub Sync button click"""
         try:
-            # Log at ERROR level to ensure it's captured, and use a distinctive message
-            logger.error("SYNC BUTTON PRESSED: Devices Remote GitHub Sync button clicked")
-            # Force flush all handlers to ensure the log is written immediately
-            for handler in logging.getLogger().handlers:
-                handler.flush()
+            # Check if sync is enabled
+            if not self.sync_enabled:
+                logger.info("Sync is disabled, skipping git remote sync")
+                QMessageBox.information(self, "Sync Disabled", "Sync is disabled. Please disable off-line mode to use this feature.")
+                return
 
-            # Create a simple worker thread instead of using the async framework
-            class GitSyncWorker(QThread):
-                finished = pyqtSignal(bool, str)
-
-                def run(self):
-                    import os
-                    import subprocess
-                    import traceback
-
-                    # Log that we're in the worker thread
-                    logger.error("GIT SYNC WORKER: Starting in thread")
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
-
-                    # Get the current directory to return to it later
-                    current_dir = os.getcwd()
-                    success = False
-                    message = ""
-
-                    try:
-                        # Treat midi-presets as a submodule
-                        logger.error("GIT SYNC WORKER: Syncing midi-presets submodule")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-
-                        # Step 1: Sync the submodule
-                        logger.error("GIT SYNC WORKER: Running git submodule sync")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-
-                        sync_result = subprocess.run(
-                            ["git", "submodule", "sync"],
-                            capture_output=True,
-                            text=True
-                        )
-
-                        if sync_result.returncode != 0:
-                            message = f"Git submodule sync failed: {sync_result.stderr}"
-                            logger.error(f"GIT SYNC WORKER: {message}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-                            self.finished.emit(False, message)
-                            return
-
-                        logger.error(f"GIT SYNC WORKER: Git submodule sync output: {sync_result.stdout}")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-
-                        # Step 2: Update the submodule
-                        logger.error("GIT SYNC WORKER: Running git submodule update --init --recursive")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-
-                        update_result = subprocess.run(
-                            ["git", "submodule", "update", "--init", "--recursive"],
-                            capture_output=True,
-                            text=True
-                        )
-
-                        if update_result.returncode != 0:
-                            # If normal update fails, try with force
-                            logger.error(f"GIT SYNC WORKER: Normal submodule update failed: {update_result.stderr}")
-                            logger.error("GIT SYNC WORKER: Trying with force flag")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-
-                            # Reset the submodule state
-                            reset_result = subprocess.run(
-                                ["git", "submodule", "deinit", "-f", "--", "midi-presets"],
-                                capture_output=True,
-                                text=True
-                            )
-
-                            if reset_result.returncode != 0:
-                                message = f"Git submodule deinit failed: {reset_result.stderr}"
-                                logger.error(f"GIT SYNC WORKER: {message}")
-                                for handler in logging.getLogger().handlers:
-                                    handler.flush()
-                                self.finished.emit(False, message)
-                                return
-
-                            logger.error(f"GIT SYNC WORKER: Git submodule deinit output: {reset_result.stdout}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-
-                            # Re-initialize and update with force
-                            force_update_result = subprocess.run(
-                                ["git", "submodule", "update", "--init", "--recursive", "--force"],
-                                capture_output=True,
-                                text=True
-                            )
-
-                            if force_update_result.returncode != 0:
-                                message = f"Git submodule force update failed: {force_update_result.stderr}"
-                                logger.error(f"GIT SYNC WORKER: {message}")
-                                for handler in logging.getLogger().handlers:
-                                    handler.flush()
-                                self.finished.emit(False, message)
-                                return
-
-                            logger.error(f"GIT SYNC WORKER: Git submodule force update output: {force_update_result.stdout}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-                        else:
-                            logger.error(f"GIT SYNC WORKER: Git submodule update output: {update_result.stdout}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-
-                        # Success
-                        message = "Successfully synced midi-presets submodule"
-                        logger.error(f"GIT SYNC WORKER: {message}")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-                        success = True
-
-                    except Exception as e:
-                        message = f"Error during git sync: {str(e)}"
-                        logger.error(f"GIT SYNC WORKER: {message}")
-                        logger.error(f"GIT SYNC WORKER: Exception type: {type(e).__name__}")
-                        logger.error(f"GIT SYNC WORKER: Traceback: {traceback.format_exc()}")
-                        for handler in logging.getLogger().handlers:
-                            handler.flush()
-                        success = False
-                    finally:
-                        # Return to original directory
-                        try:
-                            os.chdir(current_dir)
-                            logger.error(f"GIT SYNC WORKER: Returned to directory {current_dir}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-                        except Exception as e:
-                            logger.error(f"GIT SYNC WORKER: Error returning to original directory: {str(e)}")
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-
-                        # Signal completion
-                        self.finished.emit(success, message)
+            # Log at INFO level to ensure it's captured
+            logger.info("SYNC BUTTON PRESSED: Devices Remote GitHub Sync button clicked")
 
             # Start loading indicator
             self._start_loading("Running devices remote GitHub sync...")
 
-            # Create and start the worker thread
-            worker = GitSyncWorker()
-
-            # Connect signals
-            def on_finished(success, message):
-                logger.error(f"GIT SYNC WORKER FINISHED: success={success}, message={message}")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
+            # Use the API client's run_git_remote_sync method instead of direct Git operations
+            def on_sync_complete(result):
+                success, message = result
+                logger.info(f"Git remote sync completed: success={success}, message={message}")
 
                 # Change loading message to "loaded" if successful
                 if success:
@@ -1033,26 +931,16 @@ class MainWindow(QMainWindow):
                         QMessageBox.warning(self, "Warning", message)
                 except Exception as dialog_error:
                     logger.error(f"Failed to show dialog: {str(dialog_error)}")
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
 
                 # Stop loading indicator after a short delay to show "Loaded" message
                 QTimer.singleShot(500, self._stop_loading)
 
-            worker.finished.connect(on_finished)
-
-            # Keep a reference to the worker to prevent garbage collection
-            self._git_sync_worker = worker
-
-            # Start the worker
-            logger.error("SYNC BUTTON: Starting worker thread")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            worker.start()
-
-            logger.error("SYNC BUTTON: Worker thread started")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
+            # Run the API client's run_git_remote_sync method asynchronously
+            self.run_async_task(
+                self.api_client.run_git_remote_sync(),
+                callback=on_sync_complete,
+                loading_message="Running devices remote GitHub sync..."
+            )
 
         except Exception as e:
             # Log any exceptions that occur
@@ -1060,25 +948,18 @@ class MainWindow(QMainWindow):
             logger.error(error_msg)
             logger.error(f"Exception type: {type(e).__name__}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            # Force flush all handlers to ensure the log is written immediately
-            for handler in logging.getLogger().handlers:
-                handler.flush()
+
             # Show an error message to the user
             try:
                 QMessageBox.critical(self, "Error", error_msg)
             except Exception as dialog_error:
                 logger.error(f"Failed to show error dialog: {str(dialog_error)}")
-                # Force flush all handlers to ensure the log is written immediately
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
 
             # Stop loading indicator if it was started
             try:
                 self._stop_loading()
             except Exception as stop_error:
                 logger.error(f"Failed to stop loading indicator: {str(stop_error)}")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
 
     # The async version of run_git_remote_sync has been replaced by a direct QThread implementation
     # in the on_git_remote_sync_button_clicked method
@@ -1111,6 +992,37 @@ class MainWindow(QMainWindow):
             logger.error(f"Error checking server availability: {str(e)}")
             self.status_bar.showMessage(f"Error checking server availability: {str(e)}")
             return False
+
+    async def load_devices_for_manufacturer(self, manufacturer: str):
+        """
+        Load devices for a specific manufacturer asynchronously
+
+        This replaces the sleep workaround with a proper async implementation
+        that waits for devices to be loaded before proceeding.
+
+        Args:
+            manufacturer: The manufacturer to load devices for
+        """
+        try:
+            logger.info(f"Loading devices for manufacturer: {manufacturer}")
+
+            # Trigger the manufacturer changed event to load devices
+            self.device_panel.on_manufacturer_changed(manufacturer)
+
+            # Get the devices for this manufacturer
+            devices = await self.api_client.get_devices(manufacturer)
+
+            if devices:
+                logger.info(f"Loaded {len(devices)} devices for {manufacturer}")
+            else:
+                logger.warning(f"No devices found for manufacturer: {manufacturer}")
+
+            # Return the devices in case the caller needs them
+            return devices
+
+        except Exception as e:
+            logger.error(f"Error loading devices for manufacturer {manufacturer}: {str(e)}")
+            return []
 
     def wait_for_server(self):
         """
@@ -1159,7 +1071,18 @@ class MainWindow(QMainWindow):
     def load_data(self):
         """Load data from the server"""
         logger.info("Loading data from the server")
-        self.run_async_task(self._load_data_async())
+
+        # Define a callback to handle errors
+        def on_load_error(error):
+            logger.error(f"Error loading data: {error}")
+            self.status_bar.showMessage(f"Error loading data: {error}", 5000)
+
+        # Use run_async_task with error callback
+        self.run_async_task(
+            self._load_data_async(),
+            error_callback=on_load_error,
+            loading_message="Loading data from server..."
+        )
 
     def on_manufacturer_changed(self, manufacturer: str):
         """Handle manufacturer selection change"""

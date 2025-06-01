@@ -33,6 +33,10 @@ jobs:
       - name: Increment version and commit changes
         id: increment_version
         run: |
+          # Ensure we're up to date before making changes
+          git fetch origin master
+          git rebase origin/master
+
           CURRENT_VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
           echo "Current version: $CURRENT_VERSION"
 
@@ -49,11 +53,6 @@ jobs:
 
           git add version.py pyproject.toml
           git commit -m "Bump version from $CURRENT_VERSION to $NEW_VERSION [skip ci]"
-
-          # Pull latest changes before pushing
-          git fetch origin master
-          git reset --soft HEAD~1  # Undo previous commit, keeping changes staged
-          git rebase origin/master || (git rebase --abort && git reset --hard origin/master)
 
           # Retry push with conflict resolution
           MAX_RETRIES=3

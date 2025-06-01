@@ -128,7 +128,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libegl1 libjack-dev librtmidi-dev
-
+      - name: Check ALSA header
+        run: ls /usr/include/alsa/asoundlib.h || { echo "ALSA header missing"; exit 1; }
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip

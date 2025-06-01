@@ -244,6 +244,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
+
+          # For Linux, try to install rtmidi from wheel first
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            echo "Installing rtmidi from wheel for Linux..."
+            pip install --only-binary=:all: rtmidi || echo "Could not install rtmidi from wheel, will try from source later"
+          fi
+
           pip install -r requirements.txt
           if [ -f midi_preset_client/requirements.txt ]; then 
             pip install -r midi_preset_client/requirements.txt
@@ -264,7 +271,9 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libjack-dev librtmidi-dev
+          sudo apt-get install -y libasound2-dev libegl1 libjack-dev librtmidi-dev
+          # Verify ALSA headers are available
+          ls /usr/include/alsa/asoundlib.h || { echo "ALSA header missing"; exit 1; }
 
       - name: Create themes directory and placeholder icons (Linux/macOS)
         if: matrix.platform == 'linux' || matrix.platform == 'macos'
@@ -332,6 +341,13 @@ jobs:
               main.py
           else
             # For Linux
+            # Install rtmidi from wheel before running PyInstaller to avoid building from source
+            pip install --only-binary=:all: rtmidi || pip install rtmidi
+
+            # Set environment variables to help find ALSA headers
+            export CFLAGS="-I/usr/include/alsa"
+            export CPPFLAGS="-I/usr/include/alsa"
+
             pyinstaller --name=r2midi \
               --windowed \
               --noconfirm \

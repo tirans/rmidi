@@ -54,24 +54,51 @@ jobs:
           git add version.py pyproject.toml
           git commit -m "Bump version from $CURRENT_VERSION to $NEW_VERSION [skip ci]"
 
-          # Retry push with conflict resolution
+          # More robust push with retry mechanism
           MAX_RETRIES=3
           RETRY_COUNT=0
+
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            git stash
-            if git pull --rebase origin master && git stash pop; then
-              if git push; then
-                echo "Successfully pushed version bump"
-                break
+            # Check if there are any changes to stash
+            if git diff --quiet; then
+              echo "No local changes to save"
+            else
+              # Stash any local changes
+              git stash save "Temporary stash before pull"
+              echo "Local changes stashed"
+            fi
+
+            # Pull latest changes with rebase
+            git pull --rebase origin master
+            PULL_STATUS=$?
+
+            # Apply stashed changes if they exist
+            if git stash list | grep -q "Temporary stash before pull"; then
+              git stash pop
+              STASH_STATUS=$?
+              if [ $STASH_STATUS -ne 0 ]; then
+                echo "Warning: Stash pop had conflicts, resolving..."
+                git add .
+                git rebase --continue
               fi
             fi
-            
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              echo "Push failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+
+            # Try to push
+            git push origin master
+            PUSH_STATUS=$?
+
+            if [ $PUSH_STATUS -eq 0 ]; then
+              echo "Successfully pushed version bump"
+              break
             else
-              echo "Failed to push after $MAX_RETRIES attempts"
-              exit 1
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "Push failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+                sleep 2  # Add a small delay before retrying
+              else
+                echo "Failed to push after $MAX_RETRIES attempts"
+                exit 1
+              fi
             fi
           done
       # Setup Python environment and install dependencies in separate steps for clarity

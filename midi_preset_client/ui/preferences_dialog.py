@@ -28,7 +28,7 @@ class PreferencesDialog(QDialog):
         self.config_manager = get_config_manager()
         self.original_config = AppConfig(**self.config_manager.config.to_dict())
         self.setWindowTitle("Preferences")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(800, 500)
         self.initUI()
         
     def initUI(self):
@@ -146,7 +146,7 @@ class PreferencesDialog(QDialog):
         window_group.setLayout(window_layout)
         
         self.window_width_spin = QSpinBox()
-        self.window_width_spin.setRange(600, 2000)
+        self.window_width_spin.setRange(800, 2000)
         self.window_width_spin.setValue(self.config_manager.config.window_width)
         window_layout.addRow("Default Width:", self.window_width_spin)
         

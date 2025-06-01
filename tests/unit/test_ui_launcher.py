@@ -3,7 +3,7 @@ import os
 import sys
 import time
 import subprocess
-from unittest.mock import preset, MagicMock, call
+from unittest.mock import patch, MagicMock, call
 from ui_launcher import UILauncher
 
 class TestUILauncher(unittest.TestCase):
@@ -22,12 +22,12 @@ class TestUILauncher(unittest.TestCase):
         self.assertEqual(self.ui_launcher.server_url, "http://localhost:8888")
         self.assertIsNone(self.ui_launcher.client_process)
 
-    @preset('os.path.exists')
-    @preset('os.makedirs')
-    @preset('os.path.dirname')
-    @preset('os.path.abspath')
-    @preset('subprocess.Popen')
-    @preset('time.sleep')
+    @patch('os.path.exists')
+    @patch('os.makedirs')
+    @patch('os.path.dirname')
+    @patch('os.path.abspath')
+    @patch('subprocess.Popen')
+    @patch('time.sleep')
     def test_launch_client_success(self, mock_sleep, mock_popen, mock_abspath, 
                                   mock_dirname, mock_makedirs, mock_exists):
         """Test launching the client successfully"""
@@ -68,10 +68,10 @@ class TestUILauncher(unittest.TestCase):
         self.assertEqual(kwargs["text"], True)
         self.assertEqual(kwargs["env"]["PYTHONPATH"], "/abs/path/to")
 
-    @preset('os.path.exists')
-    @preset('os.makedirs')
-    @preset('os.path.dirname')
-    @preset('os.path.abspath')
+    @patch('os.path.exists')
+    @patch('os.makedirs')
+    @patch('os.path.dirname')
+    @patch('os.path.abspath')
     def test_launch_client_no_client_main(self, mock_abspath, mock_dirname, mock_makedirs, mock_exists):
         """Test launching the client when the client main file doesn't exist"""
         # Set up mocks
@@ -100,12 +100,12 @@ class TestUILauncher(unittest.TestCase):
         ], any_order=False)
         mock_makedirs.assert_not_called()  # Should not be called since the directory exists
 
-    @preset('os.path.exists')
-    @preset('os.makedirs')
-    @preset('os.path.dirname')
-    @preset('os.path.abspath')
-    @preset('subprocess.Popen')
-    @preset('time.sleep')
+    @patch('os.path.exists')
+    @patch('os.makedirs')
+    @patch('os.path.dirname')
+    @patch('os.path.abspath')
+    @patch('subprocess.Popen')
+    @patch('time.sleep')
     def test_launch_client_process_fails(self, mock_sleep, mock_popen, mock_abspath, 
                                         mock_dirname, mock_makedirs, mock_exists):
         """Test launching the client when the process fails to start"""
@@ -139,10 +139,10 @@ class TestUILauncher(unittest.TestCase):
         mock_popen.assert_called_once()
         mock_process.communicate.assert_called_once()
 
-    @preset('os.path.exists')
-    @preset('os.makedirs')
-    @preset('os.path.dirname')
-    @preset('os.path.abspath')
+    @patch('os.path.exists')
+    @patch('os.makedirs')
+    @patch('os.path.dirname')
+    @patch('os.path.abspath')
     def test_launch_client_create_directory(self, mock_abspath, mock_dirname, mock_makedirs, mock_exists):
         """Test launching the client when the client directory doesn't exist"""
         # Set up mocks

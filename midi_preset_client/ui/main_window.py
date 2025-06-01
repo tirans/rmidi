@@ -397,7 +397,7 @@ class MainWindow(QMainWindow):
         """Initialize the UI components"""
         # Set window properties
         self.setWindowTitle("r2midi")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1024, 800)
 
         # Create central widget and layout
         central_widget = QWidget()

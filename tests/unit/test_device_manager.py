@@ -2,7 +2,7 @@ import unittest
 import os
 import json
 import tempfile
-from unittest.mock import preset, mock_open, MagicMock
+from unittest.mock import patch, mock_open, MagicMock
 from device_manager import DeviceManager
 from models import Device, Preset
 
@@ -86,7 +86,7 @@ class TestDeviceManager(unittest.TestCase):
         self.assertEqual(self.device_manager.device_structure['test_manufacturer'], ['Test Device'])
         self.assertEqual(self.device_manager.device_structure['another_manufacturer'], ['Test Device 2'])
 
-    @preset('os.path.exists')
+    @patch('os.path.exists')
     def test_scan_devices_folder_not_exists(self, mock_exists):
         """Test scanning devices when the folder doesn't exist"""
         # Mock os.path.exists to return False
@@ -171,7 +171,7 @@ class TestDeviceManager(unittest.TestCase):
         )
 
         # Mock the _optimized_get_all_presets method to return our sample presets
-        with preset.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
+        with patch.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
             mock_optimized.return_value = [preset1, preset2]
 
             # Call the method under test
@@ -225,7 +225,7 @@ class TestDeviceManager(unittest.TestCase):
         )
 
         # Mock the _optimized_get_all_presets method to return our sample presets
-        with preset.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
+        with patch.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
             # First call returns presets, second call returns empty list
             mock_optimized.side_effect = [[preset1, preset2], []]
 
@@ -277,7 +277,7 @@ class TestDeviceManager(unittest.TestCase):
         )
 
         # Mock the _optimized_get_all_presets method to return our sample presets
-        with preset.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
+        with patch.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
             # First two calls return presets, third call returns empty list
             mock_optimized.side_effect = [[preset1, preset2], [preset1, preset2], []]
 
@@ -340,7 +340,7 @@ class TestDeviceManager(unittest.TestCase):
         )
 
         # Mock the _optimized_get_all_presets method to return our sample presets
-        with preset.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
+        with patch.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
             # First two calls return presets, last two calls return empty list
             mock_optimized.side_effect = [[preset1, preset2], [preset1, preset2], [], []]
 
@@ -461,15 +461,15 @@ class TestDeviceManager(unittest.TestCase):
 
         # We can't easily test the actual git sync operation without mocking,
         # but we can verify that the method doesn't immediately return False
-        with preset('git_operations.git_sync') as mock_git_sync:
+        with patch('git_operations.git_sync') as mock_git_sync:
             mock_git_sync.return_value = (True, "Success", None)
             success, message = device_manager.run_git_sync()
             self.assertTrue(success)
             self.assertEqual(message, "Success")
 
-    @preset('os.path.exists')
-    @preset('os.listdir')
-    @preset('os.path.isdir')
+    @patch('os.path.exists')
+    @patch('os.listdir')
+    @patch('os.path.isdir')
     def test_process_manufacturer(self, mock_isdir, mock_listdir, mock_exists):
         """Test the _process_manufacturer helper function"""
         # Mock os.path.exists to return True
@@ -495,7 +495,7 @@ class TestDeviceManager(unittest.TestCase):
         device2 = self.sample_device.copy()
         device2['device_info']['name'] = "Test Device 2"
 
-        with preset.object(self.device_manager, '_load_json_file') as mock_load_json:
+        with patch.object(self.device_manager, '_load_json_file') as mock_load_json:
             # Set up the mock to return our test data
             # The first call is for device1.json, the second call is for device2.json
             mock_load_json.side_effect = [device1, device2]
@@ -534,7 +534,7 @@ class TestDeviceManager(unittest.TestCase):
         }
 
         # Mock the actual preset creation to avoid dependency on the exact structure of the sample_device
-        with preset.object(Preset, '__init__', return_value=None) as mock_preset_init:
+        with patch.object(Preset, '__init__', return_value=None) as mock_preset_init:
             # Test getting all presets
             presets = self.device_manager._optimized_get_all_presets()
             # The exact number of presets depends on the implementation and sample data
@@ -581,10 +581,10 @@ class TestDeviceManager(unittest.TestCase):
         }
 
         # Mock Preset.__init__ to avoid dependency on the exact structure of the community data
-        with preset.object(Preset, '__init__', return_value=None) as mock_preset_init:
-            with preset.object(self.device_manager, '_load_json_file') as mock_load_json:
+        with patch.object(Preset, '__init__', return_value=None) as mock_preset_init:
+            with patch.object(self.device_manager, '_load_json_file') as mock_load_json:
                 mock_load_json.return_value = community_data
-                with preset('os.path.exists') as mock_exists:
+                with patch('os.path.exists') as mock_exists:
                     mock_exists.return_value = True
 
                     # Test getting presets for a specific community folder

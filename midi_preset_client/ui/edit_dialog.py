@@ -34,7 +34,7 @@ class EditDialog(QDialog):
     def initUI(self):
         """Initialize the UI components"""
         self.setWindowTitle("Edit Manufacturers, Devices, and Presets")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1024, 800)
 
         # Main layout
         main_layout = QVBoxLayout()

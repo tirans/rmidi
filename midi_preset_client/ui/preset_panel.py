@@ -356,7 +356,7 @@ class PresetPanel(QWidget):
                     color, text_color = color_cache[preset.category]
                 else:
                     color = self.category_colors[preset.category]
-                    color.setAlpha(255)  # Make fully opaque
+                    # Preserve the alpha value from the loaded color
 
                     # Determine text color based on background brightness
                     brightness = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000

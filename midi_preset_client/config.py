@@ -24,8 +24,8 @@ class AppConfig:
     
     # UI settings
     debounce_delay_ms: int = 300
-    window_width: int = 800
-    window_height: int = 600
+    window_width: int = 1024
+    window_height: int = 800
     dark_mode: bool = False
     
     # MIDI settings

@@ -312,6 +312,7 @@ jobs:
             --clean \
             --add-data="midi_preset_client/themes:midi_preset_client/themes" \
             --add-data="midi_preset_client/ui:midi_preset_client/ui" \
+            --add-data="midi-presets:midi-presets" \
             --hidden-import=PyQt6.QtCore \
             --hidden-import=PyQt6.QtWidgets \
             --hidden-import=PyQt6.QtGui \
@@ -365,7 +366,7 @@ jobs:
 
           # Create a spec file first
           Write-Host "Creating spec file"
-          python -m PyInstaller --name=r2midi --windowed --noconfirm --clean main.py
+          python -m PyInstaller --name=r2midi --windowed --noconfirm --clean --add-data="midi-presets;midi-presets" main.py
 
           # Check if spec file was created
           if (Test-Path "r2midi.spec") {
@@ -388,6 +389,7 @@ jobs:
               --clean `
               --add-data="midi_preset_client\themes;midi_preset_client\themes" `
               --add-data="midi_preset_client\ui;midi_preset_client\ui" `
+              --add-data="midi-presets;midi-presets" `
               --hidden-import=PyQt6.QtCore `
               --hidden-import=PyQt6.QtWidgets `
               --hidden-import=PyQt6.QtGui `

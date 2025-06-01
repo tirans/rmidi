@@ -136,8 +136,8 @@ jobs:
           if [ -f requirements.txt ]; then 
             pip install -r requirements.txt; 
           fi
-          if [ -f midi_patch_client/requirements.txt ]; then 
-            pip install -r midi_patch_client/requirements.txt; 
+          if [ -f midi_preset_client/requirements.txt ]; then 
+            pip install -r midi_preset_client/requirements.txt; 
           fi
           # Install the package in development mode with test dependencies
           pip install -e ".[test]"
@@ -244,8 +244,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
-          if [ -f midi_patch_client/requirements.txt ]; then 
-            pip install -r midi_patch_client/requirements.txt
+          if [ -f midi_preset_client/requirements.txt ]; then 
+            pip install -r midi_preset_client/requirements.txt
           fi
 
       - name: Install dependencies (Windows)
@@ -255,8 +255,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
-          if (Test-Path "midi_patch_client\requirements.txt") {
-            pip install -r midi_patch_client\requirements.txt
+          if (Test-Path "midi_preset_client\requirements.txt") {
+            pip install -r midi_preset_client\requirements.txt
           }
 
       - name: Install platform-specific dependencies (Linux)
@@ -269,19 +269,19 @@ jobs:
         if: matrix.platform == 'linux' || matrix.platform == 'macos'
         run: |
           # Create themes directory if it doesn't exist
-          mkdir -p midi_patch_client/themes
+          mkdir -p midi_preset_client/themes
 
           # Create placeholder icon files if they don't exist
-          if [ "${{ matrix.platform }}" = "macos" ] && [ ! -f "midi_patch_client/themes/icon.icns" ]; then
+          if [ "${{ matrix.platform }}" = "macos" ] && [ ! -f "midi_preset_client/themes/icon.icns" ]; then
             echo "Creating placeholder icon.icns file"
             # Use a simple command to create a minimal .icns file
-            python -c "with open('midi_patch_client/themes/icon.icns', 'wb') as f: f.write(b'icns\x00\x00\x00\x10')"
+            python -c "with open('midi_preset_client/themes/icon.icns', 'wb') as f: f.write(b'icns\x00\x00\x00\x10')"
           fi
 
-          if [ ! -f "midi_patch_client/themes/icon.ico" ]; then
+          if [ ! -f "midi_preset_client/themes/icon.ico" ]; then
             echo "Creating placeholder icon.ico file"
             # Use a simple command to create a minimal .ico file
-            python -c "with open('midi_patch_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
+            python -c "with open('midi_preset_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
           fi
 
 
@@ -290,13 +290,13 @@ jobs:
         shell: pwsh
         run: |
           # Create themes directory if it doesn't exist
-          New-Item -ItemType Directory -Force -Path midi_patch_client\themes
+          New-Item -ItemType Directory -Force -Path midi_preset_client\themes
 
           # Create placeholder icon.ico file if it doesn't exist
-          if (-not (Test-Path "midi_patch_client\themes\icon.ico")) {
+          if (-not (Test-Path "midi_preset_client\themes\icon.ico")) {
             Write-Host "Creating placeholder icon.ico file"
             # Use Python to create a minimal .ico file
-            python -c "with open('midi_patch_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
+            python -c "with open('midi_preset_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
           }
 
 
@@ -316,8 +316,8 @@ jobs:
               --windowed \
               --noconfirm \
               --clean \
-              --add-data="midi_patch_client/themes:midi_patch_client/themes" \
-              --add-data="midi_patch_client/ui:midi_patch_client/ui" \
+              --add-data="midi_preset_client/themes:midi_preset_client/themes" \
+              --add-data="midi_preset_client/ui:midi_preset_client/ui" \
               --hidden-import=PyQt6.QtCore \
               --hidden-import=PyQt6.QtWidgets \
               --hidden-import=PyQt6.QtGui \
@@ -326,7 +326,7 @@ jobs:
               --hidden-import=logging \
               --hidden-import=json \
               --hidden-import=git \
-              --icon="midi_patch_client/themes/icon.icns" \
+              --icon="midi_preset_client/themes/icon.icns" \
               --osx-bundle-identifier="com.r2midi.app" \
               main.py
           else
@@ -335,8 +335,8 @@ jobs:
               --windowed \
               --noconfirm \
               --clean \
-              --add-data="midi_patch_client/themes:midi_patch_client/themes" \
-              --add-data="midi_patch_client/ui:midi_patch_client/ui" \
+              --add-data="midi_preset_client/themes:midi_preset_client/themes" \
+              --add-data="midi_preset_client/ui:midi_preset_client/ui" \
               --hidden-import=PyQt6.QtCore \
               --hidden-import=PyQt6.QtWidgets \
               --hidden-import=PyQt6.QtGui \
@@ -345,7 +345,7 @@ jobs:
               --hidden-import=logging \
               --hidden-import=json \
               --hidden-import=git \
-              --icon="midi_patch_client/themes/icon.ico" \
+              --icon="midi_preset_client/themes/icon.ico" \
               main.py
           fi
 
@@ -364,8 +364,8 @@ jobs:
             --windowed `
             --noconfirm `
             --clean `
-            --add-data="midi_patch_client/themes;midi_patch_client/themes" `
-            --add-data="midi_patch_client/ui;midi_patch_client/ui" `
+            --add-data="midi_preset_client/themes;midi_preset_client/themes" `
+            --add-data="midi_preset_client/ui;midi_preset_client/ui" `
             --hidden-import=PyQt6.QtCore `
             --hidden-import=PyQt6.QtWidgets `
             --hidden-import=PyQt6.QtGui `
@@ -374,7 +374,7 @@ jobs:
             --hidden-import=logging `
             --hidden-import=json `
             --hidden-import=git `
-            --icon="midi_patch_client/themes/icon.ico" `
+            --icon="midi_preset_client/themes/icon.ico" `
             main.py
 
       - name: Upload executable artifact

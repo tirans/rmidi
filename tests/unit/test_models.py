@@ -1,5 +1,5 @@
 import unittest
-from models import Device, Patch, PresetRequest, UIState
+from models import Device, Preset, PresetRequest, UIState
 
 class TestModels(unittest.TestCase):
     """Test cases for the models module"""
@@ -26,20 +26,20 @@ class TestModels(unittest.TestCase):
         self.assertEqual(device.midi_port, {"main": "Port 1"})
         self.assertEqual(device.midi_channel, {"main": 1})
 
-    def test_patch_model(self):
-        """Test the Patch model"""
+    def test_preset_model(self):
+        """Test the Preset model"""
         # Test with minimal required fields
-        patch = Patch(preset_name="Test Preset", category="Test Category")
-        self.assertEqual(patch.preset_name, "Test Preset")
-        self.assertEqual(patch.category, "Test Category")
-        self.assertIsNone(patch.characters)
-        self.assertIsNone(patch.sendmidi_command)
-        self.assertIsNone(patch.cc_0)
-        self.assertIsNone(patch.pgm)
-        self.assertIsNone(patch.source)
+        preset = Preset(preset_name="Test Preset", category="Test Category")
+        self.assertEqual(preset.preset_name, "Test Preset")
+        self.assertEqual(preset.category, "Test Category")
+        self.assertIsNone(preset.characters)
+        self.assertIsNone(preset.sendmidi_command)
+        self.assertIsNone(preset.cc_0)
+        self.assertIsNone(preset.pgm)
+        self.assertIsNone(preset.source)
 
         # Test with all fields
-        patch = Patch(
+        preset = Preset(
             preset_name="Test Preset",
             category="Test Category",
             characters=["Warm", "Bright"],
@@ -48,13 +48,13 @@ class TestModels(unittest.TestCase):
             pgm=0,
             source="default"
         )
-        self.assertEqual(patch.preset_name, "Test Preset")
-        self.assertEqual(patch.category, "Test Category")
-        self.assertEqual(patch.characters, ["Warm", "Bright"])
-        self.assertEqual(patch.sendmidi_command, "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0")
-        self.assertEqual(patch.cc_0, 0)
-        self.assertEqual(patch.pgm, 0)
-        self.assertEqual(patch.source, "default")
+        self.assertEqual(preset.preset_name, "Test Preset")
+        self.assertEqual(preset.category, "Test Category")
+        self.assertEqual(preset.characters, ["Warm", "Bright"])
+        self.assertEqual(preset.sendmidi_command, "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0")
+        self.assertEqual(preset.cc_0, 0)
+        self.assertEqual(preset.pgm, 0)
+        self.assertEqual(preset.source, "default")
 
     def test_preset_request_model(self):
         """Test the PresetRequest model"""

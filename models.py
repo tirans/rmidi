@@ -9,8 +9,8 @@ class Device(BaseModel):
     midi_channel: Optional[Dict[str, int]] = None
     community_folders: Optional[List[str]] = None
 
-class Patch(BaseModel):
-    """Model for patch information"""
+class Preset(BaseModel):
+    """Model for preset information"""
     preset_name: str
     category: str
     characters: Optional[List[str]] = None

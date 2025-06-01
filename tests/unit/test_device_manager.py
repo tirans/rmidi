@@ -2,9 +2,9 @@ import unittest
 import os
 import json
 import tempfile
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import preset, mock_open, MagicMock
 from device_manager import DeviceManager
-from models import Device, Patch
+from models import Device, Preset
 
 class TestDeviceManager(unittest.TestCase):
     """Test cases for the DeviceManager class"""
@@ -86,7 +86,7 @@ class TestDeviceManager(unittest.TestCase):
         self.assertEqual(self.device_manager.device_structure['test_manufacturer'], ['Test Device'])
         self.assertEqual(self.device_manager.device_structure['another_manufacturer'], ['Test Device 2'])
 
-    @patch('os.path.exists')
+    @preset('os.path.exists')
     def test_scan_devices_folder_not_exists(self, mock_exists):
         """Test scanning devices when the folder doesn't exist"""
         # Mock os.path.exists to return False
@@ -147,13 +147,13 @@ class TestDeviceManager(unittest.TestCase):
         self.assertEqual(devices[0].midi_channel, {'IN': 1, 'OUT': 2})
         self.assertEqual(devices[0].community_folders, ['folder1', 'folder2'])
 
-    def test_get_all_patches(self):
-        """Test getting all patches"""
+    def test_get_all_presets(self):
+        """Test getting all presets"""
         # Set up the device manager with a sample device
         self.device_manager.devices = {'Test Device': self.sample_device}
 
-        # Create sample patches to be returned by _optimized_get_all_patches
-        patch1 = Patch(
+        # Create sample presets to be returned by _optimized_get_all_presets
+        preset1 = Preset(
             preset_name='Test Preset 1',
             category='Test Category',
             characters=['Warm', 'Bright'],
@@ -161,7 +161,7 @@ class TestDeviceManager(unittest.TestCase):
             pgm=1,
             source='default'
         )
-        patch2 = Patch(
+        preset2 = Preset(
             preset_name='Test Preset 2',
             category='Another Category',
             characters=['Dark', 'Deep'],
@@ -170,32 +170,32 @@ class TestDeviceManager(unittest.TestCase):
             source='default'
         )
 
-        # Mock the _optimized_get_all_patches method to return our sample patches
-        with patch.object(self.device_manager, '_optimized_get_all_patches') as mock_optimized:
-            mock_optimized.return_value = [patch1, patch2]
+        # Mock the _optimized_get_all_presets method to return our sample presets
+        with preset.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
+            mock_optimized.return_value = [preset1, preset2]
 
             # Call the method under test
-            patches = self.device_manager.get_all_patches()
+            presets = self.device_manager.get_all_presets()
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_once_with(device_name=None, community_folder=None, manufacturer=None)
 
             # Verify the results
-            self.assertEqual(len(patches), 2)
-            self.assertIsInstance(patches[0], Patch)
-            self.assertEqual(patches[0].preset_name, 'Test Preset 1')
-            self.assertEqual(patches[0].category, 'Test Category')
-            self.assertEqual(patches[0].characters, ['Warm', 'Bright'])
-            self.assertEqual(patches[0].cc_0, 0)
-            self.assertEqual(patches[0].pgm, 1)
-            self.assertEqual(patches[0].source, 'default')
+            self.assertEqual(len(presets), 2)
+            self.assertIsInstance(presets[0], Preset)
+            self.assertEqual(presets[0].preset_name, 'Test Preset 1')
+            self.assertEqual(presets[0].category, 'Test Category')
+            self.assertEqual(presets[0].characters, ['Warm', 'Bright'])
+            self.assertEqual(presets[0].cc_0, 0)
+            self.assertEqual(presets[0].pgm, 1)
+            self.assertEqual(presets[0].source, 'default')
 
-            self.assertEqual(patches[1].preset_name, 'Test Preset 2')
-            self.assertEqual(patches[1].category, 'Another Category')
-            self.assertEqual(patches[1].source, 'default')
+            self.assertEqual(presets[1].preset_name, 'Test Preset 2')
+            self.assertEqual(presets[1].category, 'Another Category')
+            self.assertEqual(presets[1].source, 'default')
 
-    def test_get_patches_by_device(self):
-        """Test getting patches for a specific device"""
+    def test_get_presets_by_device(self):
+        """Test getting presets for a specific device"""
         # Set up the device manager with multiple devices
         device1 = self.sample_device.copy()
         device2 = self.sample_device.copy()
@@ -206,8 +206,8 @@ class TestDeviceManager(unittest.TestCase):
             'Test Device 2': device2
         }
 
-        # Create sample patches to be returned by _optimized_get_all_patches
-        patch1 = Patch(
+        # Create sample presets to be returned by _optimized_get_all_presets
+        preset1 = Preset(
             preset_name='Test Preset 1',
             category='Test Category',
             characters=['Warm', 'Bright'],
@@ -215,7 +215,7 @@ class TestDeviceManager(unittest.TestCase):
             pgm=1,
             source='default'
         )
-        patch2 = Patch(
+        preset2 = Preset(
             preset_name='Test Preset 2',
             category='Another Category',
             characters=['Dark', 'Deep'],
@@ -224,30 +224,30 @@ class TestDeviceManager(unittest.TestCase):
             source='default'
         )
 
-        # Mock the _optimized_get_all_patches method to return our sample patches
-        with patch.object(self.device_manager, '_optimized_get_all_patches') as mock_optimized:
-            # First call returns patches, second call returns empty list
-            mock_optimized.side_effect = [[patch1, patch2], []]
+        # Mock the _optimized_get_all_presets method to return our sample presets
+        with preset.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
+            # First call returns presets, second call returns empty list
+            mock_optimized.side_effect = [[preset1, preset2], []]
 
             # Call the method under test with a specific device
-            patches = self.device_manager.get_all_patches(device_name='Test Device')
+            presets = self.device_manager.get_all_presets(device_name='Test Device')
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name='Test Device', community_folder=None, manufacturer=None)
 
             # Verify the results
-            self.assertEqual(len(patches), 2)
-            self.assertEqual(patches[0].preset_name, 'Test Preset 1')
+            self.assertEqual(len(presets), 2)
+            self.assertEqual(presets[0].preset_name, 'Test Preset 1')
 
             # Call with a non-existent device
-            patches = self.device_manager.get_all_patches(device_name='Non-existent Device')
-            self.assertEqual(len(patches), 0)
+            presets = self.device_manager.get_all_presets(device_name='Non-existent Device')
+            self.assertEqual(len(presets), 0)
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name='Non-existent Device', community_folder=None, manufacturer=None)
 
-    def test_get_patches_by_manufacturer(self):
-        """Test getting patches for a specific manufacturer"""
+    def test_get_presets_by_manufacturer(self):
+        """Test getting presets for a specific manufacturer"""
         # Set up the device manager with multiple devices from different manufacturers
         device1 = self.sample_device.copy()
         device2 = self.sample_device.copy()
@@ -258,8 +258,8 @@ class TestDeviceManager(unittest.TestCase):
             'Test Device 2': device2
         }
 
-        # Create sample patches to be returned by _optimized_get_all_patches
-        patch1 = Patch(
+        # Create sample presets to be returned by _optimized_get_all_presets
+        preset1 = Preset(
             preset_name='Test Preset 1',
             category='Test Category',
             characters=['Warm', 'Bright'],
@@ -267,7 +267,7 @@ class TestDeviceManager(unittest.TestCase):
             pgm=1,
             source='default'
         )
-        patch2 = Patch(
+        preset2 = Preset(
             preset_name='Test Preset 2',
             category='Another Category',
             characters=['Dark', 'Deep'],
@@ -276,38 +276,38 @@ class TestDeviceManager(unittest.TestCase):
             source='default'
         )
 
-        # Mock the _optimized_get_all_patches method to return our sample patches
-        with patch.object(self.device_manager, '_optimized_get_all_patches') as mock_optimized:
-            # First two calls return patches, third call returns empty list
-            mock_optimized.side_effect = [[patch1, patch2], [patch1, patch2], []]
+        # Mock the _optimized_get_all_presets method to return our sample presets
+        with preset.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
+            # First two calls return presets, third call returns empty list
+            mock_optimized.side_effect = [[preset1, preset2], [preset1, preset2], []]
 
             # Call the method under test with a specific manufacturer
-            patches = self.device_manager.get_all_patches(manufacturer='test_manufacturer')
+            presets = self.device_manager.get_all_presets(manufacturer='test_manufacturer')
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name=None, community_folder=None, manufacturer='test_manufacturer')
 
             # Verify the results
-            self.assertEqual(len(patches), 2)
-            self.assertEqual(patches[0].preset_name, 'Test Preset 1')
+            self.assertEqual(len(presets), 2)
+            self.assertEqual(presets[0].preset_name, 'Test Preset 1')
 
             # Call with a different manufacturer
-            patches = self.device_manager.get_all_patches(manufacturer='another_manufacturer')
-            self.assertEqual(len(patches), 2)
-            self.assertEqual(patches[0].preset_name, 'Test Preset 1')
+            presets = self.device_manager.get_all_presets(manufacturer='another_manufacturer')
+            self.assertEqual(len(presets), 2)
+            self.assertEqual(presets[0].preset_name, 'Test Preset 1')
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name=None, community_folder=None, manufacturer='another_manufacturer')
 
             # Call with a non-existent manufacturer
-            patches = self.device_manager.get_all_patches(manufacturer='non_existent_manufacturer')
-            self.assertEqual(len(patches), 0)
+            presets = self.device_manager.get_all_presets(manufacturer='non_existent_manufacturer')
+            self.assertEqual(len(presets), 0)
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name=None, community_folder=None, manufacturer='non_existent_manufacturer')
 
-    def test_get_patches_by_manufacturer_and_device(self):
-        """Test getting patches for a specific manufacturer and device"""
+    def test_get_presets_by_manufacturer_and_device(self):
+        """Test getting presets for a specific manufacturer and device"""
         # Set up the device manager with multiple devices from different manufacturers
         device1 = self.sample_device.copy()
         device2 = self.sample_device.copy()
@@ -321,8 +321,8 @@ class TestDeviceManager(unittest.TestCase):
             'Test Device 3': device3
         }
 
-        # Create sample patches to be returned by _optimized_get_all_patches
-        patch1 = Patch(
+        # Create sample presets to be returned by _optimized_get_all_presets
+        preset1 = Preset(
             preset_name='Test Preset 1',
             category='Test Category',
             characters=['Warm', 'Bright'],
@@ -330,7 +330,7 @@ class TestDeviceManager(unittest.TestCase):
             pgm=1,
             source='default'
         )
-        patch2 = Patch(
+        preset2 = Preset(
             preset_name='Test Preset 2',
             category='Another Category',
             characters=['Dark', 'Deep'],
@@ -339,56 +339,56 @@ class TestDeviceManager(unittest.TestCase):
             source='default'
         )
 
-        # Mock the _optimized_get_all_patches method to return our sample patches
-        with patch.object(self.device_manager, '_optimized_get_all_patches') as mock_optimized:
-            # First two calls return patches, last two calls return empty list
-            mock_optimized.side_effect = [[patch1, patch2], [patch1, patch2], [], []]
+        # Mock the _optimized_get_all_presets method to return our sample presets
+        with preset.object(self.device_manager, '_optimized_get_all_presets') as mock_optimized:
+            # First two calls return presets, last two calls return empty list
+            mock_optimized.side_effect = [[preset1, preset2], [preset1, preset2], [], []]
 
             # Call the method under test with a specific manufacturer and device
-            patches = self.device_manager.get_all_patches(manufacturer='test_manufacturer', device_name='Test Device')
+            presets = self.device_manager.get_all_presets(manufacturer='test_manufacturer', device_name='Test Device')
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name='Test Device', community_folder=None, manufacturer='test_manufacturer')
 
             # Verify the results
-            self.assertEqual(len(patches), 2)
-            self.assertEqual(patches[0].preset_name, 'Test Preset 1')
+            self.assertEqual(len(presets), 2)
+            self.assertEqual(presets[0].preset_name, 'Test Preset 1')
 
             # Call with a different manufacturer and device
-            patches = self.device_manager.get_all_patches(manufacturer='another_manufacturer', device_name='Test Device 2')
-            self.assertEqual(len(patches), 2)
-            self.assertEqual(patches[0].preset_name, 'Test Preset 1')
+            presets = self.device_manager.get_all_presets(manufacturer='another_manufacturer', device_name='Test Device 2')
+            self.assertEqual(len(presets), 2)
+            self.assertEqual(presets[0].preset_name, 'Test Preset 1')
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name='Test Device 2', community_folder=None, manufacturer='another_manufacturer')
 
             # Call with a non-matching manufacturer and device
-            patches = self.device_manager.get_all_patches(manufacturer='another_manufacturer', device_name='Test Device')
-            self.assertEqual(len(patches), 0)
+            presets = self.device_manager.get_all_presets(manufacturer='another_manufacturer', device_name='Test Device')
+            self.assertEqual(len(presets), 0)
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name='Test Device', community_folder=None, manufacturer='another_manufacturer')
 
             # Call with a non-existent manufacturer and device
-            patches = self.device_manager.get_all_patches(manufacturer='non_existent_manufacturer', device_name='Non-existent Device')
-            self.assertEqual(len(patches), 0)
+            presets = self.device_manager.get_all_presets(manufacturer='non_existent_manufacturer', device_name='Non-existent Device')
+            self.assertEqual(len(presets), 0)
 
-            # Verify that _optimized_get_all_patches was called with the correct arguments
+            # Verify that _optimized_get_all_presets was called with the correct arguments
             mock_optimized.assert_called_with(device_name='Non-existent Device', community_folder=None, manufacturer='non_existent_manufacturer')
 
-    def test_get_patch_by_name(self):
-        """Test getting a patch by name"""
+    def test_get_preset_by_name(self):
+        """Test getting a preset by name"""
         # Set up the device manager with a sample device
         self.device_manager.devices = {'Test Device': self.sample_device}
 
-        # Test getting an existing patch
-        patch = self.device_manager.get_patch_by_name('Test Preset 1')
-        self.assertEqual(patch['preset_name'], 'Test Preset 1')
-        self.assertEqual(patch['category'], 'Test Category')
+        # Test getting an existing preset
+        preset = self.device_manager.get_preset_by_name('Test Preset 1')
+        self.assertEqual(preset['preset_name'], 'Test Preset 1')
+        self.assertEqual(preset['category'], 'Test Category')
 
-        # Test getting a non-existent patch
-        patch = self.device_manager.get_patch_by_name('Non-existent Patch')
-        self.assertIsNone(patch)
+        # Test getting a non-existent preset
+        preset = self.device_manager.get_preset_by_name('Non-existent Preset')
+        self.assertIsNone(preset)
 
     def test_get_manufacturers(self):
         """Test getting all manufacturers"""
@@ -461,15 +461,15 @@ class TestDeviceManager(unittest.TestCase):
 
         # We can't easily test the actual git sync operation without mocking,
         # but we can verify that the method doesn't immediately return False
-        with patch('git_operations.git_sync') as mock_git_sync:
+        with preset('git_operations.git_sync') as mock_git_sync:
             mock_git_sync.return_value = (True, "Success", None)
             success, message = device_manager.run_git_sync()
             self.assertTrue(success)
             self.assertEqual(message, "Success")
 
-    @patch('os.path.exists')
-    @patch('os.listdir')
-    @patch('os.path.isdir')
+    @preset('os.path.exists')
+    @preset('os.listdir')
+    @preset('os.path.isdir')
     def test_process_manufacturer(self, mock_isdir, mock_listdir, mock_exists):
         """Test the _process_manufacturer helper function"""
         # Mock os.path.exists to return True
@@ -495,7 +495,7 @@ class TestDeviceManager(unittest.TestCase):
         device2 = self.sample_device.copy()
         device2['device_info']['name'] = "Test Device 2"
 
-        with patch.object(self.device_manager, '_load_json_file') as mock_load_json:
+        with preset.object(self.device_manager, '_load_json_file') as mock_load_json:
             # Set up the mock to return our test data
             # The first call is for device1.json, the second call is for device2.json
             mock_load_json.side_effect = [device1, device2]
@@ -521,8 +521,8 @@ class TestDeviceManager(unittest.TestCase):
             # The actual number of calls may vary depending on the implementation
             self.assertTrue(mock_load_json.call_count > 0)
 
-    def test_optimized_get_all_patches(self):
-        """Test the _optimized_get_all_patches function"""
+    def test_optimized_get_all_presets(self):
+        """Test the _optimized_get_all_presets function"""
         # Set up the device manager with multiple devices from different manufacturers
         device1 = self.sample_device.copy()
         device2 = self.sample_device.copy()
@@ -533,38 +533,38 @@ class TestDeviceManager(unittest.TestCase):
             'Test Device 2': device2
         }
 
-        # Mock the actual patch creation to avoid dependency on the exact structure of the sample_device
-        with patch.object(Patch, '__init__', return_value=None) as mock_patch_init:
-            # Test getting all patches
-            patches = self.device_manager._optimized_get_all_patches()
-            # The exact number of patches depends on the implementation and sample data
-            # Just verify that we get some patches
-            self.assertTrue(len(patches) > 0)
+        # Mock the actual preset creation to avoid dependency on the exact structure of the sample_device
+        with preset.object(Preset, '__init__', return_value=None) as mock_preset_init:
+            # Test getting all presets
+            presets = self.device_manager._optimized_get_all_presets()
+            # The exact number of presets depends on the implementation and sample data
+            # Just verify that we get some presets
+            self.assertTrue(len(presets) > 0)
 
-            # Test getting patches for a specific device
-            patches = self.device_manager._optimized_get_all_patches(device_name='Test Device')
-            # Verify that we get some patches
-            self.assertTrue(len(patches) > 0)
+            # Test getting presets for a specific device
+            presets = self.device_manager._optimized_get_all_presets(device_name='Test Device')
+            # Verify that we get some presets
+            self.assertTrue(len(presets) > 0)
 
-            # Test getting patches for a specific manufacturer
-            patches = self.device_manager._optimized_get_all_patches(manufacturer='test_manufacturer')
-            # Verify that we get some patches
-            self.assertTrue(len(patches) > 0)
+            # Test getting presets for a specific manufacturer
+            presets = self.device_manager._optimized_get_all_presets(manufacturer='test_manufacturer')
+            # Verify that we get some presets
+            self.assertTrue(len(presets) > 0)
 
-            # Test getting patches for a specific manufacturer and device
-            patches = self.device_manager._optimized_get_all_patches(manufacturer='test_manufacturer', device_name='Test Device')
-            # Verify that we get some patches
-            self.assertTrue(len(patches) > 0)
+            # Test getting presets for a specific manufacturer and device
+            presets = self.device_manager._optimized_get_all_presets(manufacturer='test_manufacturer', device_name='Test Device')
+            # Verify that we get some presets
+            self.assertTrue(len(presets) > 0)
 
             # Test with a non-matching manufacturer and device
-            patches = self.device_manager._optimized_get_all_patches(manufacturer='another_manufacturer', device_name='Test Device')
-            # Should get no patches
-            self.assertEqual(len(patches), 0)
+            presets = self.device_manager._optimized_get_all_presets(manufacturer='another_manufacturer', device_name='Test Device')
+            # Should get no presets
+            self.assertEqual(len(presets), 0)
 
             # Test with a non-existent manufacturer and device
-            patches = self.device_manager._optimized_get_all_patches(manufacturer='non_existent_manufacturer', device_name='Non-existent Device')
-            # Should get no patches
-            self.assertEqual(len(patches), 0)
+            presets = self.device_manager._optimized_get_all_presets(manufacturer='non_existent_manufacturer', device_name='Non-existent Device')
+            # Should get no presets
+            self.assertEqual(len(presets), 0)
 
         # Test with a community folder
         # First, we need to mock the _load_json_file method to return community data
@@ -580,17 +580,17 @@ class TestDeviceManager(unittest.TestCase):
             ]
         }
 
-        # Mock Patch.__init__ to avoid dependency on the exact structure of the community data
-        with patch.object(Patch, '__init__', return_value=None) as mock_patch_init:
-            with patch.object(self.device_manager, '_load_json_file') as mock_load_json:
+        # Mock Preset.__init__ to avoid dependency on the exact structure of the community data
+        with preset.object(Preset, '__init__', return_value=None) as mock_preset_init:
+            with preset.object(self.device_manager, '_load_json_file') as mock_load_json:
                 mock_load_json.return_value = community_data
-                with patch('os.path.exists') as mock_exists:
+                with preset('os.path.exists') as mock_exists:
                     mock_exists.return_value = True
 
-                    # Test getting patches for a specific community folder
-                    patches = self.device_manager._optimized_get_all_patches(device_name='Test Device', community_folder='folder1')
-                    # Verify that we get some patches
-                    self.assertTrue(len(patches) > 0)
+                    # Test getting presets for a specific community folder
+                    presets = self.device_manager._optimized_get_all_presets(device_name='Test Device', community_folder='folder1')
+                    # Verify that we get some presets
+                    self.assertTrue(len(presets) > 0)
 
 if __name__ == "__main__":
     unittest.main()

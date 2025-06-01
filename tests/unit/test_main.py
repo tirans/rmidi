@@ -2,7 +2,7 @@ import unittest
 import os
 import socket
 import asyncio
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import preset, MagicMock, AsyncMock
 from fastapi.testclient import TestClient as FastAPITestClient
 import pytest
 
@@ -33,10 +33,10 @@ class TestClient(FastAPITestClient):
         kwargs.pop('extensions', None)
         return super().delete(*args, **kwargs)
 
-    def patch(self, *args, **kwargs):
+    def preset(self, *args, **kwargs):
         # Remove the 'extensions' parameter if it exists
         kwargs.pop('extensions', None)
-        return super().patch(*args, **kwargs)
+        return super().preset(*args, **kwargs)
 
     def options(self, *args, **kwargs):
         # Remove the 'extensions' parameter if it exists
@@ -51,7 +51,7 @@ class TestClient(FastAPITestClient):
 class TestMainFunctions(unittest.TestCase):
     """Test cases for the utility functions in main.py"""
 
-    @patch('socket.socket')
+    @preset('socket.socket')
     def test_is_port_in_use_true(self, mock_socket):
         """Test is_port_in_use when port is in use"""
         # Set up mock to return 0 (success) for connect_ex
@@ -66,7 +66,7 @@ class TestMainFunctions(unittest.TestCase):
         self.assertTrue(result)
         mock_socket_instance.connect_ex.assert_called_once_with(('localhost', 8000))
 
-    @patch('socket.socket')
+    @preset('socket.socket')
     def test_is_port_in_use_false(self, mock_socket):
         """Test is_port_in_use when port is not in use"""
         # Set up mock to return non-zero (failure) for connect_ex
@@ -81,7 +81,7 @@ class TestMainFunctions(unittest.TestCase):
         self.assertFalse(result)
         mock_socket_instance.connect_ex.assert_called_once_with(('localhost', 8000))
 
-    @patch('main.is_port_in_use')
+    @preset('main.is_port_in_use')
     def test_find_available_port_first_available(self, mock_is_port_in_use):
         """Test find_available_port when the first port is available"""
         # Set up mock to return False (port not in use)
@@ -94,7 +94,7 @@ class TestMainFunctions(unittest.TestCase):
         self.assertEqual(result, 8000)
         mock_is_port_in_use.assert_called_once_with(8000)
 
-    @patch('main.is_port_in_use')
+    @preset('main.is_port_in_use')
     def test_find_available_port_second_available(self, mock_is_port_in_use):
         """Test find_available_port when the second port is available"""
         # Set up mock to return True for first port, False for second port
@@ -109,7 +109,7 @@ class TestMainFunctions(unittest.TestCase):
         mock_is_port_in_use.assert_any_call(8000)
         mock_is_port_in_use.assert_any_call(8001)
 
-    @patch('main.is_port_in_use')
+    @preset('main.is_port_in_use')
     def test_find_available_port_none_available(self, mock_is_port_in_use):
         """Test find_available_port when no ports are available"""
         # Set up mock to always return True (all ports in use)
@@ -122,8 +122,8 @@ class TestMainFunctions(unittest.TestCase):
         self.assertEqual(result, 8000)  # Should return the original port
         self.assertEqual(mock_is_port_in_use.call_count, 3)
 
-    @patch('time.sleep')
-    @patch('main.ui_launcher')
+    @preset('time.sleep')
+    @preset('main.ui_launcher')
     def test_launch_ui_client_with_delay_success(self, mock_ui_launcher, mock_sleep):
         """Test launching UI client with delay when ui_launcher is initialized"""
         # Set up mock ui_launcher
@@ -136,8 +136,8 @@ class TestMainFunctions(unittest.TestCase):
         mock_sleep.assert_called_once_with(1)
         mock_ui_launcher.launch_client.assert_called_once()
 
-    @patch('time.sleep')
-    @patch('main.ui_launcher')
+    @preset('time.sleep')
+    @preset('main.ui_launcher')
     def test_launch_ui_client_with_delay_failure(self, mock_ui_launcher, mock_sleep):
         """Test launching UI client with delay when ui_launcher is initialized but launch fails"""
         # Set up mock ui_launcher
@@ -150,8 +150,8 @@ class TestMainFunctions(unittest.TestCase):
         mock_sleep.assert_called_once_with(1)
         mock_ui_launcher.launch_client.assert_called_once()
 
-    @patch('time.sleep')
-    @patch('main.ui_launcher', None)
+    @preset('time.sleep')
+    @preset('main.ui_launcher', None)
     def test_launch_ui_client_with_delay_no_launcher(self, mock_sleep):
         """Test launching UI client with delay when ui_launcher is not initialized"""
         # Call the function
@@ -169,8 +169,8 @@ class TestFastAPIEndpoints:
         """Create a TestClient for the FastAPI app"""
         return TestClient(app)
 
-    @patch('device_manager.DeviceManager.get_manufacturers')
-    @patch('device_manager.DeviceManager.get_device_info_by_manufacturer')
+    @preset('device_manager.DeviceManager.get_manufacturers')
+    @preset('device_manager.DeviceManager.get_device_info_by_manufacturer')
     def test_get_devices(self, mock_get_device_info, mock_get_manufacturers, client):
         """Test the combination of /manufacturers and /device_info endpoints that replace /devices"""
         # Set up mocks
@@ -227,8 +227,8 @@ class TestFastAPIEndpoints:
         assert device_info_response2.json()[0]["manufacturer"] == "Manufacturer 2"
         assert device_info_response2.json()[0]["community_folders"] == ["folder3"]
 
-    @patch('device_manager.DeviceManager.get_manufacturers')
-    @patch('device_manager.DeviceManager.get_device_info_by_manufacturer')
+    @preset('device_manager.DeviceManager.get_manufacturers')
+    @preset('device_manager.DeviceManager.get_device_info_by_manufacturer')
     def test_get_devices_error(self, mock_get_device_info, mock_get_manufacturers, client):
         """Test error handling for the endpoints that replace /devices"""
         # Test error in get_manufacturers
@@ -253,7 +253,7 @@ class TestFastAPIEndpoints:
         assert device_info_response.status_code == 500
         assert "error" in device_info_response.json()["detail"].lower()
 
-    @patch('device_manager.DeviceManager.get_manufacturers')
+    @preset('device_manager.DeviceManager.get_manufacturers')
     def test_get_manufacturers(self, mock_get_manufacturers, client):
         """Test the GET /manufacturers endpoint"""
         # Set up mock to return a list of manufacturers
@@ -268,7 +268,7 @@ class TestFastAPIEndpoints:
         assert "Manufacturer 1" in response.json()
         assert "Manufacturer 2" in response.json()
 
-    @patch('device_manager.DeviceManager.get_manufacturers')
+    @preset('device_manager.DeviceManager.get_manufacturers')
     def test_get_manufacturers_error(self, mock_get_manufacturers, client):
         """Test the GET /manufacturers endpoint with an error"""
         # Set up mock to raise an exception
@@ -281,7 +281,7 @@ class TestFastAPIEndpoints:
         assert response.status_code == 500
         assert "error" in response.json()["detail"].lower()
 
-    @patch('device_manager.DeviceManager.get_devices_by_manufacturer')
+    @preset('device_manager.DeviceManager.get_devices_by_manufacturer')
     def test_get_devices_by_manufacturer(self, mock_get_devices_by_manufacturer, client):
         """Test the GET /devices/{manufacturer} endpoint"""
         # Set up mock to return a list of devices
@@ -296,7 +296,7 @@ class TestFastAPIEndpoints:
         assert "Device 1" in response.json()
         assert "Device 2" in response.json()
 
-    @patch('device_manager.DeviceManager.get_devices_by_manufacturer')
+    @preset('device_manager.DeviceManager.get_devices_by_manufacturer')
     def test_get_devices_by_manufacturer_error(self, mock_get_devices_by_manufacturer, client):
         """Test the GET /devices/{manufacturer} endpoint with an error"""
         # Set up mock to raise an exception
@@ -309,7 +309,7 @@ class TestFastAPIEndpoints:
         assert response.status_code == 500
         assert "error" in response.json()["detail"].lower()
 
-    @patch('device_manager.DeviceManager.get_community_folders')
+    @preset('device_manager.DeviceManager.get_community_folders')
     def test_get_community_folders(self, mock_get_community_folders, client):
         """Test the GET /community_folders/{device_name} endpoint"""
         # Set up mock to return a list of community folders
@@ -324,7 +324,7 @@ class TestFastAPIEndpoints:
         assert "folder1" in response.json()
         assert "folder2" in response.json()
 
-    @patch('device_manager.DeviceManager.get_community_folders')
+    @preset('device_manager.DeviceManager.get_community_folders')
     def test_get_community_folders_error(self, mock_get_community_folders, client):
         """Test the GET /community_folders/{device_name} endpoint with an error"""
         # Set up mock to raise an exception
@@ -337,146 +337,146 @@ class TestFastAPIEndpoints:
         assert response.status_code == 500
         assert "error" in response.json()["detail"].lower()
 
-    @patch('device_manager.DeviceManager.get_all_patches')
-    def test_get_patches(self, mock_get_all_patches, client):
-        """Test the GET /patches/{manufacturer}/{device} endpoint that replaces /patches"""
-        # Set up mock to return a list of Patch objects
-        from models import Patch
-        mock_get_all_patches.return_value = [
-            Patch(preset_name="Patch 1", category="Category 1", source="default"),
-            Patch(preset_name="Patch 2", category="Category 2", source="community_folder")
+    @preset('device_manager.DeviceManager.get_all_presets')
+    def test_get_presets(self, mock_get_all_presets, client):
+        """Test the GET /presets/{manufacturer}/{device} endpoint that replaces /presets"""
+        # Set up mock to return a list of Preset objects
+        from models import Preset
+        mock_get_all_presets.return_value = [
+            Preset(preset_name="Preset 1", category="Category 1", source="default"),
+            Preset(preset_name="Preset 2", category="Category 2", source="community_folder")
         ]
 
         # Make the request with manufacturer and device parameters
-        response = client.get("/patches/Manufacturer%201/Device%201")
+        response = client.get("/presets/Manufacturer%201/Device%201")
 
         # Verify the response
         assert response.status_code == 200
         assert len(response.json()) == 2
-        assert response.json()[0]["preset_name"] == "Patch 1"
+        assert response.json()[0]["preset_name"] == "Preset 1"
         assert response.json()[0]["source"] == "default"
-        assert response.json()[1]["preset_name"] == "Patch 2"
+        assert response.json()[1]["preset_name"] == "Preset 2"
         assert response.json()[1]["source"] == "community_folder"
 
         # Verify that the mock was called with the correct parameters
-        mock_get_all_patches.assert_called_with(
+        mock_get_all_presets.assert_called_with(
             device_name="Device 1", 
             community_folder=None, 
             manufacturer="Manufacturer 1"
         )
 
-    @patch('device_manager.DeviceManager.get_all_patches')
-    def test_get_patches_with_params(self, mock_get_all_patches, client):
-        """Test the GET /patches/{manufacturer}/{device} endpoint with community_folder parameter"""
-        # Set up mock to return a list of Patch objects
-        from models import Patch
-        mock_get_all_patches.return_value = [
-            Patch(preset_name="Patch 1", category="Category 1", source="default"),
-            Patch(preset_name="Patch 2", category="Category 2", source="community_folder")
+    @preset('device_manager.DeviceManager.get_all_presets')
+    def test_get_presets_with_params(self, mock_get_all_presets, client):
+        """Test the GET /presets/{manufacturer}/{device} endpoint with community_folder parameter"""
+        # Set up mock to return a list of Preset objects
+        from models import Preset
+        mock_get_all_presets.return_value = [
+            Preset(preset_name="Preset 1", category="Category 1", source="default"),
+            Preset(preset_name="Preset 2", category="Category 2", source="community_folder")
         ]
 
         # Make the request with manufacturer and device parameters (no query params)
-        response = client.get("/patches/Manufacturer%201/Device%201")
+        response = client.get("/presets/Manufacturer%201/Device%201")
 
         # Verify the response
         assert response.status_code == 200
         assert len(response.json()) == 2
 
         # Verify that the mock was called with the correct parameters
-        mock_get_all_patches.assert_called_with(
+        mock_get_all_presets.assert_called_with(
             device_name="Device 1", 
             community_folder=None, 
             manufacturer="Manufacturer 1"
         )
 
         # Reset the mock
-        mock_get_all_patches.reset_mock()
+        mock_get_all_presets.reset_mock()
 
         # Make the request with manufacturer, device, and community_folder parameters
-        response = client.get("/patches/Manufacturer%201/Device%201?community_folder=folder1")
+        response = client.get("/presets/Manufacturer%201/Device%201?community_folder=folder1")
 
         # Verify the response
         assert response.status_code == 200
         assert len(response.json()) == 2
 
         # Verify that the mock was called with the correct parameters
-        mock_get_all_patches.assert_called_with(
+        mock_get_all_presets.assert_called_with(
             device_name="Device 1", 
             community_folder="folder1", 
             manufacturer="Manufacturer 1"
         )
 
-    @patch('device_manager.DeviceManager.get_all_patches')
-    def test_get_patches_by_manufacturer_and_device(self, mock_get_all_patches, client):
-        """Test the GET /patches/{manufacturer}/{device} endpoint"""
-        # Set up mock to return a list of Patch objects
-        from models import Patch
-        mock_get_all_patches.return_value = [
-            Patch(preset_name="Patch 1", category="Category 1", source="default"),
-            Patch(preset_name="Patch 2", category="Category 2", source="community_folder")
+    @preset('device_manager.DeviceManager.get_all_presets')
+    def test_get_presets_by_manufacturer_and_device(self, mock_get_all_presets, client):
+        """Test the GET /presets/{manufacturer}/{device} endpoint"""
+        # Set up mock to return a list of Preset objects
+        from models import Preset
+        mock_get_all_presets.return_value = [
+            Preset(preset_name="Preset 1", category="Category 1", source="default"),
+            Preset(preset_name="Preset 2", category="Category 2", source="community_folder")
         ]
 
         # Make the request
-        response = client.get("/patches/Manufacturer%201/Device%201")
+        response = client.get("/presets/Manufacturer%201/Device%201")
 
         # Verify the response
         assert response.status_code == 200
         assert len(response.json()) == 2
-        assert response.json()[0]["preset_name"] == "Patch 1"
+        assert response.json()[0]["preset_name"] == "Preset 1"
         assert response.json()[0]["source"] == "default"
-        assert response.json()[1]["preset_name"] == "Patch 2"
+        assert response.json()[1]["preset_name"] == "Preset 2"
         assert response.json()[1]["source"] == "community_folder"
 
         # Verify that the mock was called with the correct parameters
-        mock_get_all_patches.assert_called_with(device_name="Device 1", community_folder=None, manufacturer="Manufacturer 1")
+        mock_get_all_presets.assert_called_with(device_name="Device 1", community_folder=None, manufacturer="Manufacturer 1")
 
         # Reset the mock
-        mock_get_all_patches.reset_mock()
+        mock_get_all_presets.reset_mock()
 
         # Make the request with community_folder parameter
-        response = client.get("/patches/Manufacturer%201/Device%201?community_folder=folder1")
+        response = client.get("/presets/Manufacturer%201/Device%201?community_folder=folder1")
 
         # Verify the response
         assert response.status_code == 200
         assert len(response.json()) == 2
 
         # Verify that the mock was called with the correct parameters
-        mock_get_all_patches.assert_called_with(device_name="Device 1", community_folder="folder1", manufacturer="Manufacturer 1")
+        mock_get_all_presets.assert_called_with(device_name="Device 1", community_folder="folder1", manufacturer="Manufacturer 1")
 
-    @patch('device_manager.DeviceManager.get_all_patches')
-    def test_get_patches_by_manufacturer_and_device_error(self, mock_get_all_patches, client):
-        """Test the GET /patches/{manufacturer}/{device} endpoint with an error"""
+    @preset('device_manager.DeviceManager.get_all_presets')
+    def test_get_presets_by_manufacturer_and_device_error(self, mock_get_all_presets, client):
+        """Test the GET /presets/{manufacturer}/{device} endpoint with an error"""
         # Set up mock to raise an exception
-        mock_get_all_patches.side_effect = Exception("Test error")
+        mock_get_all_presets.side_effect = Exception("Test error")
 
         # Make the request
-        response = client.get("/patches/Manufacturer%201/Device%201")
+        response = client.get("/presets/Manufacturer%201/Device%201")
 
         # Verify the response
         assert response.status_code == 500
         assert "error" in response.json()["detail"].lower()
 
-    @patch('device_manager.DeviceManager.get_all_patches')
-    def test_get_patches_error(self, mock_get_all_patches, client):
-        """Test the GET /patches/{manufacturer}/{device} endpoint with an error"""
+    @preset('device_manager.DeviceManager.get_all_presets')
+    def test_get_presets_error(self, mock_get_all_presets, client):
+        """Test the GET /presets/{manufacturer}/{device} endpoint with an error"""
         # Set up mock to raise an exception
-        mock_get_all_patches.side_effect = Exception("Test error")
+        mock_get_all_presets.side_effect = Exception("Test error")
 
         # Make the request
-        response = client.get("/patches/Manufacturer%201/Device%201")
+        response = client.get("/presets/Manufacturer%201/Device%201")
 
         # Verify the response
         assert response.status_code == 500
         assert "error" in response.json()["detail"].lower()
 
         # Also test with community_folder parameter
-        response = client.get("/patches/Manufacturer%201/Device%201?community_folder=folder1")
+        response = client.get("/presets/Manufacturer%201/Device%201?community_folder=folder1")
 
         # Verify the response
         assert response.status_code == 500
         assert "error" in response.json()["detail"].lower()
 
-    @patch('midi_utils.MidiUtils.get_midi_ports')
+    @preset('midi_utils.MidiUtils.get_midi_ports')
     def test_get_midi_ports(self, mock_get_midi_ports, client):
         """Test the GET /midi_ports endpoint"""
         # Set up mock to return a dictionary of ports
@@ -495,7 +495,7 @@ class TestFastAPIEndpoints:
         assert response.json()["in"][0] == "In Port 1"
         assert response.json()["out"][0] == "Out Port 1"
 
-    @patch('midi_utils.MidiUtils.get_midi_ports')
+    @preset('midi_utils.MidiUtils.get_midi_ports')
     def test_get_midi_ports_error(self, mock_get_midi_ports, client):
         """Test the GET /midi_ports endpoint with an error"""
         # Set up mock to raise an exception
@@ -508,17 +508,17 @@ class TestFastAPIEndpoints:
         assert response.status_code == 500
         assert "error" in response.json()["detail"].lower()
 
-    @patch('device_manager.DeviceManager.get_patch_by_name')
-    @patch('midi_utils.MidiUtils.asend_patch_select')
-    def test_send_preset(self, mock_asend_patch_select, mock_get_patch_by_name, client):
+    @preset('device_manager.DeviceManager.get_preset_by_name')
+    @preset('midi_utils.MidiUtils.asend_preset_select')
+    def test_send_preset(self, mock_asend_preset_select, mock_get_preset_by_name, client):
         """Test the POST /preset endpoint"""
         # Set up mocks
-        mock_get_patch_by_name.return_value = {
+        mock_get_preset_by_name.return_value = {
             "preset_name": "Test Preset",
             "cc_0": 0,
             "pgm": 1
         }
-        mock_asend_patch_select.return_value = (True, "Command executed successfully")
+        mock_asend_preset_select.return_value = (True, "Command executed successfully")
 
         # Make the request
         response = client.post("/preset", json={
@@ -532,8 +532,8 @@ class TestFastAPIEndpoints:
         assert response.json()["status"] == "success"
 
         # Verify that the mocks were called with the correct arguments
-        mock_get_patch_by_name.assert_called_once_with("Test Preset")
-        mock_asend_patch_select.assert_called_once_with(
+        mock_get_preset_by_name.assert_called_once_with("Test Preset")
+        mock_asend_preset_select.assert_called_once_with(
             port_name="Port 1",
             channel=1,
             pgm_value=1,
@@ -542,11 +542,11 @@ class TestFastAPIEndpoints:
             sequencer_port=None
         )
 
-    @patch('device_manager.DeviceManager.get_patch_by_name')
-    def test_send_preset_not_found(self, mock_get_patch_by_name, client):
+    @preset('device_manager.DeviceManager.get_preset_by_name')
+    def test_send_preset_not_found(self, mock_get_preset_by_name, client):
         """Test the POST /preset endpoint when the preset is not found"""
         # Set up mock to return None (preset not found)
-        mock_get_patch_by_name.return_value = None
+        mock_get_preset_by_name.return_value = None
 
         # Make the request
         response = client.post("/preset", json={
@@ -559,11 +559,11 @@ class TestFastAPIEndpoints:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    @patch('device_manager.DeviceManager.get_patch_by_name')
-    def test_send_preset_missing_values(self, mock_get_patch_by_name, client):
+    @preset('device_manager.DeviceManager.get_preset_by_name')
+    def test_send_preset_missing_values(self, mock_get_preset_by_name, client):
         """Test the POST /preset endpoint when cc_0 or pgm values are missing"""
-        # Set up mock to return a patch without cc_0 or pgm
-        mock_get_patch_by_name.return_value = {
+        # Set up mock to return a preset without cc_0 or pgm
+        mock_get_preset_by_name.return_value = {
             "preset_name": "Test Preset"
         }
 

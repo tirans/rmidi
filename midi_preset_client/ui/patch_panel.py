@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QColor, QBrush, QIcon, QAction, QFont
 
-from ..models import Patch
+from ..models import Preset
 from ..config import get_config
 
 import json
@@ -15,22 +15,22 @@ import os
 import logging
 
 # Configure logger
-logger = logging.getLogger('midi_patch_client.ui.patch_panel')
+logger = logging.getLogger('midi_preset_client.ui.preset_panel')
 
 
-class PatchPanel(QWidget):
-    """Enhanced panel for displaying and selecting patches with search and favorites"""
+class PresetPanel(QWidget):
+    """Enhanced panel for displaying and selecting presets with search and favorites"""
 
-    # Signal emitted when a patch is selected
-    patch_selected = pyqtSignal(object)
+    # Signal emitted when a preset is selected
+    preset_selected = pyqtSignal(object)
 
-    # Signal emitted when a patch is double-clicked
-    patch_double_clicked = pyqtSignal(object)
+    # Signal emitted when a preset is double-clicked
+    preset_double_clicked = pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
-        self.patches = []
-        self.filtered_patches = []
+        self.presets = []
+        self.filtered_presets = []
         self.current_category = None
         self.search_text = ""
         self.show_favorites_only = False
@@ -60,7 +60,7 @@ class PatchPanel(QWidget):
         self.larger_font = QFont()
         self.larger_font.setPointSize(12)  # Increase font size
 
-        # Left side - Patch selection
+        # Left side - Preset selection
         left_panel = QWidget()
         left_layout = QVBoxLayout()
         left_layout.setSpacing(12)  # Increase spacing between components
@@ -79,7 +79,7 @@ class PatchPanel(QWidget):
             search_layout = QHBoxLayout()
             self.search_input = QLineEdit()
             self.search_input.setFont(self.larger_font)  # Set larger font
-            self.search_input.setPlaceholderText("Search patches...")
+            self.search_input.setPlaceholderText("Search presets...")
             self.search_input.textChanged.connect(self.on_search_text_changed)
 
             # Create label with larger font
@@ -124,8 +124,8 @@ class PatchPanel(QWidget):
 
         left_layout.addWidget(controls_box)
 
-        # Patch list
-        list_box = QGroupBox("Patches")
+        # Preset list
+        list_box = QGroupBox("Presets")
         list_box.setFont(self.larger_font)  # Set larger font for group box title
         list_layout = QVBoxLayout()
         list_layout.setSpacing(10)  # Increase spacing between list components
@@ -133,25 +133,25 @@ class PatchPanel(QWidget):
         list_box.setLayout(list_layout)
 
         # Results count label
-        self.results_label = QLabel("0 patches")
+        self.results_label = QLabel("0 presets")
         self.results_label.setFont(self.larger_font)  # Set larger font
         list_layout.addWidget(self.results_label)
 
-        self.patch_list = QListWidget()
-        self.patch_list.setFont(self.larger_font)  # Set larger font
-        self.patch_list.itemClicked.connect(self.on_patch_clicked)
-        self.patch_list.itemDoubleClicked.connect(self.on_patch_double_clicked)
+        self.preset_list = QListWidget()
+        self.preset_list.setFont(self.larger_font)  # Set larger font
+        self.preset_list.itemClicked.connect(self.on_preset_clicked)
+        self.preset_list.itemDoubleClicked.connect(self.on_preset_double_clicked)
 
         # Enable context menu for favorites
         if self.config.enable_favorites:
-            self.patch_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-            self.patch_list.customContextMenuRequested.connect(self.show_context_menu)
+            self.preset_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.preset_list.customContextMenuRequested.connect(self.show_context_menu)
 
-        list_layout.addWidget(self.patch_list)
+        list_layout.addWidget(self.preset_list)
 
         left_layout.addWidget(list_box)
 
-        # Right side - Patch details and category legend
+        # Right side - Preset details and category legend
         right_panel = QWidget()
         right_layout = QVBoxLayout()
         right_layout.setSpacing(10)  # Increase spacing between components
@@ -165,12 +165,12 @@ class PatchPanel(QWidget):
         legend_layout.setContentsMargins(10, 10, 10, 10)  # Add margins inside the group box
         self.legend_box.setLayout(legend_layout)
 
-        # Legend will be populated when patches are loaded
+        # Legend will be populated when presets are loaded
         self.legend_layout = legend_layout
         right_layout.addWidget(self.legend_box)
 
-        # Patch details
-        details_box = QGroupBox("Patch Details")
+        # Preset details
+        details_box = QGroupBox("Preset Details")
         details_box.setFont(self.larger_font)  # Set larger font for group box title
         details_layout = QVBoxLayout()
         details_layout.setSpacing(10)  # Increase spacing between components
@@ -188,13 +188,13 @@ class PatchPanel(QWidget):
         main_layout.addWidget(left_panel, 1)
         main_layout.addWidget(right_panel, 1)
 
-    def set_patches(self, patches: List[Patch]):
-        """Set the patches to display"""
-        logger.info(f"Setting {len(patches)} patches")
-        self.patches = patches
+    def set_presets(self, presets: List[Preset]):
+        """Set the presets to display"""
+        logger.info(f"Setting {len(presets)} presets")
+        self.presets = presets
 
         # Extract unique categories and assign colors
-        categories = sorted(set(patch.category for patch in patches))
+        categories = sorted(set(preset.category for preset in presets))
         logger.info(f"Found {len(categories)} unique categories")
 
         # Check if we need to generate new colors
@@ -269,11 +269,11 @@ class PatchPanel(QWidget):
         self._update_category_legend(categories)
 
         # Update the display
-        logger.info("Updating display with patches")
+        logger.info("Updating display with presets")
         self.update_display()
 
     def filter_by_category(self, category: Optional[str]):
-        """Filter patches by category"""
+        """Filter presets by category"""
         self.current_category = category
         self.update_display()
 
@@ -301,43 +301,43 @@ class PatchPanel(QWidget):
         self.update_display()
 
     def update_display(self):
-        """Update the patch display based on current filters"""
-        logger.info("Updating patch display")
+        """Update the preset display based on current filters"""
+        logger.info("Updating preset display")
 
         # Temporarily disable UI updates to improve performance
-        self.patch_list.setUpdatesEnabled(False)
-        self.patch_list.clear()
+        self.preset_list.setUpdatesEnabled(False)
+        self.preset_list.clear()
 
         # Log the current state for debugging
-        logger.debug(f"Current state: {len(self.patches)} total patches, category filter: '{self.current_category}', search text: '{self.search_text}', favorites only: {self.show_favorites_only}")
+        logger.debug(f"Current state: {len(self.presets)} total presets, category filter: '{self.current_category}', search text: '{self.search_text}', favorites only: {self.show_favorites_only}")
 
         # Apply filters
-        self.filtered_patches = self.patches.copy()  # Make a copy to avoid modifying the original
-        logger.debug(f"Starting with {len(self.filtered_patches)} patches")
+        self.filtered_presets = self.presets.copy()  # Make a copy to avoid modifying the original
+        logger.debug(f"Starting with {len(self.filtered_presets)} presets")
 
         # Apply filters one by one to log the effect of each filter
-        filtered_patches = self.filtered_patches
+        filtered_presets = self.filtered_presets
 
         # Category filter
         if self.current_category:
-            filtered_patches = [p for p in filtered_patches if p.category == self.current_category]
-            logger.debug(f"After category filter: {len(filtered_patches)} patches remaining")
+            filtered_presets = [p for p in filtered_presets if p.category == self.current_category]
+            logger.debug(f"After category filter: {len(filtered_presets)} presets remaining")
 
         # Search filter
         if self.search_text:
             search_lower = self.search_text.lower()
-            filtered_patches = [p for p in filtered_patches if search_lower in p.preset_name.lower()]
-            logger.debug(f"After search filter: {len(filtered_patches)} patches remaining")
+            filtered_presets = [p for p in filtered_presets if search_lower in p.preset_name.lower()]
+            logger.debug(f"After search filter: {len(filtered_presets)} presets remaining")
 
         # Favorites filter
         if self.show_favorites_only:
-            filtered_patches = [p for p in filtered_patches if self._is_favorite(p)]
-            logger.debug(f"After favorites filter: {len(filtered_patches)} patches remaining")
+            filtered_presets = [p for p in filtered_presets if self._is_favorite(p)]
+            logger.debug(f"After favorites filter: {len(filtered_presets)} presets remaining")
 
-        self.filtered_patches = filtered_patches
+        self.filtered_presets = filtered_presets
 
         # Update results count
-        self.results_label.setText(f"{len(self.filtered_patches)} patches")
+        self.results_label.setText(f"{len(self.filtered_presets)} presets")
 
         # Prepare all items at once before adding to the list
         items_to_add = []
@@ -345,17 +345,17 @@ class PatchPanel(QWidget):
         # Cache for category colors to avoid repeated lookups
         color_cache = {}
 
-        # Add patches to list widget
-        for patch in self.filtered_patches:
-            item = QListWidgetItem(self._get_patch_display_name(patch))
+        # Add presets to list widget
+        for preset in self.filtered_presets:
+            item = QListWidgetItem(self._get_preset_display_name(preset))
 
             # Set background color based on category
-            if patch.category in self.category_colors:
+            if preset.category in self.category_colors:
                 # Use cached color if available
-                if patch.category in color_cache:
-                    color, text_color = color_cache[patch.category]
+                if preset.category in color_cache:
+                    color, text_color = color_cache[preset.category]
                 else:
-                    color = self.category_colors[patch.category]
+                    color = self.category_colors[preset.category]
                     color.setAlpha(255)  # Make fully opaque
 
                     # Determine text color based on background brightness
@@ -363,17 +363,17 @@ class PatchPanel(QWidget):
                     text_color = QColor(0, 0, 0) if brightness > 128 else QColor(255, 255, 255)
 
                     # Cache the colors
-                    color_cache[patch.category] = (color, text_color)
+                    color_cache[preset.category] = (color, text_color)
 
                 item.setBackground(QBrush(color))
                 item.setForeground(QBrush(text_color))
 
             # Add star icon for favorites
-            if self._is_favorite(patch):
+            if self._is_favorite(preset):
                 item.setText("★ " + item.text())
 
-            # Store the patch object with the item
-            item.setData(Qt.ItemDataRole.UserRole, patch)
+            # Store the preset object with the item
+            item.setData(Qt.ItemDataRole.UserRole, preset)
 
             items_to_add.append(item)
 
@@ -382,30 +382,30 @@ class PatchPanel(QWidget):
             try:
                 for i, item in enumerate(items_to_add):
                     try:
-                        self.patch_list.addItem(item)
+                        self.preset_list.addItem(item)
                     except Exception as e:
-                        logger.error(f"Error adding item {i} to patch list: {str(e)}")
+                        logger.error(f"Error adding item {i} to preset list: {str(e)}")
                         logger.error(f"Item type: {type(item)}, Item text: {item.text() if hasattr(item, 'text') else 'N/A'}")
                         raise
-                logger.debug(f"Added {len(items_to_add)} items to patch list")
+                logger.debug(f"Added {len(items_to_add)} items to preset list")
             except Exception as e:
-                logger.error(f"Error loading patches: {str(e)}")
+                logger.error(f"Error loading presets: {str(e)}")
                 # Show error in the results label for user feedback
-                self.results_label.setText(f"Error loading patches: {str(e)}")
+                self.results_label.setText(f"Error loading presets: {str(e)}")
 
         # Re-enable UI updates
-        self.patch_list.setUpdatesEnabled(True)
+        self.preset_list.setUpdatesEnabled(True)
 
-        logger.info("Patch display updated successfully")
+        logger.info("Preset display updated successfully")
 
-    def _get_patch_display_name(self, patch: Patch) -> str:
-        """Get display name for a patch with category"""
+    def _get_preset_display_name(self, preset: Preset) -> str:
+        """Get display name for a preset with category"""
         # Include category in the display name for better identification
-        display_name = f"{patch.preset_name} - {patch.category}"
+        display_name = f"{preset.preset_name} - {preset.category}"
 
         # Add source information if it's not the default
-        if patch.source and patch.source != "default":
-            display_name += f" [{patch.source}]"
+        if preset.source and preset.source != "default":
+            display_name += f" [{preset.source}]"
 
         return display_name
 
@@ -415,90 +415,90 @@ class PatchPanel(QWidget):
         self.current_category = category
         self.update_display()
 
-    def on_patch_clicked(self, item):
-        """Handle patch selection"""
-        patch = item.data(Qt.ItemDataRole.UserRole)
-        if patch:
+    def on_preset_clicked(self, item):
+        """Handle preset selection"""
+        preset = item.data(Qt.ItemDataRole.UserRole)
+        if preset:
             # Update details display
-            self.details_text.setText(self._get_patch_details(patch))
+            self.details_text.setText(self._get_preset_details(preset))
 
             # Emit signal
-            self.patch_selected.emit(patch)
+            self.preset_selected.emit(preset)
 
-    def on_patch_double_clicked(self, item):
-        """Handle patch double-click"""
-        patch = item.data(Qt.ItemDataRole.UserRole)
-        if patch:
+    def on_preset_double_clicked(self, item):
+        """Handle preset double-click"""
+        preset = item.data(Qt.ItemDataRole.UserRole)
+        if preset:
             # Update details display (same as single click)
-            self.details_text.setText(self._get_patch_details(patch))
+            self.details_text.setText(self._get_preset_details(preset))
 
-            # Emit both signals - first select the patch, then emit double-click
-            self.patch_selected.emit(patch)
-            self.patch_double_clicked.emit(patch)
+            # Emit both signals - first select the preset, then emit double-click
+            self.preset_selected.emit(preset)
+            self.preset_double_clicked.emit(preset)
 
-    def _get_patch_details(self, patch: Patch) -> str:
-        """Get detailed information about the patch"""
-        details = [f"Name: {patch.preset_name}", f"Category: {patch.category}"]
+    def _get_preset_details(self, preset: Preset) -> str:
+        """Get detailed information about the preset"""
+        details = [f"Name: {preset.preset_name}", f"Category: {preset.category}"]
 
-        if self._is_favorite(patch):
+        if self._is_favorite(preset):
             details.append("★ Favorite")
 
-        if patch.source:
-            details.append(f"Source: {patch.source}")
+        if preset.source:
+            details.append(f"Source: {preset.source}")
 
-        if patch.characters:
-            details.append(f"Characters: {', '.join(patch.characters)}")
+        if preset.characters:
+            details.append(f"Characters: {', '.join(preset.characters)}")
 
-        if patch.cc_0 is not None and patch.pgm is not None:
-            details.append(f"CC 0: {patch.cc_0}, Program: {patch.pgm}")
+        if preset.cc_0 is not None and preset.pgm is not None:
+            details.append(f"CC 0: {preset.cc_0}, Program: {preset.pgm}")
 
-        if patch.sendmidi_command:
-            details.append(f"\nSendMIDI Command:\n{patch.sendmidi_command}")
+        if preset.sendmidi_command:
+            details.append(f"MIDI Command: {preset.sendmidi_command}")
 
         return "\n".join(details)
 
     def show_context_menu(self, position):
-        """Show context menu for patch items"""
-        item = self.patch_list.itemAt(position)
+        """Show context menu for preset items"""
+        item = self.preset_list.itemAt(position)
         if not item:
             return
 
-        patch = item.data(Qt.ItemDataRole.UserRole)
-        if not patch:
+        preset = item.data(Qt.ItemDataRole.UserRole)
+        if not preset:
             return
 
         menu = QMenu(self)
 
         # Toggle favorite action
-        if self._is_favorite(patch):
+        if self._is_favorite(preset):
             action = QAction("Remove from Favorites", self)
-            action.triggered.connect(lambda: self.remove_from_favorites(patch))
+            action.triggered.connect(lambda: self.remove_from_favorites(preset))
         else:
             action = QAction("Add to Favorites", self)
-            action.triggered.connect(lambda: self.add_to_favorites(patch))
+            action.triggered.connect(lambda: self.add_to_favorites(preset))
 
         menu.addAction(action)
-        menu.exec(self.patch_list.mapToGlobal(position))
+        menu.exec(self.preset_list.mapToGlobal(position))
 
-    def _is_favorite(self, patch: Patch) -> bool:
-        """Check if a patch is in favorites"""
-        return self._get_patch_id(patch) in self.favorites
+    def _is_favorite(self, preset: Preset) -> bool:
+        """Check if a preset is in favorites"""
+        return self._get_preset_id(preset) in self.favorites
 
-    def _get_patch_id(self, patch: Patch) -> str:
-        """Get unique identifier for a patch"""
-        return f"{patch.preset_name}_{patch.category}_{patch.source or 'default'}"
+    def _get_preset_id(self, preset: Preset) -> str:
+        """Get unique identifier for a preset"""
+        return f"{preset.preset_name}_{preset.category}_{preset.source or 'default'}"
 
-    def add_to_favorites(self, patch: Patch):
-        """Add a patch to favorites"""
-        patch_id = self._get_patch_id(patch)
-        self.favorites.add(patch_id)
+    def add_to_favorites(self, preset: Preset):
+        """Add a preset to favorites"""
+        preset_id = self._get_preset_id(preset)
+        self.favorites.add(preset_id)
         self._save_favorites()
         self.update_display()
 
-    def remove_from_favorites(self, patch: Patch):
-        """Remove a patch from favorites"""
-        patch_id = self._get_patch_id(patch)
-        self.favorites.discard(patch_id)
+    def remove_from_favorites(self, preset: Preset):
+        """Remove a preset from favorites"""
+        preset_id = self._get_preset_id(preset)
+        self.favorites.discard(preset_id)
         self._save_favorites()
         self.update_display()
 
@@ -609,19 +609,19 @@ class PatchPanel(QWidget):
             # Add to legend layout
             self.legend_layout.addLayout(item_layout)
 
-    def get_selected_patch(self) -> Optional[Patch]:
-        """Get the currently selected patch"""
-        current_item = self.patch_list.currentItem()
+    def get_selected_preset(self) -> Optional[Preset]:
+        """Get the currently selected preset"""
+        current_item = self.preset_list.currentItem()
         if current_item:
             return current_item.data(Qt.ItemDataRole.UserRole)
         return None
 
-    def select_patch_by_name(self, preset_name: str):
-        """Select a patch by its preset name"""
-        for i in range(self.patch_list.count()):
-            item = self.patch_list.item(i)
-            patch = item.data(Qt.ItemDataRole.UserRole)
-            if patch and patch.preset_name == preset_name:
-                self.patch_list.setCurrentItem(item)
-                self.on_patch_clicked(item)
+    def select_preset_by_name(self, preset_name: str):
+        """Select a preset by its preset name"""
+        for i in range(self.preset_list.count()):
+            item = self.preset_list.item(i)
+            preset = item.data(Qt.ItemDataRole.UserRole)
+            if preset and preset.preset_name == preset_name:
+                self.preset_list.setCurrentItem(item)
+                self.on_preset_clicked(item)
                 break

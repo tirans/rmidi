@@ -10,7 +10,7 @@ This directory contains tests for the R2MIDI application.
   - `test_midi_utils.py`: Tests for the MidiUtils class
   - `test_ui_launcher.py`: Tests for the UILauncher class
   - `test_main.py`: Tests for the main FastAPI application
-  - `midi_patch_client/`: Tests for the client-side components
+  - `midi_preset_client/`: Tests for the client-side components
     - `test_models.py`: Tests for the client-side models
     - `test_api_client.py`: Tests for the client-side API client
 

@@ -33,7 +33,7 @@ class AppConfig:
     auto_select_midi_ports: bool = True
     
     # Performance settings
-    max_patches_display: int = 1000
+    max_presets_display: int = 1000
     enable_lazy_loading: bool = True
     
     # Debug settings

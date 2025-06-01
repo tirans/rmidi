@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class UILauncher:
     """Responsible for launching the UI client"""
 
-    def __init__(self, client_path: str = "midi_patch_client", server_url: str = "http://localhost:7777"):
+    def __init__(self, client_path: str = "midi_preset_client", server_url: str = "http://localhost:7777"):
         """
         Initialize the UI launcher
 
@@ -43,9 +43,9 @@ class UILauncher:
 
         try:
             # Launch the client in a separate process
-            # Add the current directory to PYTHONPATH to allow importing midi_patch_client
+            # Add the current directory to PYTHONPATH to allow importing midi_preset_client
             env = os.environ.copy()
-            # Set PYTHONPATH to the current directory so the client can import midi_patch_client
+            # Set PYTHONPATH to the current directory so the client can import midi_preset_client
             current_dir = os.path.dirname(os.path.abspath(__file__))
             env["PYTHONPATH"] = current_dir
             logger.info(f"Setting PYTHONPATH to: {current_dir}")

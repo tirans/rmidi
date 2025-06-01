@@ -14,18 +14,18 @@ import threading
 import concurrent.futures
 
 from ..api_client import CachedApiClient
-from .patch_panel import PatchPanel
+from .preset_panel import PresetPanel
 from .device_panel import DevicePanel
 from .preferences_dialog import PreferencesDialog
 from .edit_dialog import EditDialog
-from ..models import Patch
+from ..models import Preset
 from ..config import get_config, get_config_manager
 from ..shortcuts import ShortcutManager
 from ..themes import ThemeManager
 from ..performance import get_monitor, PerformanceContext
 
 # Configure logger
-logger = logging.getLogger('midi_patch_client.ui.main_window')
+logger = logging.getLogger('midi_preset_client.ui.main_window')
 
 
 class WIPAnimation(QLabel):
@@ -192,7 +192,7 @@ class MainWindow(QMainWindow):
         self.server_url = server_url
         self.api_client = CachedApiClient(server_url, cache_timeout=self.config.cache_timeout)
         self.loading_count = 0
-        self.selected_patch: Optional[Patch] = None
+        self.selected_preset: Optional[Preset] = None
         self.selected_midi_out_port: Optional[str] = None
         self.selected_sequencer_port: Optional[str] = None
         self.selected_midi_channel: int = self.config.default_midi_channel
@@ -357,8 +357,8 @@ class MainWindow(QMainWindow):
         self.shortcut_manager.show_preferences.connect(self.show_preferences)
 
         # Navigation
-        self.shortcut_manager.next_patch.connect(self.select_next_patch)
-        self.shortcut_manager.previous_patch.connect(self.select_previous_patch)
+        self.shortcut_manager.next_preset.connect(self.select_next_preset)
+        self.shortcut_manager.previous_preset.connect(self.select_previous_preset)
         self.shortcut_manager.next_category.connect(self.select_next_category)
         self.shortcut_manager.previous_category.connect(self.select_previous_category)
 
@@ -423,13 +423,13 @@ class MainWindow(QMainWindow):
         self.device_panel.midi_channel_changed.connect(self.on_midi_channel_changed)
         self.device_panel.sync_changed.connect(self.on_sync_changed)
 
-        # Patch panel (bottom)
-        self.patch_panel = PatchPanel()
-        splitter.addWidget(self.patch_panel)
+        # Preset panel (bottom)
+        self.preset_panel = PresetPanel()
+        splitter.addWidget(self.preset_panel)
 
-        # Connect patch panel signals
-        self.patch_panel.patch_selected.connect(self.on_patch_selected)
-        self.patch_panel.patch_double_clicked.connect(self.on_patch_double_clicked)
+        # Connect preset panel signals
+        self.preset_panel.preset_selected.connect(self.on_preset_selected)
+        self.preset_panel.preset_double_clicked.connect(self.on_preset_double_clicked)
 
         # Set initial splitter sizes (30% top, 70% bottom)
         splitter.setSizes([300, 700])
@@ -439,7 +439,7 @@ class MainWindow(QMainWindow):
 
         # Send button
         self.send_button = QPushButton("Send MIDI")
-        self.send_button.setToolTip("Send the selected patch to the MIDI device (Enter)")
+        self.send_button.setToolTip("Send the selected preset to the MIDI device (Enter)")
         self.send_button.clicked.connect(self.on_send_button_clicked)
         button_layout.addWidget(self.send_button)
 
@@ -552,20 +552,20 @@ class MainWindow(QMainWindow):
     # Shortcut actions
     def focus_search(self):
         """Focus the search input"""
-        if hasattr(self.patch_panel, 'search_input'):
-            self.patch_panel.search_input.setFocus()
-            self.patch_panel.search_input.selectAll()
+        if hasattr(self.preset_panel, 'search_input'):
+            self.preset_panel.search_input.setFocus()
+            self.preset_panel.search_input.selectAll()
 
     def clear_search(self):
         """Clear the search input"""
-        if hasattr(self.patch_panel, 'clear_search'):
-            self.patch_panel.clear_search()
+        if hasattr(self.preset_panel, 'clear_search'):
+            self.preset_panel.clear_search()
 
     def toggle_favorites_filter(self):
         """Toggle favorites filter"""
-        if hasattr(self.patch_panel, 'favorites_checkbox'):
-            current = self.patch_panel.favorites_checkbox.isChecked()
-            self.patch_panel.favorites_checkbox.setChecked(not current)
+        if hasattr(self.preset_panel, 'favorites_checkbox'):
+            current = self.preset_panel.favorites_checkbox.isChecked()
+            self.preset_panel.favorites_checkbox.setChecked(not current)
 
     def refresh_all_data(self):
         """Refresh all data from server"""
@@ -655,39 +655,39 @@ class MainWindow(QMainWindow):
         # Show message
         self.status_bar.showMessage("Preferences saved", 3000)
 
-    def select_next_patch(self):
-        """Select next patch in list"""
-        if hasattr(self.patch_panel, 'patch_list'):
-            current = self.patch_panel.patch_list.currentRow()
-            if current < self.patch_panel.patch_list.count() - 1:
-                self.patch_panel.patch_list.setCurrentRow(current + 1)
-                item = self.patch_panel.patch_list.currentItem()
+    def select_next_preset(self):
+        """Select next preset in list"""
+        if hasattr(self.preset_panel, 'preset_list'):
+            current = self.preset_panel.preset_list.currentRow()
+            if current < self.preset_panel.preset_list.count() - 1:
+                self.preset_panel.preset_list.setCurrentRow(current + 1)
+                item = self.preset_panel.preset_list.currentItem()
                 if item:
-                    self.patch_panel.on_patch_clicked(item)
+                    self.preset_panel.on_preset_clicked(item)
 
-    def select_previous_patch(self):
-        """Select previous patch in list"""
-        if hasattr(self.patch_panel, 'patch_list'):
-            current = self.patch_panel.patch_list.currentRow()
+    def select_previous_preset(self):
+        """Select previous preset in list"""
+        if hasattr(self.preset_panel, 'preset_list'):
+            current = self.preset_panel.preset_list.currentRow()
             if current > 0:
-                self.patch_panel.patch_list.setCurrentRow(current - 1)
-                item = self.patch_panel.patch_list.currentItem()
+                self.preset_panel.preset_list.setCurrentRow(current - 1)
+                item = self.preset_panel.preset_list.currentItem()
                 if item:
-                    self.patch_panel.on_patch_clicked(item)
+                    self.preset_panel.on_preset_clicked(item)
 
     def select_next_category(self):
         """Select next category"""
-        if hasattr(self.patch_panel, 'category_combo'):
-            current = self.patch_panel.category_combo.currentIndex()
-            if current < self.patch_panel.category_combo.count() - 1:
-                self.patch_panel.category_combo.setCurrentIndex(current + 1)
+        if hasattr(self.preset_panel, 'category_combo'):
+            current = self.preset_panel.category_combo.currentIndex()
+            if current < self.preset_panel.category_combo.count() - 1:
+                self.preset_panel.category_combo.setCurrentIndex(current + 1)
 
     def select_previous_category(self):
         """Select previous category"""
-        if hasattr(self.patch_panel, 'category_combo'):
-            current = self.patch_panel.category_combo.currentIndex()
+        if hasattr(self.preset_panel, 'category_combo'):
+            current = self.preset_panel.category_combo.currentIndex()
             if current > 0:
-                self.patch_panel.category_combo.setCurrentIndex(current - 1)
+                self.preset_panel.category_combo.setCurrentIndex(current - 1)
 
     def increment_midi_channel(self):
         """Increment MIDI channel"""
@@ -767,9 +767,9 @@ class MainWindow(QMainWindow):
                 self.device_panel.load_ui_state()
                 logger.info("UI state loaded successfully")
 
-                # Load patches based on selected device and community folder
-                logger.info("Loading patches based on selected device and community folder...")
-                await self.load_patches()
+                # Load presets based on selected device and community folder
+                logger.info("Loading presets based on selected device and community folder...")
+                await self.load_presets()
 
                 # Change loading message to "loaded" after JSON is loaded
                 self._start_loading("Loaded")
@@ -784,70 +784,70 @@ class MainWindow(QMainWindow):
                 # Stop loading indicator after a short delay to show "Loaded" message
                 QTimer.singleShot(500, self._stop_loading)
 
-    async def load_patches(self):
-        """Load patches based on selected manufacturer, device, and community folder"""
+    async def load_presets(self):
+        """Load presets based on selected manufacturer, device, and community folder"""
         # Monitor performance
-        with PerformanceContext(get_monitor(), "load_patches"):
+        with PerformanceContext(get_monitor(), "load_presets"):
             # Start loading indicator immediately
-            self._start_loading("Loading patches...")
+            self._start_loading("Loading presets...")
 
             # Check if server is available
             if not self.server_available:
-                logger.warning("Server is not available, cannot load patches")
-                self.status_bar.showMessage("Server is not available, cannot load patches")
+                logger.warning("Server is not available, cannot load presets")
+                self.status_bar.showMessage("Server is not available, cannot load presets")
                 # Try to check server availability again
                 available = await self.check_server_availability()
                 if not available:
-                    logger.error("Server is still not available, aborting patch loading")
-                    self.status_bar.showMessage("Server is not available, aborting patch loading")
-                    # Still set empty patches to clear any previous data
-                    self.patch_panel.set_patches([])
+                    logger.error("Server is still not available, aborting preset loading")
+                    self.status_bar.showMessage("Server is not available, aborting preset loading")
+                    # Still set empty presets to clear any previous data
+                    self.preset_panel.set_presets([])
                     self._stop_loading()
                     return
                 else:
                     # Server is now available, update flag
                     self.server_available = True
-                    logger.info("Server is now available, continuing with patch loading")
-                    self.status_bar.showMessage("Server is now available, continuing with patch loading")
+                    logger.info("Server is now available, continuing with preset loading")
+                    self.status_bar.showMessage("Server is now available, continuing with preset loading")
 
             try:
                 manufacturer = self.device_panel.get_selected_manufacturer()
                 device = self.device_panel.get_selected_device()
                 community_folder = self.device_panel.get_selected_community_folder()
 
-                logger.info(f"Loading patches for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
+                logger.info(f"Loading presets for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
 
                 if not manufacturer or not device:
-                    logger.info("No manufacturer or device selected, showing empty patch list")
-                    self.status_bar.showMessage("Please select a manufacturer and device to load patches")
-                    # Set empty patches to clear any previous data
-                    patches = []
+                    logger.info("No manufacturer or device selected, showing empty preset list")
+                    self.status_bar.showMessage("Please select a manufacturer and device to load presets")
+                    # Set empty presets to clear any previous data
+                    presets = []
                 else:
-                    # Load patches based on selected manufacturer, device, and community folder
-                    patches = await self.api_client.get_patches(device, community_folder, manufacturer)
+                    # Load presets based on selected manufacturer, device, and community folder
+                    presets = await self.api_client.get_presets(device, community_folder, manufacturer)
 
-                logger.info(f"Loaded {len(patches)} patches")
+                logger.info(f"Loaded {len(presets)} presets")
 
-                # Set patches in the patch panel immediately
-                self.patch_panel.set_patches(patches)
+                # Set presets in the preset panel immediately
+                self.preset_panel.set_presets(presets)
 
                 # Change loading message to "loaded" after JSON is loaded
                 self._start_loading("Loaded")
 
                 # Update status
                 if manufacturer and device:
-                    self.status_bar.showMessage(f"Loaded {len(patches)} patches for {manufacturer} {device}")
+                    self.status_bar.showMessage(f"Loaded {len(presets)} presets for {manufacturer} {device}")
                 elif manufacturer:
-                    self.status_bar.showMessage(f"Loaded {len(patches)} patches for {manufacturer}")
+                    self.status_bar.showMessage(f"Loaded {len(presets)} presets for {manufacturer}")
                 elif device:
-                    self.status_bar.showMessage(f"Loaded {len(patches)} patches for {device}")
+                    self.status_bar.showMessage(f"Loaded {len(presets)} presets for {device}")
                 else:
-                    self.status_bar.showMessage("Please select a manufacturer and device to load patches")
+                    self.status_bar.showMessage("Please select a manufacturer and device to load presets")
             except Exception as e:
-                logger.error(f"Error loading patches: {str(e)}")
-                self.status_bar.showMessage(f"Error loading patches: {str(e)}")
-                # Set empty patches on error to clear any previous data
-                self.patch_panel.set_patches([])
+                logger.error(f"Error loading presets: {str(e)}")
+                self.status_bar.showMessage(f"Error loading presets: {str(e)}")
+                # Set empty presets on error to clear any previous data
+                self.preset_panel.set_presets([])
             finally:
                 # Stop loading indicator after a short delay to show "Loaded" message
                 QTimer.singleShot(500, self._stop_loading)
@@ -1096,8 +1096,8 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"Selected device: {device}")
         logger.info(f"Device changed to: {device}")
 
-        # Load patches for the selected device
-        self.reload_patches()
+        # Load presets for the selected device
+        self.reload_presets()
 
     def on_community_folder_changed(self, folder: str):
         """Handle community folder selection change"""
@@ -1110,61 +1110,61 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"Selected community folder: {folder}")
             logger.info(f"Community folder changed to: {folder}")
 
-        # Load patches for the selected device and community folder
-        self.reload_patches()
+        # Load presets for the selected device and community folder
+        self.reload_presets()
 
     def on_sync_changed(self, enabled: bool):
         """Handle sync checkbox state change"""
         self.sync_enabled = enabled
         logger.info(f"Sync changed to: {enabled}")
 
-    def reload_patches(self):
-        """Reload patches based on selected manufacturer, device, and community folder"""
+    def reload_presets(self):
+        """Reload presets based on selected manufacturer, device, and community folder"""
         # Check if server is available
         if not self.server_available:
-            logger.warning("Server is not available, cannot reload patches")
-            self.status_bar.showMessage("Server is not available, cannot reload patches")
+            logger.warning("Server is not available, cannot reload presets")
+            self.status_bar.showMessage("Server is not available, cannot reload presets")
             # Try to check server availability again
             def on_check_complete(available):
                 if available:
-                    logger.info("Server is now available, reloading patches...")
+                    logger.info("Server is now available, reloading presets...")
                     self.server_available = True
-                    self.status_bar.showMessage("Server is now available, reloading patches...")
-                    # Now that the server is available, reload patches
-                    self._do_reload_patches()
+                    self.status_bar.showMessage("Server is now available, reloading presets...")
+                    # Now that the server is available, reload presets
+                    self._do_reload_presets()
                 else:
-                    logger.error("Server is still not available, aborting patch reload")
-                    self.status_bar.showMessage("Server is not available, aborting patch reload")
+                    logger.error("Server is still not available, aborting preset reload")
+                    self.status_bar.showMessage("Server is not available, aborting preset reload")
 
             # Run the check asynchronously
             self.run_async_task(self.check_server_availability(), callback=on_check_complete)
         else:
-            # Server is available, proceed with reloading patches
-            self._do_reload_patches()
+            # Server is available, proceed with reloading presets
+            self._do_reload_presets()
 
-    def _do_reload_patches(self):
-        """Internal method to reload patches after server availability check"""
+    def _do_reload_presets(self):
+        """Internal method to reload presets after server availability check"""
         try:
             manufacturer = self.device_panel.get_selected_manufacturer()
             device = self.device_panel.get_selected_device()
             community_folder = self.device_panel.get_selected_community_folder()
 
-            logger.info(f"Reloading patches for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
-            self.status_bar.showMessage(f"Reloading patches...")
+            logger.info(f"Reloading presets for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
+            self.status_bar.showMessage(f"Reloading presets...")
 
-            # Run the load_patches method asynchronously
-            self.run_async_task(self.load_patches())
+            # Run the load_presets method asynchronously
+            self.run_async_task(self.load_presets())
         except Exception as e:
-            logger.error(f"Error reloading patches: {str(e)}")
-            self.status_bar.showMessage(f"Error reloading patches: {str(e)}")
+            logger.error(f"Error reloading presets: {str(e)}")
+            self.status_bar.showMessage(f"Error reloading presets: {str(e)}")
 
-    def on_patch_selected(self, patch: Patch):
-        """Handle patch selection"""
-        self.selected_patch = patch
-        self.status_bar.showMessage(f"Selected patch: {patch.get_display_name()}")
+    def on_preset_selected(self, preset: Preset):
+        """Handle preset selection"""
+        self.selected_preset = preset
+        self.status_bar.showMessage(f"Selected preset: {preset.get_display_name()}")
 
-    def on_patch_double_clicked(self, patch: Patch):
-        """Handle patch double-click - same action as Send MIDI button"""
+    def on_preset_double_clicked(self, preset: Preset):
+        """Handle preset double-click - same action as Send MIDI button"""
         # First make sure we have the necessary selections
         if not self.selected_midi_out_port:
             self.show_error("No MIDI output port selected. Please select a MIDI output port first.")
@@ -1195,8 +1195,8 @@ class MainWindow(QMainWindow):
 
     def on_send_button_clicked(self):
         """Handle Send button click"""
-        if not self.selected_patch:
-            self.show_error("No patch selected. Please select a patch first.")
+        if not self.selected_preset:
+            self.show_error("No preset selected. Please select a preset first.")
             return
 
         if not self.selected_midi_out_port:
@@ -1207,13 +1207,13 @@ class MainWindow(QMainWindow):
 
     async def _send_preset_async(self):
         """Send the selected preset to the server asynchronously"""
-        if not self.selected_patch or not self.selected_midi_out_port:
+        if not self.selected_preset or not self.selected_midi_out_port:
             return
 
         # Monitor performance
         with PerformanceContext(get_monitor(), "send_preset"):
             # Start loading indicator immediately
-            self._start_loading(f"Sending preset: {self.selected_patch.get_display_name()}...")
+            self._start_loading(f"Sending preset: {self.selected_preset.get_display_name()}...")
 
             # Check if server is available
             if not self.server_available:
@@ -1234,23 +1234,23 @@ class MainWindow(QMainWindow):
                     self.status_bar.showMessage("Server is now available, continuing with preset send")
 
             try:
-                self.status_bar.showMessage(f"Sending preset: {self.selected_patch.get_display_name()}...")
+                self.status_bar.showMessage(f"Sending preset: {self.selected_preset.get_display_name()}...")
 
                 # Log debug information
-                logger.info(f"Sending preset: {self.selected_patch.get_display_name()}")
+                logger.info(f"Sending preset: {self.selected_preset.get_display_name()}")
                 logger.info(f"MIDI out port: {self.selected_midi_out_port}")
                 logger.info(f"MIDI channel: {self.selected_midi_channel}")
                 logger.info(f"Sequencer port: {self.selected_sequencer_port}")
 
                 result = await self.api_client.send_preset(
-                    self.selected_patch.preset_name,
+                    self.selected_preset.preset_name,
                     self.selected_midi_out_port,
                     self.selected_midi_channel,
                     self.selected_sequencer_port
                 )
 
                 if result.get("status") == "success":
-                    self.status_bar.showMessage(f"Preset sent: {self.selected_patch.get_display_name()}")
+                    self.status_bar.showMessage(f"Preset sent: {self.selected_preset.get_display_name()}")
                     # Change loading message to "loaded" after preset is sent successfully
                     self._start_loading("Loaded")
                 else:

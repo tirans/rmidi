@@ -1,11 +1,11 @@
 import unittest
 import json
 import subprocess
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import preset, MagicMock, AsyncMock
 import pytest
 import httpx
-from midi_patch_client.api_client import CachedApiClient as ApiClient
-from midi_patch_client.models import Device, Patch
+from midi_preset_client.api_client import CachedApiClient as ApiClient
+from midi_preset_client.models import Device, Preset
 
 class TestApiClient:
     """Test cases for the ApiClient class"""
@@ -16,7 +16,7 @@ class TestApiClient:
         return ApiClient(base_url="http://test-server:8000")
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient')
+    @preset('httpx.AsyncClient')
     async def test_init(self, mock_async_client):
         """Test initialization of ApiClient"""
         # Create an ApiClient
@@ -33,70 +33,70 @@ class TestApiClient:
     # Devices should only be fetched via GET to /devices/{manufacturer}
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
-    async def test_get_patches(self, mock_get, api_client):
-        """Test getting patches from the server"""
+    @preset('httpx.AsyncClient.get')
+    async def test_get_presets(self, mock_get, api_client):
+        """Test getting presets from the server"""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = [
-            {"preset_name": "Patch 1", "category": "Category 1", "source": "default"},
-            {"preset_name": "Patch 2", "category": "Category 2", "source": "community_folder"}
+            {"preset_name": "Preset 1", "category": "Category 1", "source": "default"},
+            {"preset_name": "Preset 2", "category": "Category 2", "source": "community_folder"}
         ]
         mock_get.return_value = mock_response
 
         # Call the method under test with required manufacturer and device_name parameters
-        patches = await api_client.get_patches(manufacturer="Manufacturer 1", device_name="Device 1")
+        presets = await api_client.get_presets(manufacturer="Manufacturer 1", device_name="Device 1")
 
         # Verify the results
-        assert len(patches) == 2
-        assert isinstance(patches[0], Patch)
-        assert patches[0].preset_name == "Patch 1"
-        assert patches[0].category == "Category 1"
-        assert patches[0].source == "default"
-        assert patches[1].source == "community_folder"
+        assert len(presets) == 2
+        assert isinstance(presets[0], Preset)
+        assert presets[0].preset_name == "Preset 1"
+        assert presets[0].category == "Category 1"
+        assert presets[0].source == "default"
+        assert presets[1].source == "community_folder"
 
         # Verify that the API was called correctly with the new endpoint
-        mock_get.assert_called_once_with("/patches/Manufacturer 1/Device 1", params={})
+        mock_get.assert_called_once_with("/presets/Manufacturer 1/Device 1", params={})
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
-    async def test_get_patches_error(self, mock_get, api_client):
-        """Test getting patches with an error"""
+    @preset('httpx.AsyncClient.get')
+    async def test_get_presets_error(self, mock_get, api_client):
+        """Test getting presets with an error"""
         # Set up mock to raise an exception
         mock_get.side_effect = httpx.HTTPError("Test error")
 
         # Call the method under test with required manufacturer and device_name parameters
-        patches = await api_client.get_patches(manufacturer="Manufacturer 1", device_name="Device 1")
+        presets = await api_client.get_presets(manufacturer="Manufacturer 1", device_name="Device 1")
 
         # Verify the results
-        assert len(patches) == 0
+        assert len(presets) == 0
 
         # Verify that the API was called correctly with the new endpoint
-        mock_get.assert_called_once_with("/patches/Manufacturer 1/Device 1", params={})
+        mock_get.assert_called_once_with("/presets/Manufacturer 1/Device 1", params={})
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
-    async def test_get_patches_with_params(self, mock_get, api_client):
-        """Test getting patches with manufacturer, device_name, and community_folder parameters"""
+    @preset('httpx.AsyncClient.get')
+    async def test_get_presets_with_params(self, mock_get, api_client):
+        """Test getting presets with manufacturer, device_name, and community_folder parameters"""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = [
-            {"preset_name": "Patch 1", "category": "Category 1", "source": "default"},
-            {"preset_name": "Patch 2", "category": "Category 2", "source": "community_folder"}
+            {"preset_name": "Preset 1", "category": "Category 1", "source": "default"},
+            {"preset_name": "Preset 2", "category": "Category 2", "source": "community_folder"}
         ]
         mock_get.return_value = mock_response
 
         # Call the method under test with manufacturer and device_name parameters
-        patches = await api_client.get_patches(manufacturer="Manufacturer 1", device_name="Device 1")
+        presets = await api_client.get_presets(manufacturer="Manufacturer 1", device_name="Device 1")
 
         # Verify the results
-        assert len(patches) == 2
+        assert len(presets) == 2
 
         # Verify that the API was called correctly with the new endpoint
-        mock_get.assert_called_once_with("/patches/Manufacturer 1/Device 1", params={})
+        mock_get.assert_called_once_with("/presets/Manufacturer 1/Device 1", params={})
         mock_response.raise_for_status.assert_called_once()
 
         # Reset mocks
@@ -104,13 +104,13 @@ class TestApiClient:
         mock_response.raise_for_status.reset_mock()
 
         # Call the method under test with manufacturer, device_name, and community_folder parameters
-        patches = await api_client.get_patches(manufacturer="Manufacturer 1", device_name="Device 1", community_folder="folder1")
+        presets = await api_client.get_presets(manufacturer="Manufacturer 1", device_name="Device 1", community_folder="folder1")
 
         # Verify the results
-        assert len(patches) == 2
+        assert len(presets) == 2
 
         # Verify that the API was called correctly with the new endpoint and community_folder parameter
-        mock_get.assert_called_once_with("/patches/Manufacturer 1/Device 1", params={"community_folder": "folder1"})
+        mock_get.assert_called_once_with("/presets/Manufacturer 1/Device 1", params={"community_folder": "folder1"})
         mock_response.raise_for_status.assert_called_once()
 
         # Reset mocks
@@ -118,10 +118,10 @@ class TestApiClient:
         mock_response.raise_for_status.reset_mock()
 
         # Test with missing manufacturer parameter
-        patches = await api_client.get_patches(device_name="Device 1")
+        presets = await api_client.get_presets(device_name="Device 1")
 
         # Verify the results - should be empty because both parameters are required
-        assert len(patches) == 0
+        assert len(presets) == 0
 
         # Verify that the API was not called
         mock_get.assert_not_called()
@@ -130,16 +130,16 @@ class TestApiClient:
         mock_get.reset_mock()
 
         # Test with missing device_name parameter
-        patches = await api_client.get_patches(manufacturer="Manufacturer 1")
+        presets = await api_client.get_presets(manufacturer="Manufacturer 1")
 
         # Verify the results - should be empty because both parameters are required
-        assert len(patches) == 0
+        assert len(presets) == 0
 
         # Verify that the API was not called
         mock_get.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_get_manufacturers(self, mock_get, api_client):
         """Test getting manufacturers from the server"""
         # Set up mock response
@@ -161,7 +161,7 @@ class TestApiClient:
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_get_manufacturers_error(self, mock_get, api_client):
         """Test getting manufacturers with an error"""
         # Set up mock to raise an exception
@@ -177,7 +177,7 @@ class TestApiClient:
         mock_get.assert_called_once_with("/manufacturers")
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_get_devices_by_manufacturer(self, mock_get, api_client):
         """Test getting devices by manufacturer from the server"""
         # Set up mock response
@@ -199,7 +199,7 @@ class TestApiClient:
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_get_devices_by_manufacturer_error(self, mock_get, api_client):
         """Test getting devices by manufacturer with an error"""
         # Set up mock to raise an exception
@@ -215,7 +215,7 @@ class TestApiClient:
         mock_get.assert_called_once_with("/devices/Manufacturer 1")
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_get_community_folders(self, mock_get, api_client):
         """Test getting community folders from the server"""
         # Set up mock response
@@ -237,7 +237,7 @@ class TestApiClient:
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_get_community_folders_error(self, mock_get, api_client):
         """Test getting community folders with an error"""
         # Set up mock to raise an exception
@@ -253,7 +253,7 @@ class TestApiClient:
         mock_get.assert_called_once_with("/community_folders/Device 1")
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_get_midi_ports(self, mock_get, api_client):
         """Test getting MIDI ports from the server"""
         # Set up mock response
@@ -279,7 +279,7 @@ class TestApiClient:
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_get_midi_ports_error(self, mock_get, api_client):
         """Test getting MIDI ports with an error"""
         # Set up mock to raise an exception
@@ -296,7 +296,7 @@ class TestApiClient:
         mock_get.assert_called_once_with("/midi_ports")
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.post')
+    @preset('httpx.AsyncClient.post')
     async def test_send_preset(self, mock_post, api_client):
         """Test sending a preset to the server"""
         # Set up mock response
@@ -328,7 +328,7 @@ class TestApiClient:
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.post')
+    @preset('httpx.AsyncClient.post')
     async def test_send_preset_with_sequencer(self, mock_post, api_client):
         """Test sending a preset with a sequencer port"""
         # Set up mock response
@@ -362,7 +362,7 @@ class TestApiClient:
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.post')
+    @preset('httpx.AsyncClient.post')
     async def test_send_preset_error(self, mock_post, api_client):
         """Test sending a preset with an error"""
         # Set up mock to raise an exception with a response
@@ -387,7 +387,7 @@ class TestApiClient:
         mock_post.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.post')
+    @preset('httpx.AsyncClient.post')
     async def test_send_preset_error_no_json(self, mock_post, api_client):
         """Test sending a preset with an error that doesn't have JSON response"""
         # Set up mock to raise an exception without a valid JSON response
@@ -412,7 +412,7 @@ class TestApiClient:
         mock_post.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_run_git_sync(self, mock_get, api_client):
         """Test running git sync"""
         # Set up mock response
@@ -436,7 +436,7 @@ class TestApiClient:
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.get')
+    @preset('httpx.AsyncClient.get')
     async def test_run_git_sync_error(self, mock_get, api_client):
         """Test running git sync with an error"""
         # Set up mock to raise an exception
@@ -456,7 +456,7 @@ class TestApiClient:
     def test_save_ui_state(self, api_client):
         """Test saving UI state"""
         # Create a UI state
-        from midi_patch_client.models import UIState
+        from midi_preset_client.models import UIState
         ui_state = UIState(
             manufacturer="Test Manufacturer",
             device="Test Device",
@@ -477,7 +477,7 @@ class TestApiClient:
     def test_get_ui_state(self, api_client):
         """Test getting UI state"""
         # Set up a UI state
-        from midi_patch_client.models import UIState
+        from midi_preset_client.models import UIState
         ui_state = UIState(
             manufacturer="Test Manufacturer",
             device="Test Device",
@@ -497,7 +497,7 @@ class TestApiClient:
         assert result == ui_state
 
     @pytest.mark.asyncio
-    @patch('httpx.AsyncClient.aclose')
+    @preset('httpx.AsyncClient.aclose')
     async def test_close(self, mock_aclose, api_client):
         """Test closing the API client"""
         # Call the method under test

@@ -12,7 +12,7 @@ from PyQt6.QtCore import pyqtSignal, QTimer
 from ..models import Device, UIState
 
 # Configure logger
-logger = logging.getLogger('midi_patch_client.ui.device_panel')
+logger = logging.getLogger('midi_preset_client.ui.device_panel')
 
 
 class DebouncedComboBox(QComboBox):
@@ -625,7 +625,7 @@ class DevicePanel(QWidget):
                         logger.info(f"Setting sequencer port directly to: {state.sequencer_port}")
                         self.sequencer_combo.setCurrentIndex(index)
 
-            # Trigger device_changed signal to ensure patches are loaded
+            # Trigger device_changed signal to ensure presets are loaded
             if self.current_device:
                 device_name = self.current_device.name if hasattr(self.current_device, 'name') else self.current_device
                 logger.info(f"Triggering device_changed signal for {device_name}")
@@ -792,7 +792,7 @@ class DevicePanel(QWidget):
                 except Exception as e:
                     logger.error(f"Error searching for similar device: {str(e)}")
 
-                # If still not found, keep the string value for filtering patches
+                # If still not found, keep the string value for filtering presets
                 if not device_found:
                     logger.info(f"No matching device found, using device name as string: {device_name}")
                     # Get community folders for this device if available

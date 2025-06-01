@@ -206,10 +206,10 @@ class PreferencesDialog(QDialog):
         performance_layout = QFormLayout()
         performance_group.setLayout(performance_layout)
         
-        self.max_patches_spin = QSpinBox()
-        self.max_patches_spin.setRange(100, 10000)
-        self.max_patches_spin.setValue(self.config_manager.config.max_patches_display)
-        performance_layout.addRow("Max Patches to Display:", self.max_patches_spin)
+        self.max_presets_spin = QSpinBox()
+        self.max_presets_spin.setRange(100, 10000)
+        self.max_presets_spin.setValue(self.config_manager.config.max_presets_display)
+        performance_layout.addRow("Max Presetes to Display:", self.max_presets_spin)
         
         self.lazy_loading_check = QCheckBox()
         self.lazy_loading_check.setChecked(self.config_manager.config.enable_lazy_loading)
@@ -304,7 +304,7 @@ class PreferencesDialog(QDialog):
             enable_keyboard_shortcuts=self.enable_shortcuts_check.isChecked(),
             
             # Performance
-            max_patches_display=self.max_patches_spin.value(),
+            max_presets_display=self.max_presets_spin.value(),
             enable_lazy_loading=self.lazy_loading_check.isChecked(),
             
             # Advanced
@@ -369,7 +369,7 @@ class PreferencesDialog(QDialog):
         self.enable_shortcuts_check.setChecked(config.enable_keyboard_shortcuts)
         
         # Performance
-        self.max_patches_spin.setValue(config.max_patches_display)
+        self.max_presets_spin.setValue(config.max_presets_display)
         self.lazy_loading_check.setChecked(config.enable_lazy_loading)
         
         # Advanced

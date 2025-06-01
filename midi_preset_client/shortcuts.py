@@ -23,8 +23,8 @@ class ShortcutManager(QObject):
     show_preferences = pyqtSignal()
     
     # Navigation
-    next_patch = pyqtSignal()
-    previous_patch = pyqtSignal()
+    next_preset = pyqtSignal()
+    previous_preset = pyqtSignal()
     next_category = pyqtSignal()
     previous_category = pyqtSignal()
     
@@ -51,14 +51,14 @@ class ShortcutManager(QObject):
         self._add_shortcut("Preferences", "Ctrl+,", self.show_preferences)
         
         # Navigation
-        self._add_shortcut("Next Patch", "Down", self.next_patch)
-        self._add_shortcut("Previous Patch", "Up", self.previous_patch)
+        self._add_shortcut("Next Preset", "Down", self.next_preset)
+        self._add_shortcut("Previous Preset", "Up", self.previous_preset)
         self._add_shortcut("Next Category", "Right", self.next_category)
         self._add_shortcut("Previous Category", "Left", self.previous_category)
         
         # Alternative navigation
-        self._add_shortcut("Next Patch Alt", "J", self.next_patch)
-        self._add_shortcut("Previous Patch Alt", "K", self.previous_patch)
+        self._add_shortcut("Next Preset Alt", "J", self.next_preset)
+        self._add_shortcut("Previous Preset Alt", "K", self.previous_preset)
         self._add_shortcut("Next Category Alt", "L", self.next_category)
         self._add_shortcut("Previous Category Alt", "H", self.previous_category)
         
@@ -130,7 +130,7 @@ class ShortcutDisplay:
         shortcuts = [
             ("Main Actions", [
                 ("Send Preset", "Enter/Return"),
-                ("Search Patches", "Ctrl+F"),
+                ("Search Presetes", "Ctrl+F"),
                 ("Clear Search", "Esc"),
                 ("Toggle Favorites", "Ctrl+D"),
                 ("Refresh Data", "F5"),
@@ -138,8 +138,8 @@ class ShortcutDisplay:
                 ("Quit", "Ctrl+Q")
             ]),
             ("Navigation", [
-                ("Next Patch", "↓ or J"),
-                ("Previous Patch", "↑ or K"),
+                ("Next Preset", "↓ or J"),
+                ("Previous Preset", "↑ or K"),
                 ("Next Category", "→ or L"),
                 ("Previous Category", "← or H")
             ]),

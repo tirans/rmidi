@@ -20,7 +20,7 @@ load_dotenv()
 from device_manager import DeviceManager
 from midi_utils import MidiUtils
 from models import (
-    Device, Patch, PresetRequest, ManufacturerRequest, 
+    Device, Preset, PresetRequest, ManufacturerRequest, 
     ManufacturerCreate, DeviceCreate, PresetCreate, 
     DirectoryStructureRequest, DirectoryStructureResponse
 )
@@ -206,8 +206,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app with lifespan
 app = FastAPI(
-    title="MIDI Patch Selection API",
-    description="API for selecting MIDI patches and controlling MIDI devices",
+    title="MIDI Preset Selection API",
+    description="API for selecting MIDI presets and controlling MIDI devices",
     version=__version__,
     lifespan=lifespan
 )
@@ -260,33 +260,33 @@ async def get_community_folders(device_name: str):
         raise HTTPException(status_code=500, detail=f"Error getting community folders for device {device_name}: {str(e)}")
 
 
-@app.get("/patches/{manufacturer}/{device}", response_model=List[Patch])
-async def get_patches_by_manufacturer_and_device(
+@app.get("/presets/{manufacturer}/{device}", response_model=List[Preset])
+async def get_presets_by_manufacturer_and_device(
     manufacturer: str, 
     device: str, 
     community_folder: Optional[str] = None
 ):
     """
-    Return patches for a specific manufacturer and device
+    Return presets for a specific manufacturer and device
 
     Args:
         manufacturer: Name of the manufacturer
         device: Name of the device
-        community_folder: Optional name of the community folder to get patches from
+        community_folder: Optional name of the community folder to get presets from
     """
     try:
-        patches = device_manager.get_all_patches(
+        presets = device_manager.get_all_presets(
             device_name=device, 
             community_folder=community_folder,
             manufacturer=manufacturer
         )
-        logger.info(f"Returning {len(patches)} patches for manufacturer {manufacturer}, device {device}")
-        if patches:
-            logger.debug(f"First 5 patches: {[p.preset_name for p in patches[:5]]}")
-        return patches
+        logger.info(f"Returning {len(presets)} presets for manufacturer {manufacturer}, device {device}")
+        if presets:
+            logger.debug(f"First 5 presets: {[p.preset_name for p in presets[:5]]}")
+        return presets
     except Exception as e:
-        logger.error(f"Error getting patches for manufacturer {manufacturer}, device {device}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting patches for manufacturer {manufacturer}, device {device}: {str(e)}")
+        logger.error(f"Error getting presets for manufacturer {manufacturer}, device {device}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting presets for manufacturer {manufacturer}, device {device}: {str(e)}")
 
 @app.get("/midi_ports", response_model=Dict[str, List[str]])
 async def get_midi_ports():
@@ -306,26 +306,26 @@ async def send_preset(preset: PresetRequest):
     logger.info(f"Received preset request: {preset.preset_name} to port {preset.midi_port} on channel {preset.midi_channel}")
 
     try:
-        # Get the patch data
-        patch_data = device_manager.get_patch_by_name(preset.preset_name)
-        if not patch_data:
+        # Get the preset data
+        preset_data = device_manager.get_preset_by_name(preset.preset_name)
+        if not preset_data:
             logger.warning(f"Preset '{preset.preset_name}' not found")
             raise HTTPException(status_code=404, detail=f"Preset '{preset.preset_name}' not found")
 
         # Get the bank select (cc_0) and program change (pgm) values
-        cc_value = patch_data.get('cc_0')
-        pgm_value = patch_data.get('pgm')
+        cc_value = preset_data.get('cc_0')
+        pgm_value = preset_data.get('pgm')
 
         if cc_value is None or pgm_value is None:
             logger.warning(f"Missing cc_0 or pgm values for preset '{preset.preset_name}'")
             raise HTTPException(status_code=400, detail=f"Missing cc_0 or pgm values for preset '{preset.preset_name}'")
 
-        # Use the new send_patch_select function
-        logger.info(f"Sending patch select: port={preset.midi_port}, channel={preset.midi_channel}, cc0={cc_value}, pgm={pgm_value}")
+        # Use the new send_preset_select function
+        logger.info(f"Sending preset select: port={preset.midi_port}, channel={preset.midi_channel}, cc0={cc_value}, pgm={pgm_value}")
 
         # Execute the command
         try:
-            success, message = await MidiUtils.asend_patch_select(
+            success, message = await MidiUtils.asend_preset_select(
                 port_name=preset.midi_port,
                 channel=preset.midi_channel,
                 pgm_value=pgm_value,
@@ -335,10 +335,10 @@ async def send_preset(preset: PresetRequest):
             )
 
             if not success:
-                logger.error(f"Patch selection failed: {message}")
+                logger.error(f"Preset selection failed: {message}")
                 raise HTTPException(status_code=500, detail=message)
 
-            logger.info(f"Patch selection succeeded: {message}")
+            logger.info(f"Preset selection succeeded: {message}")
 
             # If sequencer port is specified, log it
             if preset.sequencer_port:
@@ -347,8 +347,8 @@ async def send_preset(preset: PresetRequest):
             return {"status": "success", "message": message}
 
         except Exception as e:
-            logger.error(f"Error executing patch selection: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error executing patch selection: {str(e)}")
+            logger.error(f"Error executing preset selection: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error executing preset selection: {str(e)}")
 
     except HTTPException:
         # Re-raise HTTP exceptions to preserve their status codes

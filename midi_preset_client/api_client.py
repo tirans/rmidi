@@ -6,10 +6,10 @@ import time
 from typing import Dict, List, Optional, Any, Tuple
 import httpx
 
-from .models import Device, Patch, UIState
+from .models import Device, Preset, UIState
 
 # Configure logger
-logger = logging.getLogger('midi_patch_client.api_client')
+logger = logging.getLogger('midi_preset_client.api_client')
 
 
 class CachedApiClient:
@@ -245,19 +245,19 @@ class CachedApiClient:
             logger.error(f"Error fetching community folders for device {device_name}: {str(e)}")
             return []
 
-    async def get_patches(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, 
-                         manufacturer: Optional[str] = None, force_refresh: bool = False) -> List[Patch]:
+    async def get_presets(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, 
+                         manufacturer: Optional[str] = None, force_refresh: bool = False) -> List[Preset]:
         """
-        Fetch patches from server with caching
+        Fetch presets from server with caching
 
         Args:
-            device_name: Optional name of the device to get patches from
-            community_folder: Optional name of the community folder to get patches from
+            device_name: Optional name of the device to get presets from
+            community_folder: Optional name of the community folder to get presets from
             manufacturer: Optional name of the manufacturer to filter devices by
             force_refresh: If True, bypass cache and fetch fresh data from server
 
         Returns:
-            List of Patch objects
+            List of Preset objects
         """
         # Both manufacturer and device_name are required for the specific endpoint
         if not (manufacturer and device_name):
@@ -265,7 +265,7 @@ class CachedApiClient:
             return []
 
         # Create cache key based on parameters
-        cache_key = f"patches_{manufacturer}_{device_name}_{community_folder or 'default'}"
+        cache_key = f"presets_{manufacturer}_{device_name}_{community_folder or 'default'}"
 
         # Check cache first if not forcing refresh
         if not force_refresh:
@@ -274,10 +274,10 @@ class CachedApiClient:
                 return cached_data
 
         try:
-            logger.info(f"Fetching patches from server for {manufacturer}/{device_name} (folder: {community_folder})...")
+            logger.info(f"Fetching presets from server for {manufacturer}/{device_name} (folder: {community_folder})...")
 
             # Use the specific endpoint with manufacturer and device_name
-            url = f"/patches/{manufacturer}/{device_name}"
+            url = f"/presets/{manufacturer}/{device_name}"
             params = {}
             if community_folder:
                 params['community_folder'] = community_folder
@@ -287,16 +287,16 @@ class CachedApiClient:
                 response.raise_for_status()
                 return response.json()
 
-            patches_data = await self._retry_request(fetch)
-            patches = [Patch(**patch) for patch in patches_data]
-            logger.info(f"Fetched {len(patches)} patches")
+            presets_data = await self._retry_request(fetch)
+            presets = [Preset(**preset) for preset in presets_data]
+            logger.info(f"Fetched {len(presets)} presets")
 
             # Cache the result
-            self._set_cache(cache_key, patches)
-            return patches
+            self._set_cache(cache_key, presets)
+            return presets
 
         except httpx.HTTPError as e:
-            logger.error(f"Error fetching patches: {str(e)}")
+            logger.error(f"Error fetching presets: {str(e)}")
             return []
 
     async def run_git_sync(self, sync_enabled: bool = True) -> Tuple[bool, str]:
@@ -341,7 +341,7 @@ class CachedApiClient:
         This function:
         1. Enters the midi-presets submodule directory
         2. Adds all changes with git add .
-        3. Commits the changes with the message "new patches"
+        3. Commits the changes with the message "new presets"
         4. Pushes the changes to the remote repository
         5. Updates the submodule in the parent repository
 
@@ -449,9 +449,9 @@ class CachedApiClient:
 
                 # Commit changes
                 logger.info("Committing changes in midi-presets...")
-                commit_cmd = "git commit -m 'new patches'"
+                commit_cmd = "git commit -m 'new presets'"
                 logger.info(f"Executing command: {commit_cmd}")
-                commit_output = submodule_repo.git.commit(m="new patches")
+                commit_output = submodule_repo.git.commit(m="new presets")
                 logger.info(f"Git commit output: {commit_output}")
 
                 # Push changes
@@ -816,9 +816,9 @@ class CachedApiClient:
             result = await self._retry_request(delete)
             logger.info(f"Device deletion result: {result}")
 
-            # Clear cache for devices and patches
+            # Clear cache for devices and presets
             self.clear_cache_for_prefix(f"devices_by_manufacturer_{manufacturer}")
-            self.clear_cache_for_prefix(f"patches_{manufacturer}_{device_name}")
+            self.clear_cache_for_prefix(f"presets_{manufacturer}_{device_name}")
 
             return result
         except httpx.HTTPError as e:
@@ -852,11 +852,11 @@ class CachedApiClient:
             result = await self._retry_request(create)
             logger.info(f"Preset creation result: {result}")
 
-            # Clear cache for patches
+            # Clear cache for presets
             manufacturer = preset_data.get('manufacturer')
             device = preset_data.get('device')
             if manufacturer and device:
-                self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+                self.clear_cache_for_prefix(f"presets_{manufacturer}_{device}")
 
             return result
         except httpx.HTTPError as e:
@@ -890,11 +890,11 @@ class CachedApiClient:
             result = await self._retry_request(update)
             logger.info(f"Preset update result: {result}")
 
-            # Clear cache for patches
+            # Clear cache for presets
             manufacturer = preset_data.get('manufacturer')
             device = preset_data.get('device')
             if manufacturer and device:
-                self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+                self.clear_cache_for_prefix(f"presets_{manufacturer}_{device}")
 
             return result
         except httpx.HTTPError as e:
@@ -931,8 +931,8 @@ class CachedApiClient:
             result = await self._retry_request(delete)
             logger.info(f"Preset deletion result: {result}")
 
-            # Clear cache for patches
-            self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+            # Clear cache for presets
+            self.clear_cache_for_prefix(f"presets_{manufacturer}_{device}")
 
             return result
         except httpx.HTTPError as e:
@@ -1058,8 +1058,8 @@ class CachedApiClient:
 
             # Clear cache for collections
             self.clear_cache_for_prefix(f"collections_{manufacturer}_{device}")
-            # Also clear cache for patches as they might be affected
-            self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+            # Also clear cache for presets as they might be affected
+            self.clear_cache_for_prefix(f"presets_{manufacturer}_{device}")
 
             return result
         except httpx.HTTPError as e:
@@ -1100,8 +1100,8 @@ class CachedApiClient:
 
             # Clear cache for collections
             self.clear_cache_for_prefix(f"collections_{manufacturer}_{device}")
-            # Also clear cache for patches as they might be affected
-            self.clear_cache_for_prefix(f"patches_{manufacturer}_{device}")
+            # Also clear cache for presets as they might be affected
+            self.clear_cache_for_prefix(f"presets_{manufacturer}_{device}")
 
             return result
         except httpx.HTTPError as e:

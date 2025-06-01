@@ -1,18 +1,18 @@
-# R2MIDI - Enhanced MIDI Patch Selection System
+# R2MIDI - Enhanced MIDI Preset Selection System
 
-A comprehensive MIDI patch selection application with enhanced performance, caching, and user experience features.
+A comprehensive MIDI preset selection application with enhanced performance, caching, and user experience features.
 
 ## Overview
 
-R2MIDI is a PyQt6-based application that provides an intuitive interface for browsing and selecting MIDI patches across multiple devices and manufacturers. The enhanced version includes significant improvements in performance, usability, and customization.
+R2MIDI is a PyQt6-based application that provides an intuitive interface for browsing and selecting MIDI presets across multiple devices and manufacturers. The enhanced version includes significant improvements in performance, usability, and customization.
 
 ## Key Features
 
 ### Core Functionality
 - **Device Management**: Browse devices by manufacturer with cascading selection
-- **Patch Selection**: View and select patches with category filtering
-- **MIDI Control**: Send patch changes to MIDI devices with configurable ports and channels
-- **Community Folders**: Support for community-contributed patch collections
+- **Preset Selection**: View and select presets with category filtering
+- **MIDI Control**: Send preset changes to MIDI devices with configurable ports and channels
+- **Community Folders**: Support for community-contributed preset collections
 - **Multi-Device Support**: Control multiple MIDI devices simultaneously
 - **Sequencer Integration**: Optional routing to a sequencer port
 
@@ -23,14 +23,14 @@ R2MIDI is a PyQt6-based application that provides an intuitive interface for bro
 - **Retry Logic**: Automatic retry with exponential backoff for failed requests
 - **Debounced Controls**: Prevents rapid API calls during UI interactions
 - **Performance Monitoring**: Real-time CPU and memory usage tracking in debug mode
-- **Lazy Loading**: Efficient handling of large patch datasets
-- **Parallel Processing**: Multi-threaded device scanning and patch loading
+- **Lazy Loading**: Efficient handling of large preset datasets
+- **Parallel Processing**: Multi-threaded device scanning and preset loading
 
 #### 🎨 User Interface
 - **Dark Mode**: Professional dark theme with full UI integration
 - **Loading Indicators**: Visual feedback for all async operations
-- **Search Functionality**: Real-time patch search with debouncing
-- **Favorites System**: Mark and filter favorite patches
+- **Search Functionality**: Real-time preset search with debouncing
+- **Favorites System**: Mark and filter favorite presets
 - **Keyboard Shortcuts**: Comprehensive keyboard navigation
 - **Category Colors**: Visual categorization with persistent color assignments
 - **Offline Mode**: Work without syncing to remote repositories
@@ -46,13 +46,13 @@ R2MIDI is a PyQt6-based application that provides an intuitive interface for bro
 | Action | Shortcut |
 |--------|----------|
 | Send Preset | Enter/Return |
-| Search Patches | Ctrl+F |
+| Search Presetes | Ctrl+F |
 | Clear Search | Esc |
 | Toggle Favorites | Ctrl+D |
 | Refresh Data | F5 |
 | Preferences | Ctrl+, |
 | Quit | Ctrl+Q |
-| Next/Previous Patch | ↓/↑ or J/K |
+| Next/Previous Preset | ↓/↑ or J/K |
 | Next/Previous Category | →/← or L/H |
 | MIDI Channel Up/Down | Ctrl+↑/↓ |
 
@@ -147,7 +147,7 @@ Configuration is stored in `~/.r2midi_config.json` with the following options:
     "enable_search": true,
     "enable_keyboard_shortcuts": true,
     "debounce_delay_ms": 300,
-    "max_patches_display": 1000,
+    "max_presets_display": 1000,
     "sync_enabled": true
 }
 ```
@@ -215,18 +215,18 @@ The GUI is divided into two main panels:
 - **MIDI Channel**: Select the MIDI channel (1-16)
 - **Sequencer Port**: Optionally select a secondary port to send the same commands to (useful for recording in a DAW)
 
-#### Patch Panel (Bottom)
+#### Preset Panel (Bottom)
 
-- Browse patches by category
-- Search for patches by name
-- Select a patch to send to the device
+- Browse presets by category
+- Search for presets by name
+- Select a preset to send to the device
 - Mark favorites for quick access
 - Filter by characteristics or categories
 
 #### Sending MIDI Commands
 
 1. Select a MIDI output port and channel in the Device Panel
-2. Select a patch in the Patch Panel
+2. Select a preset in the Preset Panel
 3. Click the "Send MIDI" button or press Enter to send the program change to your device
 
 ### API Endpoints
@@ -234,7 +234,7 @@ The GUI is divided into two main panels:
 The application provides a REST API that can be used by other applications:
 
 - `GET /devices` - Get a list of all devices
-- `GET /patches` - Get a list of all patches
+- `GET /presets` - Get a list of all presets
 - `GET /midi_port` - Get a list of available MIDI ports
 - `POST /preset` - Send a preset to a MIDI port/channel
 - `GET /git/sync` - Sync the midi-presets submodule
@@ -245,8 +245,8 @@ Example API usage with curl:
 # Get all devices
 curl http://localhost:7777/devices
 
-# Get all patches
-curl http://localhost:7777/patches
+# Get all presets
+curl http://localhost:7777/presets
 
 # Get MIDI ports
 curl http://localhost:7777/midi_port
@@ -266,7 +266,7 @@ curl http://localhost:7777/git/sync
 
 ```
 r2midi/
-├── midi_patch_client/
+├── midi_preset_client/
 │   ├── api_client.py            # Enhanced API client with caching
 │   ├── config.py                # Configuration management
 │   ├── models.py                # Data models
@@ -276,7 +276,7 @@ r2midi/
 │   └── ui/
 │       ├── device_panel.py      # Device selection with debouncing and offline mode
 │       ├── main_window.py       # Main application window
-│       ├── patch_panel.py       # Patch display with search and persistent category colors
+│       ├── preset_panel.py       # Preset display with search and persistent category colors
 │       ├── edit_dialog.py       # Edit dialog for manufacturers, devices, and presets
 │       └── preferences_dialog.py # Settings management
 ├── midi-presets/                # Git submodule containing device definitions
@@ -337,7 +337,7 @@ python -m pytest tests/test_enhanced_functionality.py -v
 python -m pytest tests/test_comprehensive_features.py -v
 
 # Run with coverage
-python -m pytest tests/ --cov=midi_patch_client --cov-report=html
+python -m pytest tests/ --cov=midi_preset_client --cov-report=html
 ```
 
 ## Performance
@@ -346,12 +346,12 @@ python -m pytest tests/ --cov=midi_patch_client --cov-report=html
 - **Cache Hit Rate**: >90% for repeated operations
 - **API Response Time**: <100ms with caching (vs 500ms+ without)
 - **UI Responsiveness**: <16ms frame time (60+ FPS)
-- **Memory Usage**: ~50MB baseline, ~100MB with 1000+ patches
+- **Memory Usage**: ~50MB baseline, ~100MB with 1000+ presets
 
 ### Optimization Tips
 1. Enable caching in preferences (default: on, now with 1-hour timeout)
 2. Adjust debounce delay for your network speed
-3. Use lazy loading for large patch collections
+3. Use lazy loading for large preset collections
 4. Enable performance monitoring in debug mode
 5. The application now uses parallel processing for device scanning, significantly improving load times
 
@@ -377,13 +377,13 @@ python -m pytest tests/ --cov=midi_patch_client --cov-report=html
    - Verify firewall settings
    - Check server URL in preferences
 
-4. **Patches Not Loading**
+4. **Presetes Not Loading**
    - Ensure manufacturer and device are selected
    - Check server logs for errors
    - Try refreshing data (F5)
 
 5. **High Memory Usage**
-   - Reduce max_patches_display in config
+   - Reduce max_presets_display in config
    - Clear cache in preferences
    - Disable debug mode
 
@@ -406,7 +406,7 @@ The application version is stored in `version.py` and is automatically increment
 The version incrementing is handled by the GitHub Actions workflow defined in `.github/workflows/python-package.yml`. When code is pushed to the master branch, the workflow:
 
 1. Builds and tests the application
-2. Increments the patch version (the third number in the version)
+2. Increments the preset version (the third number in the version)
 3. Updates both `version.py` and `pyproject.toml` with the new version
 4. Commits and pushes the version changes back to the repository
 5. Creates a GitHub release with the new version

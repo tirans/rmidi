@@ -369,9 +369,9 @@ class MidiUtils:
             return False, f"Error sending MIDI messages: {str(e)}"
 
     @staticmethod
-    def send_patch_select(port_name: str, channel: int, pgm_value: int, cc_value: int = 0, cc_number: int = 0) -> Tuple[bool, str]:
+    def send_preset_select(port_name: str, channel: int, pgm_value: int, cc_value: int = 0, cc_number: int = 0) -> Tuple[bool, str]:
         """
-        Send patch selection MIDI messages using rtmidi
+        Send preset selection MIDI messages using rtmidi
 
         Args:
             port_name: MIDI output port name
@@ -383,7 +383,7 @@ class MidiUtils:
         Returns:
             Tuple of (success, message)
         """
-        logger.info(f"Sending patch select: port={port_name}, channel={channel}, cc{cc_number}={cc_value}, pgm={pgm_value}")
+        logger.info(f"Sending preset select: port={port_name}, channel={channel}, cc{cc_number}={cc_value}, pgm={pgm_value}")
 
         # Check if rtmidi is available
         if rtmidi is None:
@@ -437,11 +437,11 @@ class MidiUtils:
             # Close the port
             midi_out.close_port()
 
-            return True, "Patch selection sent successfully"
+            return True, "Preset selection sent successfully"
 
         except Exception as e:
-            logger.error(f"Error sending patch selection with rtmidi: {str(e)}")
-            return False, f"Error sending patch selection: {str(e)}"
+            logger.error(f"Error sending preset selection with rtmidi: {str(e)}")
+            return False, f"Error sending preset selection: {str(e)}"
 
     @staticmethod
     def is_midi_available() -> bool:
@@ -523,13 +523,13 @@ class MidiUtils:
             return False, f"Unexpected error in asend_midi_command: {str(e)}"
 
     @staticmethod
-    async def asend_patch_select(port_name: str, channel: int, pgm_value: int, 
+    async def asend_preset_select(port_name: str, channel: int, pgm_value: int, 
                                 cc_value: int = 0, cc_number: int = 0,
                                 sequencer_port: Optional[str] = None) -> Tuple[bool, str]:
         """
-        Asynchronously send patch selection MIDI messages using rtmidi
+        Asynchronously send preset selection MIDI messages using rtmidi
 
-        This is an async wrapper around send_patch_select for use with FastAPI
+        This is an async wrapper around send_preset_select for use with FastAPI
 
         Args:
             port_name: MIDI output port name
@@ -542,15 +542,15 @@ class MidiUtils:
         Returns:
             Tuple of (success, message)
         """
-        logger.info(f"Sending patch select asynchronously: port={port_name}, channel={channel}, cc{cc_number}={cc_value}, pgm={pgm_value}")
+        logger.info(f"Sending preset select asynchronously: port={port_name}, channel={channel}, cc{cc_number}={cc_value}, pgm={pgm_value}")
         try:
             # Get the current event loop
             loop = asyncio.get_event_loop()
 
-            # Run the synchronous send_patch_select in a thread pool
+            # Run the synchronous send_preset_select in a thread pool
             result = await loop.run_in_executor(
                 None,
-                lambda: MidiUtils.send_patch_select(port_name, channel, pgm_value, cc_value, cc_number)
+                lambda: MidiUtils.send_preset_select(port_name, channel, pgm_value, cc_value, cc_number)
             )
 
             # If sequencer port is specified, send to that port as well
@@ -559,7 +559,7 @@ class MidiUtils:
                 try:
                     seq_result = await loop.run_in_executor(
                         None,
-                        lambda: MidiUtils.send_patch_select(sequencer_port, channel, pgm_value, cc_value, cc_number)
+                        lambda: MidiUtils.send_preset_select(sequencer_port, channel, pgm_value, cc_value, cc_number)
                     )
 
                     if not seq_result[0]:
@@ -574,5 +574,5 @@ class MidiUtils:
 
             return result
         except Exception as e:
-            logger.error(f"Unexpected error in asend_patch_select: {str(e)}")
-            return False, f"Unexpected error in asend_patch_select: {str(e)}"
+            logger.error(f"Unexpected error in asend_preset_select: {str(e)}")
+            return False, f"Unexpected error in asend_preset_select: {str(e)}"

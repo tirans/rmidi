@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from ..api_client import CachedApiClient
 
 # Configure logger
-logger = logging.getLogger('midi_patch_client.ui.edit_dialog')
+logger = logging.getLogger('midi_preset_client.ui.edit_dialog')
 
 class EditDialog(QDialog):
     """Dialog for editing manufacturers, devices, and presets"""
@@ -627,7 +627,7 @@ class EditDialog(QDialog):
             # Always force refresh to ensure we get fresh data from the server
             logger.info(f"Loading presets for {load_key}")
             self.run_async(
-                self.api_client.get_patches(device, collection, manufacturer, force_refresh=True), 
+                self.api_client.get_presets(device, collection, manufacturer, force_refresh=True), 
                 on_presets_loaded,
                 on_error,
                 loading_message=f"Loading presets for {manufacturer}/{device}..."

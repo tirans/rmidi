@@ -4,15 +4,15 @@ import argparse
 from PyQt6.QtWidgets import QApplication
 
 # Import our fixed version of MainWindow (now copied to main_window.py)
-from midi_patch_client.ui.main_window import MainWindow
+from midi_preset_client.ui.main_window import MainWindow
 
 def parse_args():
     """Parse command-line arguments"""
-    parser = argparse.ArgumentParser(description="MIDI Patch Selection Client")
+    parser = argparse.ArgumentParser(description="MIDI Preset Selection Client")
     parser.add_argument(
         "--server-url", 
         default="http://localhost:7777",
-        help="URL of the MIDI Patch Selection server (default: http://localhost:7777)"
+        help="URL of the MIDI Preset Selection server (default: http://localhost:7777)"
     )
     return parser.parse_args()
 
@@ -23,7 +23,7 @@ def main():
 
     # Create the Qt application
     app = QApplication(sys.argv)
-    app.setApplicationName("MIDI Patch Selection")
+    app.setApplicationName("MIDI Preset Selection")
 
     # Create and show the main window
     window = MainWindow(server_url=args.server_url)

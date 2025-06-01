@@ -7,7 +7,7 @@ import time
 import concurrent.futures
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
-from models import Device, Patch, DirectoryStructureResponse
+from models import Device, Preset, DirectoryStructureResponse
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -548,31 +548,31 @@ class DeviceManager:
         self._json_cache = {}
         logger.info("JSON cache cleared")
 
-    def _optimized_get_all_patches(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Patch]:
+    def _optimized_get_all_presets(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Preset]:
         """
-        Get all patches from all devices or a specific device with optimized JSON loading
+        Get all presets from all devices or a specific device with optimized JSON loading
 
         Args:
-            device_name: Optional name of the device to get patches from
-            community_folder: Optional name of the community folder to get patches from
+            device_name: Optional name of the device to get presets from
+            community_folder: Optional name of the community folder to get presets from
             manufacturer: Optional name of the manufacturer to filter devices by
 
         Returns:
-            A list of Patch objects
+            A list of Preset objects
         """
         if manufacturer and device_name:
-            logger.info(f"Getting patches for manufacturer: {manufacturer}, device: {device_name}")
+            logger.info(f"Getting presets for manufacturer: {manufacturer}, device: {device_name}")
         elif manufacturer:
-            logger.info(f"Getting patches for manufacturer: {manufacturer}")
+            logger.info(f"Getting presets for manufacturer: {manufacturer}")
         elif device_name:
-            logger.info(f"Getting patches for device: {device_name}")
+            logger.info(f"Getting presets for device: {device_name}")
         else:
-            logger.info("Getting all patches from all devices")
+            logger.info("Getting all presets from all devices")
 
         result = []
 
         try:
-            patch_count = 0
+            preset_count = 0
 
             # Filter devices by manufacturer and/or device_name
             devices_to_process = {}
@@ -622,7 +622,7 @@ class DeviceManager:
 
                     for preset in presets:
                         try:
-                            patch = Patch(
+                            preset_obj = Preset(
                                 preset_name=preset.get('preset_name', ''),
                                 category=preset.get('category', ''),
                                 characters=preset.get('characters', []),
@@ -631,12 +631,12 @@ class DeviceManager:
                                 pgm=preset.get('pgm'),
                                 source='default'
                             )
-                            result.append(patch)
-                            patch_count += 1
-                            logger.debug(f"Added patch: {patch.preset_name} ({patch.category})")
+                            result.append(preset_obj)
+                            preset_count += 1
+                            logger.debug(f"Added preset: {preset_obj.preset_name} ({preset_obj.category})")
                         except Exception as e:
                             preset_name = preset.get('preset_name', 'unknown')
-                            logger.error(f"Error creating Patch object for {preset_name}: {str(e)}")
+                            logger.error(f"Error creating Preset object for {preset_name}: {str(e)}")
 
                 # Process community presets if requested
                 if community_folder:
@@ -661,7 +661,7 @@ class DeviceManager:
 
                             for preset in community_presets:
                                 try:
-                                    patch = Patch(
+                                    preset_obj = Preset(
                                         preset_name=preset.get('preset_name', ''),
                                         category=preset.get('category', ''),
                                         characters=preset.get('characters', []),
@@ -670,13 +670,13 @@ class DeviceManager:
                                         pgm=preset.get('pgm'),
                                         source=community_folder
                                     )
-                                    result.append(patch)
-                                    patch_count += 1
-                                    logger.debug(f"Added community patch: {patch.preset_name} ({patch.category})")
+                                    result.append(preset_obj)
+                                    preset_count += 1
+                                    logger.debug(f"Added community preset: {preset_obj.preset_name} ({preset_obj.category})")
                                 except Exception as e:
                                     preset_name = preset.get('preset_name', 'unknown')
                                     logger.error(
-                                        f"Error creating Patch object for community preset {preset_name}: {str(e)}")
+                                        f"Error creating Preset object for community preset {preset_name}: {str(e)}")
                         except json.JSONDecodeError as e:
                             logger.error(f"Invalid JSON in community file '{community_path}': {str(e)}")
                         except Exception as e:
@@ -684,29 +684,29 @@ class DeviceManager:
                     else:
                         logger.warning(f"Community folder not found: {community_path}")
 
-            logger.info(f"Returning {patch_count} patches")
+            logger.info(f"Returning {preset_count} presets")
             return result
         except Exception as e:
-            logger.error(f"Error getting patches: {str(e)}")
+            logger.error(f"Error getting presets: {str(e)}")
             return result
 
-    def get_all_patches(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Patch]:
+    def get_all_presets(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Preset]:
         """
-        Get all patches from all devices or a specific device
+        Get all presets from all devices or a specific device
 
         Args:
-            device_name: Optional name of the device to get patches from
-            community_folder: Optional name of the community folder to get patches from
+            device_name: Optional name of the device to get presets from
+            community_folder: Optional name of the community folder to get presets from
             manufacturer: Optional name of the manufacturer to filter devices by
 
         Returns:
-            A list of Patch objects
+            A list of Preset objects
         """
-        # Use the optimized version of get_all_patches
+        # Use the optimized version of get_all_presets
         start_time = time.time()
         try:
             # Call the integrated optimized version with the necessary parameters
-            result = self._optimized_get_all_patches(
+            result = self._optimized_get_all_presets(
                 device_name=device_name,
                 community_folder=community_folder,
                 manufacturer=manufacturer
@@ -714,15 +714,15 @@ class DeviceManager:
 
             # Log performance metrics
             load_time = time.time() - start_time
-            logger.info(f"Returning {len(result)} patches (loaded in {load_time:.4f} seconds using optimized version)")
+            logger.info(f"Returning {len(result)} presets (loaded in {load_time:.4f} seconds using optimized version)")
             return result
         except Exception as e:
             load_time = time.time() - start_time
-            logger.error(f"Error getting patches: {str(e)} (failed in {load_time:.4f} seconds)")
+            logger.error(f"Error getting presets: {str(e)} (failed in {load_time:.4f} seconds)")
             return []
 
-    def get_patch_by_name(self, preset_name: str) -> Optional[Dict]:
-        """Get patch data by preset name"""
+    def get_preset_by_name(self, preset_name: str) -> Optional[Dict]:
+        """Get preset data by preset name"""
         start_time = time.time()
 
         for device_name, device_data in self.devices.items():

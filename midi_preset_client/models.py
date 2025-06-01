@@ -12,8 +12,8 @@ class Device:
     version: Optional[str] = None
 
 @dataclass
-class Patch:
-    """Client-side model for patch information"""
+class Preset:
+    """Client-side model for preset information"""
     preset_name: str
     category: str
     characters: Optional[List[str]] = None
@@ -23,14 +23,14 @@ class Patch:
     source: Optional[str] = None  # 'default' or community folder name
 
     def get_display_name(self) -> str:
-        """Get a formatted display name for the patch"""
+        """Get a formatted display name for the preset"""
         display_name = f"{self.preset_name} ({self.category})"
         if self.source and self.source != "default":
             display_name += f" [{self.source}]"
         return display_name
 
     def get_details(self) -> str:
-        """Get detailed information about the patch"""
+        """Get detailed information about the preset"""
         details = [f"Name: {self.preset_name}", f"Category: {self.category}"]
 
         if self.source:

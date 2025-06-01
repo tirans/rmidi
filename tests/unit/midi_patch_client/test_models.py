@@ -1,5 +1,5 @@
 import unittest
-from midi_patch_client.models import Device, Patch, UIState
+from midi_preset_client.models import Device, Preset, UIState
 
 class TestClientModels(unittest.TestCase):
     """Test cases for the client-side models"""
@@ -28,20 +28,20 @@ class TestClientModels(unittest.TestCase):
         self.assertEqual(device.midi_channel, {"IN": 1, "OUT": 2})
         self.assertEqual(device.community_folders, ["folder1", "folder2"])
 
-    def test_patch_model(self):
-        """Test the Patch model"""
+    def test_preset_model(self):
+        """Test the Preset model"""
         # Test with minimal required fields
-        patch = Patch(preset_name="Test Preset", category="Test Category")
-        self.assertEqual(patch.preset_name, "Test Preset")
-        self.assertEqual(patch.category, "Test Category")
-        self.assertIsNone(patch.characters)
-        self.assertIsNone(patch.sendmidi_command)
-        self.assertIsNone(patch.cc_0)
-        self.assertIsNone(patch.pgm)
-        self.assertIsNone(patch.source)
+        preset = Preset(preset_name="Test Preset", category="Test Category")
+        self.assertEqual(preset.preset_name, "Test Preset")
+        self.assertEqual(preset.category, "Test Category")
+        self.assertIsNone(preset.characters)
+        self.assertIsNone(preset.sendmidi_command)
+        self.assertIsNone(preset.cc_0)
+        self.assertIsNone(preset.pgm)
+        self.assertIsNone(preset.source)
 
         # Test with all fields
-        patch = Patch(
+        preset = Preset(
             preset_name="Test Preset",
             category="Test Category",
             characters=["Warm", "Bright"],
@@ -50,33 +50,33 @@ class TestClientModels(unittest.TestCase):
             pgm=0,
             source="default"
         )
-        self.assertEqual(patch.preset_name, "Test Preset")
-        self.assertEqual(patch.category, "Test Category")
-        self.assertEqual(patch.characters, ["Warm", "Bright"])
-        self.assertEqual(patch.sendmidi_command, "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0")
-        self.assertEqual(patch.cc_0, 0)
-        self.assertEqual(patch.pgm, 0)
-        self.assertEqual(patch.source, "default")
+        self.assertEqual(preset.preset_name, "Test Preset")
+        self.assertEqual(preset.category, "Test Category")
+        self.assertEqual(preset.characters, ["Warm", "Bright"])
+        self.assertEqual(preset.sendmidi_command, "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0")
+        self.assertEqual(preset.cc_0, 0)
+        self.assertEqual(preset.pgm, 0)
+        self.assertEqual(preset.source, "default")
 
-    def test_patch_get_display_name(self):
-        """Test the get_display_name method of the Patch model"""
+    def test_preset_get_display_name(self):
+        """Test the get_display_name method of the Preset model"""
         # Test without source
-        patch = Patch(preset_name="Test Preset", category="Test Category")
-        self.assertEqual(patch.get_display_name(), "Test Preset (Test Category)")
+        preset = Preset(preset_name="Test Preset", category="Test Category")
+        self.assertEqual(preset.get_display_name(), "Test Preset (Test Category)")
 
         # Test with default source
-        patch = Patch(preset_name="Test Preset", category="Test Category", source="default")
-        self.assertEqual(patch.get_display_name(), "Test Preset (Test Category)")
+        preset = Preset(preset_name="Test Preset", category="Test Category", source="default")
+        self.assertEqual(preset.get_display_name(), "Test Preset (Test Category)")
 
         # Test with community folder source
-        patch = Patch(preset_name="Test Preset", category="Test Category", source="community_folder")
-        self.assertEqual(patch.get_display_name(), "Test Preset (Test Category) [community_folder]")
+        preset = Preset(preset_name="Test Preset", category="Test Category", source="community_folder")
+        self.assertEqual(preset.get_display_name(), "Test Preset (Test Category) [community_folder]")
 
-    def test_patch_get_details(self):
-        """Test the get_details method of the Patch model"""
+    def test_preset_get_details(self):
+        """Test the get_details method of the Preset model"""
         # Test with minimal fields
-        patch = Patch(preset_name="Test Preset", category="Test Category")
-        details = patch.get_details()
+        preset = Preset(preset_name="Test Preset", category="Test Category")
+        details = preset.get_details()
         self.assertIn("Name: Test Preset", details)
         self.assertIn("Category: Test Category", details)
         self.assertNotIn("Source:", details)
@@ -84,14 +84,14 @@ class TestClientModels(unittest.TestCase):
         self.assertNotIn("CC 0:", details)
 
         # Test with source field
-        patch = Patch(preset_name="Test Preset", category="Test Category", source="default")
-        details = patch.get_details()
+        preset = Preset(preset_name="Test Preset", category="Test Category", source="default")
+        details = preset.get_details()
         self.assertIn("Name: Test Preset", details)
         self.assertIn("Category: Test Category", details)
         self.assertIn("Source: default", details)
 
         # Test with all fields
-        patch = Patch(
+        preset = Preset(
             preset_name="Test Preset",
             category="Test Category",
             characters=["Warm", "Bright"],
@@ -99,7 +99,7 @@ class TestClientModels(unittest.TestCase):
             pgm=1,
             source="community_folder"
         )
-        details = patch.get_details()
+        details = preset.get_details()
         self.assertIn("Name: Test Preset", details)
         self.assertIn("Category: Test Category", details)
         self.assertIn("Source: community_folder", details)

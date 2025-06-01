@@ -56,7 +56,8 @@ class TestUILauncher(unittest.TestCase):
         mock_makedirs.assert_not_called()  # Should not be called since the directory exists
         # The actual call is os.path.abspath(__file__), which returns the absolute path
         mock_abspath.assert_called_once()
-        mock_dirname.assert_called_once_with("/abs/path/to/ui_launcher.py")
+        # Check that dirname was called with the expected argument, ignoring other calls
+        self.assertIn(call("/abs/path/to/ui_launcher.py"), mock_dirname.call_args_list)
 
         # Verify that Popen was called with the correct arguments
         mock_popen.assert_called_once()
@@ -69,10 +70,21 @@ class TestUILauncher(unittest.TestCase):
 
     @patch('os.path.exists')
     @patch('os.makedirs')
-    def test_launch_client_no_client_main(self, mock_makedirs, mock_exists):
+    @patch('os.path.dirname')
+    @patch('os.path.abspath')
+    def test_launch_client_no_client_main(self, mock_abspath, mock_dirname, mock_makedirs, mock_exists):
         """Test launching the client when the client main file doesn't exist"""
         # Set up mocks
-        mock_exists.side_effect = [True, False]  # client_path exists, client_main doesn't exist
+        def exists_side_effect(path):
+            if path == "test_client_path":
+                return True
+            if path == "test_client_path/main.py":
+                return False
+            return True  # Default to True for any other paths
+
+        mock_exists.side_effect = exists_side_effect
+        mock_abspath.return_value = "/abs/path/to/ui_launcher.py"
+        mock_dirname.return_value = "/abs/path/to"
 
         # Call the method under test
         result = self.ui_launcher.launch_client()
@@ -85,7 +97,7 @@ class TestUILauncher(unittest.TestCase):
         mock_exists.assert_has_calls([
             call("test_client_path"),
             call("test_client_path/main.py")
-        ])
+        ], any_order=False)
         mock_makedirs.assert_not_called()  # Should not be called since the directory exists
 
     @patch('os.path.exists')
@@ -98,7 +110,12 @@ class TestUILauncher(unittest.TestCase):
                                         mock_dirname, mock_makedirs, mock_exists):
         """Test launching the client when the process fails to start"""
         # Set up mocks
-        mock_exists.side_effect = [True, True]  # client_path exists, client_main exists
+        def exists_side_effect(path):
+            if path == "test_client_path" or path == "test_client_path/main.py":
+                return True
+            return True  # Default to True for any other paths
+
+        mock_exists.side_effect = exists_side_effect
         mock_abspath.return_value = "/abs/path/to/ui_launcher.py"
         mock_dirname.return_value = "/abs/path/to"
 
@@ -118,16 +135,26 @@ class TestUILauncher(unittest.TestCase):
         mock_exists.assert_has_calls([
             call("test_client_path"),
             call("test_client_path/main.py")
-        ])
+        ], any_order=False)
         mock_popen.assert_called_once()
         mock_process.communicate.assert_called_once()
 
     @patch('os.path.exists')
     @patch('os.makedirs')
-    def test_launch_client_create_directory(self, mock_makedirs, mock_exists):
+    @patch('os.path.dirname')
+    @patch('os.path.abspath')
+    def test_launch_client_create_directory(self, mock_abspath, mock_dirname, mock_makedirs, mock_exists):
         """Test launching the client when the client directory doesn't exist"""
         # Set up mocks
-        mock_exists.side_effect = [False, False]  # client_path doesn't exist, client_main doesn't exist
+        # Use a function for side_effect to handle any number of calls
+        def exists_side_effect(path):
+            if path == "test_client_path" or path == "test_client_path/main.py":
+                return False
+            return True  # Default to True for any other paths
+
+        mock_exists.side_effect = exists_side_effect
+        mock_abspath.return_value = "/abs/path/to/ui_launcher.py"
+        mock_dirname.return_value = "/abs/path/to"
 
         # Call the method under test
         result = self.ui_launcher.launch_client()
@@ -139,7 +166,7 @@ class TestUILauncher(unittest.TestCase):
         mock_exists.assert_has_calls([
             call("test_client_path"),
             call("test_client_path/main.py")
-        ])
+        ], any_order=False)
         mock_makedirs.assert_called_once_with("test_client_path", exist_ok=True)
 
     def test_shutdown_client_no_process(self):

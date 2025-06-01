@@ -284,22 +284,6 @@ jobs:
             python -c "with open('midi_patch_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
           fi
 
-      - name: Ensure spec file is in the correct location (Linux/macOS)
-        if: matrix.platform == 'linux' || matrix.platform == 'macos'
-        run: |
-          # Check if spec file exists in the root directory
-          if [ ! -f "r2midi.spec" ]; then
-            echo "r2midi.spec not found in root directory, checking in workflows folder"
-            # Check if spec file exists in the workflows folder
-            if [ -f ".github/workflows/r2midi.spec" ]; then
-              echo "Copying r2midi.spec from workflows folder to root directory"
-              cp .github/workflows/r2midi.spec r2midi.spec
-            else
-              echo "r2midi.spec not found in workflows folder either, build will likely fail"
-            fi
-          else
-            echo "r2midi.spec found in root directory"
-          fi
 
       - name: Create themes directory and placeholder icons (Windows)
         if: matrix.platform == 'windows'
@@ -315,23 +299,6 @@ jobs:
             python -c "with open('midi_patch_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
           }
 
-      - name: Ensure spec file is in the correct location (Windows)
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          # Check if spec file exists in the root directory
-          if (-not (Test-Path "r2midi.spec")) {
-            Write-Host "r2midi.spec not found in root directory, checking in workflows folder"
-            # Check if spec file exists in the workflows folder
-            if (Test-Path ".github\workflows\r2midi.spec") {
-              Write-Host "Copying r2midi.spec from workflows folder to root directory"
-              Copy-Item ".github\workflows\r2midi.spec" -Destination "r2midi.spec"
-            } else {
-              Write-Host "r2midi.spec not found in workflows folder either, build will likely fail"
-            }
-          } else {
-            Write-Host "r2midi.spec found in root directory"
-          }
 
       - name: Build executable (Linux/macOS)
         if: matrix.platform == 'linux' || matrix.platform == 'macos'
@@ -340,108 +307,47 @@ jobs:
           echo "Current directory: $(pwd)"
           echo "Files in current directory:"
           ls -la
-          echo "Checking if r2midi.spec exists:"
-          if [ -f "r2midi.spec" ]; then
-            echo "r2midi.spec exists in current directory"
-            # Create a backup of the spec file
-            cp r2midi.spec r2midi.spec.bak
+
+          # Run PyInstaller directly with command line options
+          echo "Running PyInstaller with command line options"
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            # For macOS, create a .app bundle
+            pyinstaller --name=r2midi \
+              --windowed \
+              --noconfirm \
+              --clean \
+              --add-data="midi_patch_client/themes:midi_patch_client/themes" \
+              --add-data="midi_patch_client/ui:midi_patch_client/ui" \
+              --hidden-import=PyQt6.QtCore \
+              --hidden-import=PyQt6.QtWidgets \
+              --hidden-import=PyQt6.QtGui \
+              --hidden-import=asyncio \
+              --hidden-import=httpx \
+              --hidden-import=logging \
+              --hidden-import=json \
+              --hidden-import=git \
+              --icon="midi_patch_client/themes/icon.icns" \
+              --osx-bundle-identifier="com.r2midi.app" \
+              main.py
           else
-            echo "r2midi.spec does not exist in current directory"
+            # For Linux
+            pyinstaller --name=r2midi \
+              --windowed \
+              --noconfirm \
+              --clean \
+              --add-data="midi_patch_client/themes:midi_patch_client/themes" \
+              --add-data="midi_patch_client/ui:midi_patch_client/ui" \
+              --hidden-import=PyQt6.QtCore \
+              --hidden-import=PyQt6.QtWidgets \
+              --hidden-import=PyQt6.QtGui \
+              --hidden-import=asyncio \
+              --hidden-import=httpx \
+              --hidden-import=logging \
+              --hidden-import=json \
+              --hidden-import=git \
+              --icon="midi_patch_client/themes/icon.ico" \
+              main.py
           fi
-
-          # Create a new spec file directly in the workflow
-          echo "Creating a new spec file directly in the workflow"
-          cat > r2midi.spec << 'EOL'
-# -*- mode: python ; coding: utf-8 -*-
-import os
-
-block_cipher = None
-
-a = Analysis(
-    ['main.py'],
-    pathex=[],
-    binaries=[],
-    datas=[
-        # Include any necessary resources
-        ('midi_patch_client/themes', 'midi_patch_client/themes'),
-        ('midi_patch_client/ui', 'midi_patch_client/ui'),
-    ],
-    hiddenimports=[
-        'PyQt6.QtCore',
-        'PyQt6.QtWidgets',
-        'PyQt6.QtGui',
-        'asyncio',
-        'httpx',
-        'logging',
-        'json',
-        'git',
-    ],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-
-pyz = PYZ(
-    a.pure, 
-    a.zipped_data,
-    cipher=block_cipher
-)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name=\"r2midi\",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=True,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=\"midi_patch_client/themes/icon.ico\" if os.path.exists(\"midi_patch_client/themes/icon.ico\") else None,
-)
-
-# For macOS, create a .app bundle
-app = BUNDLE(
-    exe,
-    name=\"r2midi.app\",
-    icon=\"midi_patch_client/themes/icon.icns\" if os.path.exists(\"midi_patch_client/themes/icon.icns\") else None,
-    bundle_identifier=\"com.r2midi.app\",
-    info_plist={
-        \"CFBundleShortVersionString\": \"1.0.0\",
-        \"CFBundleVersion\": \"1.0.0\",
-        \"NSHighResolutionCapable\": \"True\",
-        \"NSRequiresAquaSystemAppearance\": \"False\",  # Allow dark mode
-        \"CFBundleName\": \"r2midi\",
-        \"CFBundleDisplayName\": \"r2midi\",
-        \"CFBundleExecutable\": \"r2midi\",
-    },
-)
-EOL
-
-          # Verify the spec file was created
-          echo "Verifying the spec file was created:"
-          ls -la r2midi.spec
-          echo "Content of the first few lines of the spec file:"
-          head -n 10 r2midi.spec
-
-          # Run PyInstaller with the spec file
-          echo "Running PyInstaller with the spec file"
-          pyinstaller r2midi.spec
 
       - name: Build executable (Windows)
         if: matrix.platform == 'windows'
@@ -451,108 +357,25 @@ EOL
           Write-Host "Current directory: $(Get-Location)"
           Write-Host "Files in current directory:"
           Get-ChildItem -Force
-          Write-Host "Checking if r2midi.spec exists:"
-          if (Test-Path "r2midi.spec") {
-            Write-Host "r2midi.spec exists in current directory"
-            # Create a backup of the spec file
-            Copy-Item r2midi.spec r2midi.spec.bak
-          } else {
-            Write-Host "r2midi.spec does not exist in current directory"
-          }
 
-          # Create a new spec file directly in the workflow
-          Write-Host "Creating a new spec file directly in the workflow"
-          @'
-# -*- mode: python ; coding: utf-8 -*-
-import os
-
-block_cipher = None
-
-a = Analysis(
-    ['main.py'],
-    pathex=[],
-    binaries=[],
-    datas=[
-        # Include any necessary resources
-        ('midi_patch_client/themes', 'midi_patch_client/themes'),
-        ('midi_patch_client/ui', 'midi_patch_client/ui'),
-    ],
-    hiddenimports=[
-        'PyQt6.QtCore',
-        'PyQt6.QtWidgets',
-        'PyQt6.QtGui',
-        'asyncio',
-        'httpx',
-        'logging',
-        'json',
-        'git',
-    ],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-
-pyz = PYZ(
-    a.pure, 
-    a.zipped_data,
-    cipher=block_cipher
-)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name=\"r2midi\",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=True,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=\"midi_patch_client/themes/icon.ico\" if os.path.exists(\"midi_patch_client/themes/icon.ico\") else None,
-)
-
-# For macOS, create a .app bundle
-app = BUNDLE(
-    exe,
-    name=\"r2midi.app\",
-    icon=\"midi_patch_client/themes/icon.icns\" if os.path.exists(\"midi_patch_client/themes/icon.icns\") else None,
-    bundle_identifier=\"com.r2midi.app\",
-    info_plist={
-        \"CFBundleShortVersionString\": \"1.0.0\",
-        \"CFBundleVersion\": \"1.0.0\",
-        \"NSHighResolutionCapable\": \"True\",
-        \"NSRequiresAquaSystemAppearance\": \"False\",  # Allow dark mode
-        \"CFBundleName\": \"r2midi\",
-        \"CFBundleDisplayName\": \"r2midi\",
-        \"CFBundleExecutable\": \"r2midi\",
-    },
-)
-'@ | Out-File -FilePath r2midi.spec -Encoding utf8
-
-          # Verify the spec file was created
-          Write-Host "Verifying the spec file was created:"
-          Get-Item r2midi.spec
-          Write-Host "Content of the first few lines of the spec file:"
-          Get-Content r2midi.spec -Head 10
-
-          # Run PyInstaller with the spec file
-          Write-Host "Running PyInstaller with the spec file"
-          pyinstaller r2midi.spec
+          # Run PyInstaller directly with command line options
+          Write-Host "Running PyInstaller with command line options"
+          pyinstaller --name=r2midi `
+            --windowed `
+            --noconfirm `
+            --clean `
+            --add-data="midi_patch_client/themes;midi_patch_client/themes" `
+            --add-data="midi_patch_client/ui;midi_patch_client/ui" `
+            --hidden-import=PyQt6.QtCore `
+            --hidden-import=PyQt6.QtWidgets `
+            --hidden-import=PyQt6.QtGui `
+            --hidden-import=asyncio `
+            --hidden-import=httpx `
+            --hidden-import=logging `
+            --hidden-import=json `
+            --hidden-import=git `
+            --icon="midi_patch_client/themes/icon.ico" `
+            main.py
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4

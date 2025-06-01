@@ -336,15 +336,37 @@ jobs:
       - name: Build executable (Linux/macOS)
         if: matrix.platform == 'linux' || matrix.platform == 'macos'
         run: |
-          # Run PyInstaller
-          pyinstaller r2midi.spec
+          # Print current directory and list files to help diagnose issues
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          echo "Checking if r2midi.spec exists:"
+          if [ -f "r2midi.spec" ]; then
+            echo "r2midi.spec exists in current directory"
+          else
+            echo "r2midi.spec does not exist in current directory"
+          fi
+
+          # Run PyInstaller with full path to spec file
+          pyinstaller "$(pwd)/r2midi.spec"
 
       - name: Build executable (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          # Run PyInstaller
-          pyinstaller r2midi.spec
+          # Print current directory and list files to help diagnose issues
+          Write-Host "Current directory: $(Get-Location)"
+          Write-Host "Files in current directory:"
+          Get-ChildItem -Force
+          Write-Host "Checking if r2midi.spec exists:"
+          if (Test-Path "r2midi.spec") {
+            Write-Host "r2midi.spec exists in current directory"
+          } else {
+            Write-Host "r2midi.spec does not exist in current directory"
+          }
+
+          # Run PyInstaller with full path to spec file
+          pyinstaller "$(Get-Location)\r2midi.spec"
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4

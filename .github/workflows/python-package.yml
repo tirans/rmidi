@@ -411,9 +411,55 @@ jobs:
           echo "Using version: $VERSION (from increment-version job: ${{ needs.increment-version.outputs.version }})"
         shell: bash
 
+      - name: List files in dist directory
+        run: |
+          echo "Files in dist directory:"
+          ls -la dist/
+        shell: bash
+
+      - name: Prepare release files (macOS/Linux)
+        if: matrix.platform == 'macos' || matrix.platform == 'linux'
+        run: |
+          # Create a directory for release files
+          mkdir -p release_files
+
+          # For macOS, zip the .app bundle
+          if [ "${{ matrix.platform }}" = "macos" ] && [ -d "dist/r2midi.app" ]; then
+            echo "Zipping macOS .app bundle"
+            cd dist
+            zip -r ../release_files/r2midi-macos.zip r2midi.app
+            cd ..
+          fi
+
+          # List files in release_files directory
+          echo "Files prepared for release:"
+          ls -la release_files/
+        shell: bash
+
+      - name: Prepare release files (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          # Create a directory for release files
+          New-Item -ItemType Directory -Force -Path release_files
+
+          # For Windows, copy the .exe file
+          if (Test-Path "dist\r2midi.exe") {
+            Write-Host "Copying Windows executable"
+            Copy-Item "dist\r2midi.exe" -Destination "release_files\r2midi-windows.exe"
+          }
+
+          # List files in release_files directory
+          Write-Host "Files prepared for release:"
+          Get-ChildItem -Path release_files -Force
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
-          files: dist/r2midi*
+          name: Release v${{ steps.get_version.outputs.version }}
+          files: release_files/*
           token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false

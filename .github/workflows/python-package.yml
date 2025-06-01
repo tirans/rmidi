@@ -284,6 +284,23 @@ jobs:
             python -c "with open('midi_patch_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
           fi
 
+      - name: Ensure spec file is in the correct location (Linux/macOS)
+        if: matrix.platform == 'linux' || matrix.platform == 'macos'
+        run: |
+          # Check if spec file exists in the root directory
+          if [ ! -f "r2midi.spec" ]; then
+            echo "r2midi.spec not found in root directory, checking in workflows folder"
+            # Check if spec file exists in the workflows folder
+            if [ -f ".github/workflows/r2midi.spec" ]; then
+              echo "Copying r2midi.spec from workflows folder to root directory"
+              cp .github/workflows/r2midi.spec r2midi.spec
+            else
+              echo "r2midi.spec not found in workflows folder either, build will likely fail"
+            fi
+          else
+            echo "r2midi.spec found in root directory"
+          fi
+
       - name: Create themes directory and placeholder icons (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
@@ -296,6 +313,24 @@ jobs:
             Write-Host "Creating placeholder icon.ico file"
             # Use Python to create a minimal .ico file
             python -c "with open('midi_patch_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
+          }
+
+      - name: Ensure spec file is in the correct location (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          # Check if spec file exists in the root directory
+          if (-not (Test-Path "r2midi.spec")) {
+            Write-Host "r2midi.spec not found in root directory, checking in workflows folder"
+            # Check if spec file exists in the workflows folder
+            if (Test-Path ".github\workflows\r2midi.spec") {
+              Write-Host "Copying r2midi.spec from workflows folder to root directory"
+              Copy-Item ".github\workflows\r2midi.spec" -Destination "r2midi.spec"
+            } else {
+              Write-Host "r2midi.spec not found in workflows folder either, build will likely fail"
+            }
+          } else {
+            Write-Host "r2midi.spec found in root directory"
           }
 
       - name: Build executable (Linux/macOS)

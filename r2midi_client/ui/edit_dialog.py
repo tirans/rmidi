@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from ..api_client import CachedApiClient
 
 # Configure logger
-logger = logging.getLogger('midi_preset_client.ui.edit_dialog')
+logger = logging.getLogger('r2midi_client.ui.edit_dialog')
 
 class EditDialog(QDialog):
     """Dialog for editing manufacturers, devices, and presets"""

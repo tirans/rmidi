@@ -15,7 +15,7 @@ import os
 import logging
 
 # Configure logger
-logger = logging.getLogger('midi_preset_client.ui.preset_panel')
+logger = logging.getLogger('r2midi_client.ui.preset_panel')
 
 
 class PresetItemDelegate(QStyledItemDelegate):

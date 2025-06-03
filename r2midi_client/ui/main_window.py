@@ -25,7 +25,7 @@ from ..themes import ThemeManager
 from ..performance import get_monitor, PerformanceContext
 
 # Configure logger
-logger = logging.getLogger('midi_preset_client.ui.main_window')
+logger = logging.getLogger('r2midi_client.ui.main_window')
 
 
 class WIPAnimation(QLabel):

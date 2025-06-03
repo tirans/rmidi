@@ -12,7 +12,7 @@ from PyQt6.QtCore import pyqtSignal, QTimer
 from ..models import Device, UIState
 
 # Configure logger
-logger = logging.getLogger('midi_preset_client.ui.device_panel')
+logger = logging.getLogger('r2midi_client.ui.device_panel')
 
 
 class DebouncedComboBox(QComboBox):

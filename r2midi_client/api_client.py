@@ -9,7 +9,7 @@ import httpx
 from .models import Device, Preset, UIState
 
 # Configure logger
-logger = logging.getLogger('midi_preset_client.api_client')
+logger = logging.getLogger('r2midi_client.api_client')
 
 
 class CachedApiClient:

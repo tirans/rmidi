@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QApplication
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 # Import our fixed version of MainWindow (now copied to main_window.py)
-from midi_preset_client.ui.main_window import MainWindow
+from r2midi_client.ui.main_window import MainWindow
 
 def parse_args():
     """Parse command-line arguments"""

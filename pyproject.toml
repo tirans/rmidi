@@ -15,7 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
-requires= "python>=3.12,<3.13"
+requires= "python>=3.12,<3.14"
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn>=0.23.2",
@@ -101,7 +101,7 @@ sources = [
     "r2midi_client",
 ]
 
-test_sources = ["tests/unit/r2midic"]
+test_sources = ["tests/unit/r2midi_client"]
 
 requires = [
     "pyqt6>=6.9.0",

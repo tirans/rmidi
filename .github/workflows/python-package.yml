@@ -35,7 +35,7 @@ jobs:
           git fetch origin master
           git rebase origin/master
 
-          CURRENT_VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
+          CURRENT_VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
           echo "Current version: $CURRENT_VERSION"
 
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
@@ -43,13 +43,15 @@ jobs:
           NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
           echo "New version: $NEW_VERSION"
 
-          sed -i "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" version.py
+          sed -i "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" server/version.py
           sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" pyproject.toml
+          # Also update the Briefcase version
+          sed -i "/\[tool.briefcase\]/,/version = / s/version = \"[^\"]*\"/version = \"$NEW_VERSION\"/" pyproject.toml
 
           echo "VERSION=$NEW_VERSION" >> $GITHUB_ENV
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-          git add version.py pyproject.toml
+          git add server/version.py pyproject.toml
           git commit -m "Bump version from $CURRENT_VERSION to $NEW_VERSION [skip ci]"
 
           # More robust push with retry mechanism
@@ -116,6 +118,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: recursive
           ref: ${{ github.event_name == 'push' && 'master' || github.ref }}  # Use master for push events, otherwise use the current ref
 
       # Setup Python environment and install dependencies in separate steps for clarity
@@ -128,8 +131,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libegl1 libjack-dev librtmidi-dev
+
       - name: Check ALSA header
         run: ls /usr/include/alsa/asoundlib.h || { echo "ALSA header missing"; exit 1; }
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -137,8 +142,8 @@ jobs:
           if [ -f requirements.txt ]; then 
             pip install -r requirements.txt; 
           fi
-          if [ -f midi_preset_client/requirements.txt ]; then 
-            pip install -r midi_preset_client/requirements.txt; 
+          if [ -f r2midi_client/requirements.txt ]; then 
+            pip install -r r2midi_client/requirements.txt; 
           fi
           # Install the package in development mode with test dependencies
           pip install -e ".[test]"
@@ -159,12 +164,14 @@ jobs:
 
       - name: Debug dist directory
         run: ls -al dist/
+
       - name: Store build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.python-version }}
           path: dist/
           retention-days: 1
+
   release:
     needs: [build, increment-version]
     runs-on: ubuntu-latest
@@ -174,12 +181,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history for proper versioning
+          submodules: recursive
           ref: master  # Ensure we're using the latest commit with the version bump
 
       - name: Get version
         id: get_version
         run: |
-          VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Using version: $VERSION (from increment-version job: ${{ needs.increment-version.outputs.version }})"
@@ -210,18 +218,23 @@ jobs:
           packages-dir: combined_dist/
           # OpenID Connect (OIDC) is used automatically, no credentials needed
 
-  build-executables:
+  build-briefcase-packages:
     needs: [release, increment-version]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.increment-version.result == 'success'
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-13, windows-latest, ubuntu-latest]
         include:
-          - os: macos-latest
-            platform: macos
+          - os: macos-13
+            platform: macOS
+            platform_name: macos
           - os: windows-latest
             platform: windows
+            platform_name: windows
+          - os: ubuntu-latest
+            platform: linux
+            platform_name: linux
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -237,239 +250,144 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies (macOS)
-        if: matrix.platform == 'macos'
+      # Platform-specific system dependencies
+      - name: Install system dependencies (macOS)
+        if: matrix.platform == 'macOS'
+        run: |
+          # Install any macOS-specific dependencies if needed
+          echo "Installing macOS dependencies..."
+
+      - name: Install system dependencies (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          # Install any Windows-specific dependencies if needed
+          Write-Host "Installing Windows dependencies..."
+
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libegl1 \
+            libjack-dev \
+            librtmidi-dev \
+            libxkbcommon-x11-0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-xinerama0 \
+            libxcb-xfixes0 \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
+            libxcb1-dev \
+            libxcb-glx0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-image0-dev \
+            libxcb-shm0-dev \
+            libxcb-util0-dev \
+            libxcb-util-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb-cursor0 \
+            libxcb-shape0 \
+            libgstreamer-plugins-base1.0-0 \
+            libgstreamer1.0-0
+
+      # Install Python dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-
+          pip install briefcase
           pip install -r requirements.txt
-          if [ -f midi_preset_client/requirements.txt ]; then 
-            pip install -r midi_preset_client/requirements.txt
+          if [ -f r2midi_client/requirements.txt ]; then 
+            pip install -r r2midi_client/requirements.txt
           fi
-
-      - name: Install dependencies (Windows)
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r requirements.txt
-          if (Test-Path "midi_preset_client\requirements.txt") {
-            pip install -r midi_preset_client\requirements.txt
-          }
-
-
-      - name: Create themes directory and placeholder icons (macOS)
-        if: matrix.platform == 'macos'
-        run: |
-          # Create themes directory if it doesn't exist
-          mkdir -p midi_preset_client/themes
-
-          # Create placeholder icon files if they don't exist
-          if [ ! -f "midi_preset_client/themes/icon.icns" ]; then
-            echo "Creating placeholder icon.icns file"
-            # Use a simple command to create a minimal .icns file
-            python -c "with open('midi_preset_client/themes/icon.icns', 'wb') as f: f.write(b'icns\x00\x00\x00\x10')"
-          fi
-
-          if [ ! -f "midi_preset_client/themes/icon.ico" ]; then
-            echo "Creating placeholder icon.ico file"
-            # Use a simple command to create a minimal .ico file
-            python -c "with open('midi_preset_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
-          fi
-
-
-      - name: Create themes directory and placeholder icons (Windows)
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          # Create themes directory if it doesn't exist
-          New-Item -ItemType Directory -Force -Path midi_preset_client\themes
-
-          # Create placeholder icon.ico file if it doesn't exist
-          if (-not (Test-Path "midi_preset_client\themes\icon.ico")) {
-            Write-Host "Creating placeholder icon.ico file"
-            # Use Python to create a minimal .ico file
-            python -c "with open('midi_preset_client/themes/icon.ico', 'wb') as f: f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x04\x00\x28\x01\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x10\x00\x00\x00\x20\x00\x00\x00\x01\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')"
-          }
-
-
-      - name: Build executable (macOS)
-        if: matrix.platform == 'macos'
-        run: |
-          # Print current directory and list files to help diagnose issues
-          echo "Current directory: $(pwd)"
-          echo "Files in current directory:"
-          ls -la
-
-          # Run PyInstaller directly with command line options
-          echo "Running PyInstaller with command line options"
-          # For macOS, create a .app bundle
-          pyinstaller --name=r2midi \
-            --windowed \
-            --noconfirm \
-            --clean \
-            --add-data="midi_preset_client/themes:midi_preset_client/themes" \
-            --add-data="midi_preset_client/ui:midi_preset_client/ui" \
-            --add-data="midi-presets:midi-presets" \
-            --hidden-import=PyQt6.QtCore \
-            --hidden-import=PyQt6.QtWidgets \
-            --hidden-import=PyQt6.QtGui \
-            --hidden-import=asyncio \
-            --hidden-import=httpx \
-            --hidden-import=logging \
-            --hidden-import=json \
-            --hidden-import=git \
-            --icon="midi_preset_client/themes/icon.icns" \
-            --osx-bundle-identifier="com.r2midi.app" \
-            main.py
-
-      - name: Build executable (Windows)
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          # Print current directory and list files to help diagnose issues
-          Write-Host "Current directory: $(Get-Location)"
-          Write-Host "Files in current directory:"
-          Get-ChildItem -Force
-
-          # Check if PyInstaller is installed
-          Write-Host "PyInstaller version:"
-          python -m PyInstaller --version
-
-          # Check if main.py exists
-          if (Test-Path "main.py") {
-            Write-Host "main.py exists"
-          } else {
-            Write-Host "main.py does not exist"
-            Get-ChildItem -Path . -Filter *.py -Recurse | Select-Object FullName
-          }
-
-          # Check if theme directories exist
-          if (Test-Path "midi_preset_client\themes") {
-            Write-Host "midi_preset_client\themes exists"
-            Get-ChildItem -Path "midi_preset_client\themes" -Force
-          } else {
-            Write-Host "midi_preset_client\themes does not exist"
-          }
-
-          if (Test-Path "midi_preset_client\ui") {
-            Write-Host "midi_preset_client\ui exists"
-            Get-ChildItem -Path "midi_preset_client\ui" -Force
-          } else {
-            Write-Host "midi_preset_client\ui does not exist"
-          }
-
-          # Run PyInstaller directly with command line options
-          Write-Host "Running PyInstaller with command line options"
-
-          # Create a spec file first
-          Write-Host "Creating spec file"
-          python -m PyInstaller --name=r2midi --windowed --noconfirm --clean --add-data="midi-presets;midi-presets" main.py
-
-          # Check if spec file was created
-          if (Test-Path "r2midi.spec") {
-            Write-Host "r2midi.spec created successfully"
-            Get-Content "r2midi.spec"
-          } else {
-            Write-Host "r2midi.spec was not created"
-          }
-
-          # Run PyInstaller with the spec file
-          Write-Host "Running PyInstaller with spec file"
-          python -m PyInstaller r2midi.spec
-
-          # If that doesn't work, try the direct command line approach
-          if (-not (Test-Path "dist\r2midi.exe")) {
-            Write-Host "Spec file approach failed, trying direct command line"
-            python -m PyInstaller --name=r2midi `
-              --windowed `
-              --noconfirm `
-              --clean `
-              --add-data="midi_preset_client\themes;midi_preset_client\themes" `
-              --add-data="midi_preset_client\ui;midi_preset_client\ui" `
-              --add-data="midi-presets;midi-presets" `
-              --hidden-import=PyQt6.QtCore `
-              --hidden-import=PyQt6.QtWidgets `
-              --hidden-import=PyQt6.QtGui `
-              --hidden-import=asyncio `
-              --hidden-import=httpx `
-              --hidden-import=logging `
-              --hidden-import=json `
-              --hidden-import=git `
-              --icon="midi_preset_client\themes\icon.ico" `
-              main.py
-          }
-
-      - name: Upload executable artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: r2midi-${{ matrix.platform }}
-          path: |
-            dist/r2midi*
-          retention-days: 7
-
-      - name: Get version
-        id: get_version
-        run: |
-          VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Using version: $VERSION (from increment-version job: ${{ needs.increment-version.outputs.version }})"
         shell: bash
 
-      - name: List files in dist directory (macOS)
-        if: matrix.platform == 'macos'
+      # Build Server Application (r2midi)
+      - name: Create Server Application
         run: |
-          echo "Files in dist directory:"
-          ls -la dist/
+          echo "Creating R2MIDI Server application..."
+          briefcase create r2midi ${{ matrix.platform }}
         shell: bash
 
-      - name: List files in dist directory (Windows)
-        if: matrix.platform == 'windows'
-        shell: pwsh
+      - name: Build Server Application
         run: |
-          Write-Host "Files in dist directory:"
-          if (Test-Path "dist") {
-            Get-ChildItem -Path "dist" -Force -Recurse
+          echo "Building R2MIDI Server application..."
+          briefcase build r2midi ${{ matrix.platform }}
+        shell: bash
 
-            # Check if r2midi.exe exists
-            if (Test-Path "dist\r2midi.exe") {
-              Write-Host "r2midi.exe exists"
-              $fileInfo = Get-Item "dist\r2midi.exe"
-              Write-Host "r2midi.exe size: $($fileInfo.Length) bytes"
-            } else {
-              Write-Host "r2midi.exe does not exist"
-            }
+      - name: Package Server Application
+        run: |
+          echo "Packaging R2MIDI Server application..."
+          briefcase package r2midi ${{ matrix.platform }} --no-sign
+        shell: bash
 
-            # Check if _internal directory exists
-            if (Test-Path "dist\_internal") {
-              Write-Host "_internal directory exists"
-              Get-ChildItem -Path "dist\_internal" -Force | Measure-Object | Select-Object -ExpandProperty Count
-            } else {
-              Write-Host "_internal directory does not exist"
-            }
-          } else {
-            Write-Host "dist directory does not exist"
-          }
+      # Build Client Application (r2midic)
+      - name: Create Client Application
+        run: |
+          echo "Creating R2MIDI Client application..."
+          briefcase create r2midic ${{ matrix.platform }}
+        shell: bash
 
+      - name: Build Client Application
+        run: |
+          echo "Building R2MIDI Client application..."
+          briefcase build r2midic ${{ matrix.platform }}
+        shell: bash
+
+      - name: Package Client Application
+        run: |
+          echo "Packaging R2MIDI Client application..."
+          briefcase package r2midic ${{ matrix.platform }} --no-sign
+        shell: bash
+
+      # Debug: List build outputs
+      - name: Debug build outputs
+        run: |
+          echo "Contents of build directory:"
+          find build -type f -name "*" | head -20
+          echo ""
+          echo "Contents of dist directory (if exists):"
+          if [ -d "dist" ]; then
+            find dist -type f -name "*" | head -20
+          else
+            echo "No dist directory found"
+          fi
+        shell: bash
+
+      # Prepare release files for each platform
       - name: Prepare release files (macOS)
-        if: matrix.platform == 'macos'
+        if: matrix.platform == 'macOS'
         run: |
-          # Create a directory for release files
           mkdir -p release_files
 
-          # For macOS, zip the .app bundle
-          if [ -d "dist/r2midi.app" ]; then
-            echo "Zipping macOS .app bundle"
-            cd dist
-            zip -r ../release_files/r2midi-macos.zip r2midi.app
-            cd ..
+          # Look for DMG files first (preferred distribution format)
+          find build -name "*.dmg" -exec cp {} release_files/ \;
+
+          # If no DMG found, package the .app bundles
+          if [ -z "$(ls -A release_files/*.dmg 2>/dev/null)" ]; then
+            for app in build/*/macos/app/*.app; do
+              if [ -d "$app" ]; then
+                app_name=$(basename "$app" .app)
+                cd "$(dirname "$app")"
+                zip -r "$GITHUB_WORKSPACE/release_files/${app_name}-macos.zip" "$(basename "$app")"
+                cd "$GITHUB_WORKSPACE"
+              fi
+            done
           fi
 
-          # List files in release_files directory
-          echo "Files prepared for release:"
+          echo "macOS release files:"
           ls -la release_files/
         shell: bash
 
@@ -477,70 +395,81 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          # Create a directory for release files
           New-Item -ItemType Directory -Force -Path release_files
 
-          # Check what's in the dist directory
-          Write-Host "Contents of dist directory before zipping:"
-          Get-ChildItem -Path "dist" -Force -Recurse
+          # Look for MSI installers first
+          Get-ChildItem -Path "build" -Filter "*.msi" -Recurse | ForEach-Object {
+            Copy-Item $_.FullName "release_files\"
+          }
 
-          # For Windows, zip the .exe file and all necessary files
-          # Check both possible locations for the executable
-          if ((Test-Path "dist\r2midi.exe") -or (Test-Path "dist\r2midi\r2midi.exe")) {
-            Write-Host "Zipping Windows executable and dependencies"
-
-            # Zip the entire dist directory regardless of the structure
-            Compress-Archive -Path "dist\*" -DestinationPath "release_files\r2midi-windows.zip" -Force
-
-            # Verify the zip file was created and has content
-            if (Test-Path "release_files\r2midi-windows.zip") {
-              $zipInfo = Get-Item "release_files\r2midi-windows.zip"
-              Write-Host "Created zip file: $($zipInfo.FullName), Size: $($zipInfo.Length) bytes"
-            } else {
-              Write-Host "Failed to create zip file"
-            }
-          } else {
-            # If neither location has the executable, try to find it anywhere in the dist directory
-            $exeFiles = Get-ChildItem -Path "dist" -Filter "*.exe" -Recurse
-            if ($exeFiles.Count -gt 0) {
-              Write-Host "Found executable files in different location:"
-              $exeFiles | ForEach-Object { Write-Host $_.FullName }
-
-              # Zip the entire dist directory
-              Compress-Archive -Path "dist\*" -DestinationPath "release_files\r2midi-windows.zip" -Force
-
-              # Verify the zip file was created and has content
-              if (Test-Path "release_files\r2midi-windows.zip") {
-                $zipInfo = Get-Item "release_files\r2midi-windows.zip"
-                Write-Host "Created zip file: $($zipInfo.FullName), Size: $($zipInfo.Length) bytes"
-              } else {
-                Write-Host "Failed to create zip file"
-              }
-            } else {
-              Write-Host "ERROR: No executable files found in dist directory. Cannot create release package."
-              exit 1
+          # If no MSI found, look for exe files
+          if (-not (Get-ChildItem -Path "release_files" -Filter "*.msi")) {
+            Get-ChildItem -Path "build" -Filter "*.exe" -Recurse | ForEach-Object {
+              Copy-Item $_.FullName "release_files\"
             }
           }
 
-          # List files in release_files directory
-          Write-Host "Files prepared for release:"
+          # If still no installers found, package the app directories
+          if (-not ((Get-ChildItem -Path "release_files" -Filter "*.msi") -or (Get-ChildItem -Path "release_files" -Filter "*.exe"))) {
+            if (Test-Path "build\r2midi\windows\app") {
+              Write-Host "Packaging R2MIDI Server for Windows..."
+              Compress-Archive -Path "build\r2midi\windows\app\*" -DestinationPath "release_files\R2MIDI-Server-windows.zip" -Force
+            }
+
+            if (Test-Path "build\r2midic\windows\app") {
+              Write-Host "Packaging R2MIDI Client for Windows..."
+              Compress-Archive -Path "build\r2midic\windows\app\*" -DestinationPath "release_files\R2MIDI-Client-windows.zip" -Force
+            }
+          }
+
+          Write-Host "Windows release files:"
           Get-ChildItem -Path release_files -Force
 
-      - name: Debug release files
+      - name: Prepare release files (Linux)
+        if: matrix.platform == 'linux'
         run: |
-          echo "Contents of release_files directory:"
-          ls -la release_files/ || dir release_files
+          mkdir -p release_files
+
+          # Look for AppImage files first
+          find build -name "*.AppImage" -exec cp {} release_files/ \;
+
+          # Also look for .deb packages
+          find build -name "*.deb" -exec cp {} release_files/ \;
+
+          # If neither found, create tar.gz of the build
+          if [ -z "$(ls -A release_files/*.AppImage 2>/dev/null)" ] && [ -z "$(ls -A release_files/*.deb 2>/dev/null)" ]; then
+            for app_dir in build/*/linux/app; do
+              if [ -d "$app_dir" ]; then
+                app_name=$(basename "$(dirname "$(dirname "$app_dir")")")
+                tar -czf "release_files/${app_name}-linux.tar.gz" -C "$app_dir" .
+              fi
+            done
+          fi
+
+          echo "Linux release files:"
+          ls -la release_files/
         shell: bash
 
+      # Upload platform-specific artifacts
       - name: Upload release files as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-files-${{ matrix.platform }}
+          name: briefcase-release-${{ matrix.platform_name }}
           path: release_files/*
           retention-days: 7
 
-  publish-release:
-    needs: [build-executables, increment-version]
+      # Get version for later use
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+        shell: bash
+
+  publish-briefcase-release:
+    needs: [build-briefcase-packages, increment-version]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.increment-version.result == 'success'
 
@@ -554,30 +483,65 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Using version: $VERSION"
 
-      - name: Download all release artifacts
+      - name: Download all briefcase release artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: release-files-*
-          path: combined_release_files
+          pattern: briefcase-release-*
+          path: combined_briefcase_files
           merge-multiple: true
 
-      - name: Debug combined release files
+      - name: Debug combined briefcase release files
         run: |
-          echo "Contents of combined_release_files directory:"
-          ls -la combined_release_files/
+          echo "Contents of combined_briefcase_files directory:"
+          ls -la combined_briefcase_files/
+          echo ""
+          echo "File sizes:"
+          du -h combined_briefcase_files/*
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: Release v${{ steps.get_version.outputs.version }}
-          files: combined_release_files/*
+          files: combined_briefcase_files/*
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
+          body: |
+            ## R2MIDI Release v${{ steps.get_version.outputs.version }}
+
+            ### Cross-Platform Applications
+
+            This release includes pre-built applications for all major platforms:
+
+            #### Server Applications
+            - **R2MIDI-Server-macos.zip** - macOS .app bundle
+            - **R2MIDI-Server-windows.zip** - Windows executable and dependencies  
+            - **R2MIDI-Server-linux.tar.gz** - Linux executable and dependencies
+
+            #### Client Applications  
+            - **R2MIDI-Client-macos.zip** - macOS .app bundle
+            - **R2MIDI-Client-windows.zip** - Windows executable and dependencies
+            - **R2MIDI-Client-linux.tar.gz** - Linux executable and dependencies
+
+            ### Installation Instructions
+
+            1. **Download** the appropriate package for your platform
+            2. **Extract** the archive 
+            3. **Run** the application:
+               - macOS: Double-click the .app bundle
+               - Windows: Run the .exe file
+               - Linux: Make executable and run the binary
+
+            ### What's New
+            - Built with Briefcase for better cross-platform compatibility
+            - Improved packaging and distribution
+            - All dependencies included in packages
+
+            For detailed installation and usage instructions, see the [README](https://github.com/tirans/r2midi/blob/master/README.md).

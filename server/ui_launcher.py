@@ -11,15 +11,21 @@ logger = logging.getLogger(__name__)
 class UILauncher:
     """Responsible for launching the UI client"""
 
-    def __init__(self, client_path: str = "r2midi_client", server_url: str = "http://localhost:7777"):
+    def __init__(self, client_path: str = None, server_url: str = "http://localhost:7777"):
         """
         Initialize the UI launcher
 
         Args:
-            client_path: Path to the client directory
+            client_path: Path to the client directory (auto-calculated if None)
             server_url: URL of the server to pass to the client
         """
-        self.client_path = client_path
+        if client_path is None:
+            # Calculate path relative to project structure
+            server_dir = os.path.dirname(__file__)
+            project_root = os.path.dirname(server_dir)
+            client_path = os.path.join(project_root, "r2midi_client")
+        
+        self.client_path = os.path.abspath(client_path)
         self.server_url = server_url
         self.client_process = None
 
@@ -43,12 +49,12 @@ class UILauncher:
 
         try:
             # Launch the client in a separate process
-            # Add the current directory to PYTHONPATH to allow importing r2midi_client
+            # Add the parent directory to PYTHONPATH to allow importing r2midi_client
             env = os.environ.copy()
-            # Set PYTHONPATH to the current directory so the client can import r2midi_client
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            env["PYTHONPATH"] = current_dir
-            logger.info(f"Setting PYTHONPATH to: {current_dir}")
+            # Set PYTHONPATH to the parent directory so the client can import r2midi_client
+            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            env["PYTHONPATH"] = parent_dir
+            logger.info(f"Setting PYTHONPATH to: {parent_dir}")
 
             client_main = os.path.join(self.client_path, "main.py")
             cmd = [sys.executable, client_main, "--server-url", self.server_url]

@@ -3,12 +3,12 @@ import asyncio
 from unittest.mock import patch, MagicMock, call
 import subprocess
 
-from midi_utils import MidiUtils
+from server.midi_utils import MidiUtils
 
 class TestMidiUtils(unittest.TestCase):
     """Test cases for the MidiUtils class"""
 
-    @patch('midi_utils.MidiUtils.get_midi_ports')
+    @patch('server.midi_utils.MidiUtils.get_midi_ports')
     def test_get_midi_ports(self, mock_get_midi_ports):
         """Test getting MIDI ports"""
         # Set up mock return value
@@ -24,7 +24,7 @@ class TestMidiUtils(unittest.TestCase):
         self.assertEqual(result["in"], ["MIDI In Port 1", "MIDI In Port 2"])
         self.assertEqual(result["out"], ["MIDI Out Port 1", "MIDI Out Port 2"])
 
-    @patch('midi_utils.MidiUtils.get_midi_ports', side_effect=Exception("Test exception"))
+    @patch('server.midi_utils.MidiUtils.get_midi_ports', side_effect=Exception("Test exception"))
     def test_get_midi_ports_exception(self, mock_get_midi_ports):
         """Test getting MIDI ports with an exception"""
         # This test is a bit tricky. We want to test that the exception handling in get_midi_ports works,
@@ -47,7 +47,7 @@ class TestMidiUtils(unittest.TestCase):
         self.assertEqual(result["in"], [])
         self.assertEqual(result["out"], [])
 
-    @patch('midi_utils.MidiUtils._send_rtmidi_message')
+    @patch('server.midi_utils.MidiUtils._send_rtmidi_message')
     def test_send_midi_command(self, mock_send_rtmidi):
         """Test sending a MIDI command"""
         # Set up mock return value
@@ -63,7 +63,7 @@ class TestMidiUtils(unittest.TestCase):
         # Verify that _send_rtmidi_message was called with the correct arguments
         mock_send_rtmidi.assert_called_once_with("Port 1", 1, 0, 0)
 
-    @patch('midi_utils.MidiUtils._send_rtmidi_message')
+    @patch('server.midi_utils.MidiUtils._send_rtmidi_message')
     def test_send_midi_command_with_sequencer(self, mock_send_rtmidi):
         """Test sending a MIDI command with a sequencer port"""
         # Set up mock return values for both calls
@@ -89,7 +89,7 @@ class TestMidiUtils(unittest.TestCase):
             call("Sequencer Port", 1, 0, 0)
         ])
 
-    @patch('midi_utils.MidiUtils._send_rtmidi_message')
+    @patch('server.midi_utils.MidiUtils._send_rtmidi_message')
     def test_send_midi_command_error(self, mock_send_rtmidi):
         """Test sending a MIDI command with an error"""
         # Set up mock to return an error
@@ -111,7 +111,7 @@ class TestMidiUtils(unittest.TestCase):
         self.assertFalse(success)
         self.assertTrue("Invalid command format" in message)
 
-    @patch('midi_utils.MidiUtils.is_midi_available')
+    @patch('server.midi_utils.MidiUtils.is_midi_available')
     def test_is_sendmidi_installed(self, mock_is_midi_available):
         """Test checking if SendMIDI is installed (now redirects to is_midi_available)"""
         # Set up mock return value for successful case
@@ -147,7 +147,7 @@ class TestMidiUtils(unittest.TestCase):
         # Verify the result is a boolean
         self.assertIsInstance(result, bool)
 
-    @patch('midi_utils.MidiUtils.send_midi_command')
+    @patch('server.midi_utils.MidiUtils.send_midi_command')
     @patch('asyncio.get_event_loop')
     def test_asend_midi_command(self, mock_get_loop, mock_send_midi_command):
         """Test sending a MIDI command asynchronously"""

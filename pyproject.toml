@@ -57,7 +57,7 @@ dev = [
 [tool.briefcase]
 project_name = "R2MIDI"
 bundle = "com.r2midi"
-version = "0.1.54"
+version = "0.1.55"
 url = "https://github.com/tirans/r2midi"
 license = {text = "MIT"}
 author = "R2MIDI Team"
@@ -70,11 +70,8 @@ long_description = """R2MIDI Server is a REST API for managing and selecting MID
 icon = "r2midi"
 
 sources = [
-    "r2midi",
-    "main.py",
-    "midi-presets",
+    "server",
 ]
-
 
 test_sources = ["tests"]
 
@@ -91,7 +88,8 @@ requires = [
 ]
 
 # Define entry point for the server app
-entrypoint = "main:main"
+startup_module = "server.main"
+startup_method = "main"
 
 [tool.briefcase.app.r2midic]
 formal_name = "R2MIDI Client"
@@ -101,9 +99,7 @@ icon = "r2midi"
 
 sources = [
     "r2midi_client",
-    "midi-presets",
 ]
-
 
 test_sources = ["tests/unit/r2midic"]
 
@@ -116,7 +112,8 @@ requires = [
 ]
 
 # Define entry point for the client app
-entrypoint = "r2midic.main:main"
+startup_module = "r2midi_client.main"
+startup_method = "main"
 
 # ========================================
 # macOS Configuration

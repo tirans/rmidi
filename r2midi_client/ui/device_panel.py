@@ -206,6 +206,11 @@ class DevicePanel(QWidget):
                 logger.info(f"Final manufacturer combo state: count={self.manufacturer_combo.count()}, current={self.manufacturer_combo.currentText()}")
             else:
                 logger.warning("No manufacturers available")
+                # Reset current manufacturer to avoid referencing a deleted manufacturer
+                self.current_manufacturer = None
+                # Clear device combo box as well since there are no manufacturers
+                self.device_combo.clear()
+                self.current_device = None
 
         finally:
             self._updating_programmatically = False
@@ -272,6 +277,11 @@ class DevicePanel(QWidget):
                 logger.info(f"Final device combo state: count={self.device_combo.count()}, current={self.device_combo.currentText()}")
             else:
                 logger.warning(f"No devices available for manufacturer {self.current_manufacturer}")
+                # Reset current device to avoid referencing a deleted device
+                self.current_device = None
+                # Clear community folder combo box as well since there are no devices
+                self.community_folder_combo.clear()
+                self.current_community_folder = None
         finally:
             self._updating_programmatically = False
 

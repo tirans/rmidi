@@ -7,7 +7,13 @@ import time
 import concurrent.futures
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
-from models import Device, Preset, DirectoryStructureResponse
+# Import modules - handle both relative and absolute imports
+try:
+    # Try relative imports first (when imported as package)
+    from .models import Device, Preset, DirectoryStructureResponse
+except ImportError:
+    # Fall back to absolute imports (when run directly)
+    from server.models import Device, Preset, DirectoryStructureResponse
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -15,7 +21,7 @@ logger = logging.getLogger(__name__)
 class DeviceManager:
     """Handles scanning and managing device data"""
 
-    def __init__(self, devices_folder="midi-presets/devices", sync_enabled=True):
+    def __init__(self, devices_folder=None, sync_enabled=True):
         """
         Initialize the device manager with the path to the devices folder
 
@@ -23,6 +29,9 @@ class DeviceManager:
             devices_folder: Path to the devices folder
             sync_enabled: Whether to sync with the remote repository
         """
+        if devices_folder is None:
+            # Default to midi-presets/devices relative to this file
+            devices_folder = os.path.join(os.path.dirname(__file__), "midi-presets", "devices")
         self.devices_folder = devices_folder
         self.devices = {}  # Map of device name to device data
         self.manufacturers = []  # List of manufacturer names
@@ -36,44 +45,45 @@ class DeviceManager:
 
     def _validate_midi_presets_submodule(self):
         """
-        Validate that the midi-presets git submodule exists and is up to date.
-        If not, attempt to initialize it using git_operations.
+        Validate that the midi-presets exists based on R2MIDI_ROLE environment variable.
+        - If R2MIDI_ROLE=dev: Use as git submodule
+        - If R2MIDI_ROLE=release (or unset): Use as cloned repository
         """
         import os
-        from git_operations import git_sync
+        try:
+            from .git_operations import git_sync, get_midi_presets_mode
+        except ImportError:
+            from server.git_operations import git_sync, get_midi_presets_mode
 
-        logger.info("Validating midi-presets git submodule")
+        mode = get_midi_presets_mode()
+        logger.info(f"Validating midi-presets in {mode} mode")
 
         # Skip sync if disabled
         if not self.sync_enabled:
-            logger.info("Sync is disabled, skipping git submodule validation")
+            logger.info("Sync is disabled, skipping git validation")
             # Still check if the directory exists
-            midi_presets_dir = os.path.join(os.getcwd(), "midi-presets")
+            midi_presets_dir = os.path.join(os.path.dirname(__file__), "midi-presets")
             if not os.path.exists(midi_presets_dir):
                 logger.warning("midi-presets directory does not exist and sync is disabled")
             return
 
         # Check if the midi-presets directory exists
-        midi_presets_dir = os.path.join(os.getcwd(), "midi-presets")
+        midi_presets_dir = os.path.join(os.path.dirname(__file__), "midi-presets")
         if not os.path.exists(midi_presets_dir):
-            logger.warning("midi-presets directory does not exist, attempting to initialize it")
+            logger.warning(f"midi-presets directory does not exist, attempting to initialize it in {mode} mode")
             success, message, _ = git_sync()
             if not success:
-                logger.error(f"Failed to initialize midi-presets submodule: {message}")
+                logger.error(f"Failed to initialize midi-presets: {message}")
                 return
-            logger.info(f"Successfully initialized midi-presets submodule: {message}")
+            logger.info(f"Successfully initialized midi-presets: {message}")
         else:
-            # Check if it's a valid git repository
-            git_dir = os.path.join(midi_presets_dir, ".git")
-            if not (os.path.exists(git_dir) or os.path.exists(os.path.join(midi_presets_dir, "..", ".git", "modules", "midi-presets"))):
-                logger.warning("midi-presets directory exists but is not a valid git repository, attempting to reinitialize it")
-                success, message, _ = git_sync()
-                if not success:
-                    logger.error(f"Failed to reinitialize midi-presets submodule: {message}")
-                    return
-                logger.info(f"Successfully reinitialized midi-presets submodule: {message}")
-            else:
-                logger.info("midi-presets git submodule exists and appears to be valid")
+            # Always run git_sync to ensure we have the right type (clone vs submodule)
+            logger.info(f"Ensuring midi-presets is correctly configured for {mode} mode")
+            success, message, _ = git_sync()
+            if not success:
+                logger.error(f"Failed to configure midi-presets: {message}")
+                return
+            logger.info(f"Successfully configured midi-presets: {message}")
 
     def _load_json_file(self, file_path: str, cache_timeout: int = None) -> Dict:
         """
@@ -122,25 +132,29 @@ class DeviceManager:
 
     def run_git_sync(self) -> Tuple[bool, str]:
         """
-        Run git submodule sync to update the midi-presets submodule
+        Run git sync to update the midi-presets based on R2MIDI_ROLE
         Returns a tuple of (success, message)
         """
-        logger.info("Running git submodule sync using git_operations module")
+        try:
+            from .git_operations import git_sync, get_midi_presets_mode
+        except ImportError:
+            from server.git_operations import git_sync, get_midi_presets_mode
+        
+        mode = get_midi_presets_mode()
+        logger.info(f"Running git sync in {mode} mode")
 
         # Skip sync if disabled
         if not self.sync_enabled:
-            logger.info("Sync is disabled, skipping git submodule sync")
+            logger.info("Sync is disabled, skipping git sync")
             return False, "Sync is disabled"
 
-        from git_operations import git_sync
-
-        # Use the more robust git_sync function from git_operations
+        # Use the git_sync function which handles both modes
         success, message, _ = git_sync()
 
         if success:
-            logger.info(f"Git submodule sync completed successfully: {message}")
+            logger.info(f"Git sync completed successfully in {mode} mode: {message}")
         else:
-            logger.error(f"Git submodule sync failed: {message}")
+            logger.error(f"Git sync failed in {mode} mode: {message}")
 
         return success, message
 

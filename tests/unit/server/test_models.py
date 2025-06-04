@@ -1,15 +1,15 @@
 import unittest
-from midi_preset_client.models import Device, Preset, UIState
+from server.models import Device, Preset, PresetRequest, UIState
 
-class TestClientModels(unittest.TestCase):
-    """Test cases for the client-side models"""
+class TestModels(unittest.TestCase):
+    """Test cases for the models module"""
 
     def test_device_model(self):
         """Test the Device model"""
         # Test with minimal required fields
-        device = Device(name="Test Device")
+        device = Device(name="Test Device", manufacturer="Test Manufacturer")
         self.assertEqual(device.name, "Test Device")
-        self.assertEqual(device.manufacturer, "")
+        self.assertEqual(device.manufacturer, "Test Manufacturer")
         self.assertIsNone(device.midi_port)
         self.assertIsNone(device.midi_channel)
         self.assertIsNone(device.community_folders)
@@ -18,15 +18,13 @@ class TestClientModels(unittest.TestCase):
         device = Device(
             name="Test Device",
             manufacturer="Test Manufacturer",
-            midi_port={"IN": "Port 1", "OUT": "Port 2"},
-            midi_channel={"IN": 1, "OUT": 2},
+            midi_port={"main": "Port 1"},
+            midi_channel={"main": 1},
             community_folders=["folder1", "folder2"]
         )
         self.assertEqual(device.name, "Test Device")
-        self.assertEqual(device.manufacturer, "Test Manufacturer")
-        self.assertEqual(device.midi_port, {"IN": "Port 1", "OUT": "Port 2"})
-        self.assertEqual(device.midi_channel, {"IN": 1, "OUT": 2})
-        self.assertEqual(device.community_folders, ["folder1", "folder2"])
+        self.assertEqual(device.midi_port, {"main": "Port 1"})
+        self.assertEqual(device.midi_channel, {"main": 1})
 
     def test_preset_model(self):
         """Test the Preset model"""
@@ -58,53 +56,30 @@ class TestClientModels(unittest.TestCase):
         self.assertEqual(preset.pgm, 0)
         self.assertEqual(preset.source, "default")
 
-    def test_preset_get_display_name(self):
-        """Test the get_display_name method of the Preset model"""
-        # Test without source
-        preset = Preset(preset_name="Test Preset", category="Test Category")
-        self.assertEqual(preset.get_display_name(), "Test Preset (Test Category)")
-
-        # Test with default source
-        preset = Preset(preset_name="Test Preset", category="Test Category", source="default")
-        self.assertEqual(preset.get_display_name(), "Test Preset (Test Category)")
-
-        # Test with community folder source
-        preset = Preset(preset_name="Test Preset", category="Test Category", source="community_folder")
-        self.assertEqual(preset.get_display_name(), "Test Preset (Test Category) [community_folder]")
-
-    def test_preset_get_details(self):
-        """Test the get_details method of the Preset model"""
-        # Test with minimal fields
-        preset = Preset(preset_name="Test Preset", category="Test Category")
-        details = preset.get_details()
-        self.assertIn("Name: Test Preset", details)
-        self.assertIn("Category: Test Category", details)
-        self.assertNotIn("Source:", details)
-        self.assertNotIn("Characters:", details)
-        self.assertNotIn("CC 0:", details)
-
-        # Test with source field
-        preset = Preset(preset_name="Test Preset", category="Test Category", source="default")
-        details = preset.get_details()
-        self.assertIn("Name: Test Preset", details)
-        self.assertIn("Category: Test Category", details)
-        self.assertIn("Source: default", details)
+    def test_preset_request_model(self):
+        """Test the PresetRequest model"""
+        # Test with minimal required fields
+        preset_request = PresetRequest(
+            preset_name="Test Preset",
+            midi_port="Port 1",
+            midi_channel=1
+        )
+        self.assertEqual(preset_request.preset_name, "Test Preset")
+        self.assertEqual(preset_request.midi_port, "Port 1")
+        self.assertEqual(preset_request.midi_channel, 1)
+        self.assertIsNone(preset_request.sequencer_port)
 
         # Test with all fields
-        preset = Preset(
+        preset_request = PresetRequest(
             preset_name="Test Preset",
-            category="Test Category",
-            characters=["Warm", "Bright"],
-            cc_0=0,
-            pgm=1,
-            source="community_folder"
+            midi_port="Port 1",
+            midi_channel=1,
+            sequencer_port="Port 2"
         )
-        details = preset.get_details()
-        self.assertIn("Name: Test Preset", details)
-        self.assertIn("Category: Test Category", details)
-        self.assertIn("Source: community_folder", details)
-        self.assertIn("Characters: Warm, Bright", details)
-        self.assertIn("CC 0: 0, Program: 1", details)
+        self.assertEqual(preset_request.preset_name, "Test Preset")
+        self.assertEqual(preset_request.midi_port, "Port 1")
+        self.assertEqual(preset_request.midi_channel, 1)
+        self.assertEqual(preset_request.sequencer_port, "Port 2")
 
     def test_ui_state_model(self):
         """Test the UIState model"""

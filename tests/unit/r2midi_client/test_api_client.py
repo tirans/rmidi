@@ -4,8 +4,8 @@ import subprocess
 from unittest.mock import patch, MagicMock, AsyncMock
 import pytest
 import httpx
-from midi_preset_client.api_client import CachedApiClient as ApiClient
-from midi_preset_client.models import Device, Preset
+from r2midi_client.api_client import CachedApiClient as ApiClient
+from r2midi_client.models import Device, Preset
 
 class TestApiClient:
     """Test cases for the ApiClient class"""
@@ -456,7 +456,7 @@ class TestApiClient:
     def test_save_ui_state(self, api_client):
         """Test saving UI state"""
         # Create a UI state
-        from midi_preset_client.models import UIState
+        from r2midi_client.models import UIState
         ui_state = UIState(
             manufacturer="Test Manufacturer",
             device="Test Device",
@@ -477,7 +477,7 @@ class TestApiClient:
     def test_get_ui_state(self, api_client):
         """Test getting UI state"""
         # Set up a UI state
-        from midi_preset_client.models import UIState
+        from r2midi_client.models import UIState
         ui_state = UIState(
             manufacturer="Test Manufacturer",
             device="Test Device",

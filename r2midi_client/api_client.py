@@ -288,7 +288,15 @@ class CachedApiClient:
                 return response.json()
 
             presets_data = await self._retry_request(fetch)
-            presets = [Preset(**preset) for preset in presets_data]
+            presets = [Preset(
+                preset_name=preset.get('preset_name', ''),
+                category=preset.get('category', ''),
+                characters=preset.get('characters'),
+                sendmidi_command=preset.get('sendmidi_command'),
+                cc_0=preset.get('cc_0'),
+                pgm=preset.get('pgm'),
+                source=preset.get('source')
+            ) for preset in presets_data]
             logger.info(f"Fetched {len(presets)} presets")
 
             # Cache the result
@@ -336,182 +344,43 @@ class CachedApiClient:
 
     async def run_git_remote_sync(self) -> Tuple[bool, str]:
         """
-        Add, commit, and push changes to the midi-presets submodule
+        Add, commit, and push changes to the midi-presets repository by calling the server REST API
 
-        This function:
-        1. Enters the midi-presets submodule directory
+        This function calls the /git/remote_sync endpoint on the server, which:
+        1. Determines the mode (submodule or clone) based on R2MIDI_ROLE
         2. Adds all changes with git add .
         3. Commits the changes with the message "new presets"
         4. Pushes the changes to the remote repository
-        5. Updates the submodule in the parent repository
+        5. If in submodule mode, updates the submodule reference in the parent repository
 
         Returns:
             Tuple of (success, message)
         """
-        import os
-        import sys
-        import traceback
-        import git
-        from git import Repo, GitCommandError
-
-        # Get the current directory to return to it later
-        current_dir = os.getcwd()
-        logger.info(f"Starting git remote sync from directory: {current_dir}")
-        logger.info(f"Python executable: {sys.executable}")
-        logger.info(f"Python version: {sys.version}")
-        logger.info(f"Platform: {sys.platform}")
-
-        # Log environment variables that might be relevant
-        env_vars = {k: v for k, v in os.environ.items() if k.startswith(('GIT_', 'PATH', 'HOME', 'USER'))}
-        logger.info(f"Relevant environment variables: {env_vars}")
-
         try:
-            # First, make sure the submodule is properly initialized
-            logger.info("Ensuring midi-presets submodule is properly initialized...")
+            logger.info("Calling server REST API for git remote sync...")
 
-            # Open the parent repository
-            try:
-                parent_repo = Repo(current_dir)
-            except git.InvalidGitRepositoryError:
-                error_msg = f"Not a valid git repository: {current_dir}"
-                logger.error(error_msg)
-                return False, error_msg
+            async def fetch():
+                response = await self.client.get("/git/remote_sync")
+                response.raise_for_status()
+                return response.json()
 
-            # Sync the submodule
-            with parent_repo.git.custom_environment(GIT_TERMINAL_PROMPT="0"):
-                sync_output = parent_repo.git.submodule("sync")
-                logger.info(f"Git submodule sync output: {sync_output}")
+            result = await self._retry_request(fetch)
 
-                # Update the submodule
-                update_output = parent_repo.git.submodule("update", "--init", "--recursive")
-                logger.info(f"Git submodule update output: {update_output}")
+            if result.get("status") == "success":
+                logger.info("Git remote sync completed successfully via REST API")
 
-            # Check if the midi-presets directory exists
-            midi_presets_dir = os.path.join(current_dir, "midi-presets")
-            logger.info(f"Checking midi-presets directory: {midi_presets_dir}")
-
-            if not os.path.exists(midi_presets_dir):
-                error_msg = f"Midi-presets directory not found at {midi_presets_dir} even after submodule initialization"
-                logger.error(error_msg)
-                return False, error_msg
-
-            # Check if it's a directory
-            if not os.path.isdir(midi_presets_dir):
-                error_msg = f"Path exists but is not a directory: {midi_presets_dir}"
-                logger.error(error_msg)
-                return False, error_msg
-
-            # Check if we have permission to access it
-            try:
-                os.listdir(midi_presets_dir)
-            except PermissionError:
-                error_msg = f"Permission denied when accessing directory: {midi_presets_dir}"
-                logger.error(error_msg)
-                return False, error_msg
-
-            # Change to the midi-presets directory
-            os.chdir(midi_presets_dir)
-            logger.info(f"Successfully changed directory to {midi_presets_dir}")
-
-            # Check if it's a git repository
-            try:
-                # Open the submodule repository
-                submodule_repo = Repo(midi_presets_dir)
-                logger.info(f"Git repository check: True")
-            except git.InvalidGitRepositoryError:
-                error_msg = f"Not a git repository: {midi_presets_dir}"
-                logger.error(error_msg)
-                return False, error_msg
-
-            try:
-                # Log git status before making changes
-                logger.info("Checking git status before making changes...")
-                pre_status = submodule_repo.git.status()
-                logger.info(f"Git status before changes:\n{pre_status}")
-
-                # Add all changes
-                logger.info("Adding all changes in midi-presets...")
-                add_cmd = "git add ."
-                logger.info(f"Executing command: {add_cmd}")
-                add_output = submodule_repo.git.add(".")
-                logger.info(f"Git add output: {add_output if add_output else 'No output'}")
-
-                # Check if there are changes to commit
-                logger.info("Checking if there are changes to commit...")
-                status_cmd = "git status --porcelain"
-                logger.info(f"Executing command: {status_cmd}")
-                status_output = submodule_repo.git.status(porcelain=True)
-                logger.info(f"Git status output: {status_output}")
-
-                if not status_output.strip():
-                    logger.info("No changes to commit in midi-presets")
-                    return True, "No changes to commit in midi-presets"
-
-                # Commit changes
-                logger.info("Committing changes in midi-presets...")
-                commit_cmd = "git commit -m 'new presets'"
-                logger.info(f"Executing command: {commit_cmd}")
-                commit_output = submodule_repo.git.commit(m="new presets")
-                logger.info(f"Git commit output: {commit_output}")
-
-                # Push changes
-                logger.info("Pushing changes in midi-presets...")
-                push_cmd = "git push"
-                logger.info(f"Executing command: {push_cmd}")
-                push_output = submodule_repo.git.push()
-                logger.info(f"Git push output: {push_output if push_output else 'No output'}")
-
-                # Return to the parent repository
-                os.chdir(current_dir)
-                logger.info(f"Returned to parent repository: {current_dir}")
-
-                # Update the submodule reference in the parent repository
-                logger.info("Updating submodule reference in parent repository...")
-                parent_add_cmd = "git add midi-presets"
-                logger.info(f"Executing command: {parent_add_cmd}")
-                parent_add_output = parent_repo.git.add("midi-presets")
-                logger.info(f"Git add output: {parent_add_output if parent_add_output else 'No output'}")
-
-                # Clear cache after push as data might have changed
-                logger.info("Clearing cache after successful push")
+                # Clear cache after sync as data might have changed
                 self.clear_cache()
 
-                logger.info("Git remote sync completed successfully")
-                return True, "Successfully added, committed, and pushed changes to midi-presets submodule"
-            except GitCommandError as e:
-                error_msg = f"Git remote sync failed: {e.stderr}"
-                logger.error(error_msg)
-                logger.error(f"Command: {e.command}")
+                return True, result.get("message", "Git remote sync completed successfully")
+            else:
+                error_msg = result.get("message", "Unknown error during git remote sync")
+                logger.error(f"Git remote sync failed via REST API: {error_msg}")
                 return False, error_msg
-            except Exception as e:
-                error_msg = f"Error running git remote sync: {str(e)}"
-                logger.error(error_msg)
-                logger.error(f"Exception type: {type(e).__name__}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                return False, error_msg
-        except GitCommandError as e:
-            error_msg = f"Git submodule operation failed: {e.stderr}"
-            logger.error(error_msg)
-            logger.error(f"Command: {e.command}")
-            return False, error_msg
         except Exception as e:
-            error_msg = f"Unexpected error in run_git_remote_sync: {str(e)}"
+            error_msg = f"Error calling git remote sync REST API: {str(e)}"
             logger.error(error_msg)
-            logger.error(f"Exception type: {type(e).__name__}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
             return False, error_msg
-        finally:
-            # Always return to the original directory, even if an exception occurs
-            try:
-                logger.info(f"Attempting to return to original directory: {current_dir}")
-                os.chdir(current_dir)
-                logger.info(f"Successfully returned to original directory: {current_dir}")
-            except Exception as e:
-                error_msg = f"Error returning to original directory: {str(e)}"
-                logger.error(error_msg)
-                logger.error(f"Exception type: {type(e).__name__}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                # Don't re-raise the exception, as we want to return the original error if there was one
 
     def save_ui_state(self, state: UIState) -> None:
         """

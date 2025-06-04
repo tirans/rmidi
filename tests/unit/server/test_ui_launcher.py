@@ -4,21 +4,26 @@ import sys
 import time
 import subprocess
 from unittest.mock import patch, MagicMock, call
-from ui_launcher import UILauncher
+from server.ui_launcher import UILauncher
 
 class TestUILauncher(unittest.TestCase):
     """Test cases for the UILauncher class"""
 
     def setUp(self):
         """Set up test fixtures"""
+        # Use a fixed path for testing
+        self.test_client_path = "test_client_path"
+        self.test_client_path_abs = os.path.abspath(self.test_client_path)
+        self.test_client_main = os.path.join(self.test_client_path_abs, "main.py")
+
         self.ui_launcher = UILauncher(
-            client_path="test_client_path",
+            client_path=self.test_client_path,
             server_url="http://localhost:8888"
         )
 
     def test_init(self):
         """Test initialization of UILauncher"""
-        self.assertEqual(self.ui_launcher.client_path, "test_client_path")
+        self.assertEqual(self.ui_launcher.client_path, os.path.abspath("test_client_path"))
         self.assertEqual(self.ui_launcher.server_url, "http://localhost:8888")
         self.assertIsNone(self.ui_launcher.client_process)
 
@@ -32,7 +37,12 @@ class TestUILauncher(unittest.TestCase):
                                   mock_dirname, mock_makedirs, mock_exists):
         """Test launching the client successfully"""
         # Set up mocks
-        mock_exists.side_effect = [True, True]  # client_path exists, client_main exists
+        def exists_side_effect(path):
+            if path == self.test_client_path_abs or path == self.test_client_main:
+                return True
+            return True  # Default to True for any other paths
+
+        mock_exists.side_effect = exists_side_effect
         mock_abspath.return_value = "/abs/path/to/ui_launcher.py"
         mock_dirname.return_value = "/abs/path/to"
 
@@ -50,19 +60,19 @@ class TestUILauncher(unittest.TestCase):
 
         # Verify that the necessary methods were called
         mock_exists.assert_has_calls([
-            call("test_client_path"),
-            call("test_client_path/main.py")
+            call(self.test_client_path_abs),
+            call(self.test_client_main)
         ])
         mock_makedirs.assert_not_called()  # Should not be called since the directory exists
         # The actual call is os.path.abspath(__file__), which returns the absolute path
-        mock_abspath.assert_called_once()
+        mock_abspath.assert_called()
         # Check that dirname was called with the expected argument, ignoring other calls
         self.assertIn(call("/abs/path/to/ui_launcher.py"), mock_dirname.call_args_list)
 
         # Verify that Popen was called with the correct arguments
         mock_popen.assert_called_once()
         args, kwargs = mock_popen.call_args
-        self.assertEqual(args[0], [sys.executable, "test_client_path/main.py", "--server-url", "http://localhost:8888"])
+        self.assertEqual(args[0], [sys.executable, self.test_client_main, "--server-url", "http://localhost:8888"])
         self.assertEqual(kwargs["stdout"], subprocess.PIPE)
         self.assertEqual(kwargs["stderr"], subprocess.PIPE)
         self.assertEqual(kwargs["text"], True)
@@ -76,9 +86,9 @@ class TestUILauncher(unittest.TestCase):
         """Test launching the client when the client main file doesn't exist"""
         # Set up mocks
         def exists_side_effect(path):
-            if path == "test_client_path":
+            if path == self.test_client_path_abs:
                 return True
-            if path == "test_client_path/main.py":
+            if path == self.test_client_main:
                 return False
             return True  # Default to True for any other paths
 
@@ -95,8 +105,8 @@ class TestUILauncher(unittest.TestCase):
 
         # Verify that the necessary methods were called
         mock_exists.assert_has_calls([
-            call("test_client_path"),
-            call("test_client_path/main.py")
+            call(self.test_client_path_abs),
+            call(self.test_client_main)
         ], any_order=False)
         mock_makedirs.assert_not_called()  # Should not be called since the directory exists
 
@@ -111,7 +121,7 @@ class TestUILauncher(unittest.TestCase):
         """Test launching the client when the process fails to start"""
         # Set up mocks
         def exists_side_effect(path):
-            if path == "test_client_path" or path == "test_client_path/main.py":
+            if path == self.test_client_path_abs or path == self.test_client_main:
                 return True
             return True  # Default to True for any other paths
 
@@ -133,8 +143,8 @@ class TestUILauncher(unittest.TestCase):
 
         # Verify that the necessary methods were called
         mock_exists.assert_has_calls([
-            call("test_client_path"),
-            call("test_client_path/main.py")
+            call(self.test_client_path_abs),
+            call(self.test_client_main)
         ], any_order=False)
         mock_popen.assert_called_once()
         mock_process.communicate.assert_called_once()
@@ -148,7 +158,7 @@ class TestUILauncher(unittest.TestCase):
         # Set up mocks
         # Use a function for side_effect to handle any number of calls
         def exists_side_effect(path):
-            if path == "test_client_path" or path == "test_client_path/main.py":
+            if path == self.test_client_path_abs or path == self.test_client_main:
                 return False
             return True  # Default to True for any other paths
 
@@ -164,10 +174,10 @@ class TestUILauncher(unittest.TestCase):
 
         # Verify that the necessary methods were called
         mock_exists.assert_has_calls([
-            call("test_client_path"),
-            call("test_client_path/main.py")
+            call(self.test_client_path_abs),
+            call(self.test_client_main)
         ], any_order=True)
-        mock_makedirs.assert_called_once_with("test_client_path", exist_ok=True)
+        mock_makedirs.assert_called_once_with(self.test_client_path_abs, exist_ok=True)
 
     def test_shutdown_client_no_process(self):
         """Test shutting down the client when there's no process"""

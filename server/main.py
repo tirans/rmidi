@@ -17,20 +17,36 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from device_manager import DeviceManager
-from midi_utils import MidiUtils
-from models import (
-    Device, Preset, PresetRequest, ManufacturerRequest, 
-    ManufacturerCreate, DeviceCreate, PresetCreate, 
-    DirectoryStructureRequest, DirectoryStructureResponse
-)
-from ui_launcher import UILauncher
-from version import __version__
-from git_operations import git_sync as git_sync_operation
+# Import modules - handle both relative and absolute imports
+try:
+    # Try relative imports first (when imported as package)
+    from .device_manager import DeviceManager
+    from .midi_utils import MidiUtils
+    from .models import (
+        Device, Preset, PresetRequest, ManufacturerRequest, 
+        ManufacturerCreate, DeviceCreate, PresetCreate, 
+        DirectoryStructureRequest, DirectoryStructureResponse
+    )
+    from .ui_launcher import UILauncher
+    from .version import __version__
+    from .git_operations import git_sync as git_sync_operation
+except ImportError:
+    # Fall back to absolute imports (when run directly)
+    from server.device_manager import DeviceManager
+    from server.midi_utils import MidiUtils
+    from server.models import (
+        Device, Preset, PresetRequest, ManufacturerRequest, 
+        ManufacturerCreate, DeviceCreate, PresetCreate, 
+        DirectoryStructureRequest, DirectoryStructureResponse
+    )
+    from server.ui_launcher import UILauncher
+    from server.version import __version__
+    from server.git_operations import git_sync as git_sync_operation
 
 # Configure logging
 # Create logs directory if it doesn't exist
-os.makedirs('logs', exist_ok=True)
+logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(logs_dir, exist_ok=True)
 
 # Define log format
 log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -53,7 +69,7 @@ root_logger.addHandler(console_handler)
 
 # Main log rotating file handler
 main_log_handler = logging.handlers.RotatingFileHandler(
-    os.path.join('logs', 'main.log'),
+    os.path.join(logs_dir, 'main.log'),
     maxBytes=max_bytes,
     backupCount=backup_count,
     mode='a'
@@ -63,7 +79,7 @@ root_logger.addHandler(main_log_handler)
 
 # All log rotating file handler
 all_log_handler = logging.handlers.RotatingFileHandler(
-    os.path.join('logs', 'all.log'),
+    os.path.join(logs_dir, 'all.log'),
     maxBytes=max_bytes,
     backupCount=backup_count,
     mode='a'
@@ -75,7 +91,7 @@ root_logger.addHandler(all_log_handler)
 device_manager_logger = logging.getLogger('device_manager')
 device_manager_logger.setLevel(logging.INFO)
 device_manager_handler = logging.handlers.RotatingFileHandler(
-    os.path.join('logs', 'device_manager.log'),
+    os.path.join(logs_dir, 'device_manager.log'),
     maxBytes=max_bytes,
     backupCount=backup_count,
     mode='a'
@@ -86,7 +102,7 @@ device_manager_logger.addHandler(device_manager_handler)
 midi_utils_logger = logging.getLogger('midi_utils')
 midi_utils_logger.setLevel(logging.INFO)
 midi_utils_handler = logging.handlers.RotatingFileHandler(
-    os.path.join('logs', 'midi_utils.log'),
+    os.path.join(logs_dir, 'midi_utils.log'),
     maxBytes=max_bytes,
     backupCount=backup_count,
     mode='a'
@@ -97,7 +113,7 @@ midi_utils_logger.addHandler(midi_utils_handler)
 ui_launcher_logger = logging.getLogger('ui_launcher')
 ui_launcher_logger.setLevel(logging.INFO)
 ui_launcher_handler = logging.handlers.RotatingFileHandler(
-    os.path.join('logs', 'ui_launcher.log'),
+    os.path.join(logs_dir, 'ui_launcher.log'),
     maxBytes=max_bytes,
     backupCount=backup_count,
     mode='a'
@@ -210,6 +226,22 @@ app = FastAPI(
     description="API for selecting MIDI presets and controlling MIDI devices",
     version=__version__,
     lifespan=lifespan
+)
+
+# Add CORS middleware to allow client connections
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8080", 
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8080",
+        "http://localhost:*",
+        "http://127.0.0.1:*"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 # API Routes
@@ -725,13 +757,13 @@ async def delete_collection(manufacturer: str, device: str, collection_name: str
 @app.get("/git/sync")
 async def git_sync(sync_enabled: bool = True):
     """
-    Perform a git submodule sync and update for the midi-presets submodule
+    Sync midi-presets based on R2MIDI_ROLE environment variable
 
     This endpoint:
-    1. Runs git submodule sync from the repository root
-    2. Runs git submodule update --init --recursive to update the submodule
-    3. If that fails, tries more aggressive approaches including complete removal and re-cloning
-    4. Logs each step of the operation
+    1. Checks R2MIDI_ROLE environment variable
+    2. If 'dev': Uses git submodule approach
+    3. If 'release' or unset: Uses git clone approach
+    4. Ensures midi-presets is in the correct state
 
     Args:
         sync_enabled: Whether to perform the sync operation (default: True)
@@ -753,8 +785,45 @@ async def git_sync(sync_enabled: bool = True):
     else:
         return {"status": "error", "message": message}
 
-# Run the application
-if __name__ == '__main__':
+@app.get("/git/remote_sync")
+async def git_remote_sync():
+    """
+    Add, commit, and push changes to the midi-presets repository
+
+    This endpoint:
+    1. Determines the mode (submodule or clone) based on R2MIDI_ROLE
+    2. Adds all changes with git add .
+    3. Commits the changes with the message "new presets"
+    4. Pushes the changes to the remote repository
+    5. If in submodule mode, updates the submodule reference in the parent repository
+
+    Returns:
+        JSON response with status and message
+    """
+    try:
+        # Import the git_remote_sync function from the git_operations module
+        from server.git_operations import git_remote_sync as git_remote_sync_operation
+    except ImportError:
+        # Fall back to absolute imports (when run directly)
+        from server.git_operations import git_remote_sync as git_remote_sync_operation
+
+    # Call the git_remote_sync function from the git_operations module
+    success, message, status_code = git_remote_sync_operation()
+
+    # Return the appropriate response based on the result
+    if success:
+        return {"status": "success", "message": message}
+    else:
+        return {"status": "error", "message": message}
+
+def main():
+    """Main entry point for the server application"""
+    run_server()
+
+def run_server():
+    """Run the server application"""
+    global ui_launcher
+
     # Get port from environment variable with default of 7777
     requested_port = int(os.getenv("PORT", 7777))
 
@@ -792,7 +861,7 @@ if __name__ == '__main__':
     uvicorn_log_config["handlers"]["file"] = {
         "class": "logging.handlers.RotatingFileHandler",
         "formatter": "default",
-        "filename": os.path.join('logs', 'uvicorn.log'),
+        "filename": os.path.join(logs_dir, 'uvicorn.log'),
         "maxBytes": max_bytes,
         "backupCount": backup_count,
         "mode": "a"
@@ -802,3 +871,7 @@ if __name__ == '__main__':
 
     # Run the server
     uvicorn.run(app, host="0.0.0.0", port=port, log_config=uvicorn_log_config)
+
+# Run the application
+if __name__ == '__main__':
+    main()

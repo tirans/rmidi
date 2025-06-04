@@ -16,55 +16,71 @@ echo "✅ Briefcase is installed"
 # Function to test an app
 test_app() {
     local app_name=$1
+    local platform=$2
     echo ""
-    echo "Testing $app_name..."
+    echo "Testing $app_name on $platform..."
     echo "-------------------"
-    
+
     # Create
     echo "Creating $app_name..."
-    if briefcase create $app_name; then
+    if briefcase create $platform app -a $app_name; then
         echo "✅ Create successful"
     else
         echo "❌ Create failed for $app_name"
         return 1
     fi
-    
+
     # Build
     echo "Building $app_name..."
-    if briefcase build $app_name; then
+    if briefcase build $platform app -a $app_name; then
         echo "✅ Build successful"
     else
         echo "❌ Build failed for $app_name"
         return 1
     fi
-    
+
     # Run (optional - comment out if you don't want to launch)
     echo "Would you like to run $app_name? (y/n)"
     read -r response
     if [[ "$response" == "y" ]]; then
-        briefcase run $app_name
+        briefcase run $platform app -a $app_name
     fi
-    
+
     return 0
 }
+
+# Detect platform or use command line argument
+if [[ $# -gt 0 ]]; then
+    PLATFORM="$1"
+    echo "Using platform from command line: $PLATFORM"
+else
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        PLATFORM="macOS"
+    elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
+        PLATFORM="windows"
+    else
+        PLATFORM="linux"
+    fi
+    echo "Detected platform: $PLATFORM"
+fi
 
 # Main execution
 echo ""
 echo "Starting Briefcase tests..."
 
 # Test server app
-if test_app "r2midi"; then
-    echo "✅ Server app (r2midi) passed all tests"
+if test_app "server" "$PLATFORM"; then
+    echo "✅ Server app (server) passed all tests"
 else
-    echo "❌ Server app (r2midi) failed"
+    echo "❌ Server app (server) failed"
     exit 1
 fi
 
 # Test client app
-if test_app "r2midic"; then
-    echo "✅ Client app (r2midic) passed all tests"
+if test_app "r2midi_client" "$PLATFORM"; then
+    echo "✅ Client app (r2midi_client) passed all tests"
 else
-    echo "❌ Client app (r2midic) failed"
+    echo "❌ Client app (r2midi_client) failed"
     exit 1
 fi
 
@@ -73,20 +89,20 @@ echo ""
 echo "Would you like to package the apps? (y/n)"
 read -r response
 if [[ "$response" == "y" ]]; then
-    echo "Packaging r2midi..."
-    briefcase package r2midi --no-sign
-    
-    echo "Packaging r2midic..."
-    briefcase package r2midic --no-sign
-    
+    echo "Packaging server..."
+    briefcase package $PLATFORM app -a server --no-sign
+
+    echo "Packaging r2midi_client..."
+    briefcase package $PLATFORM app -a r2midi_client --no-sign
+
     echo ""
     echo "Packages created! Check the build directory for output files."
-    
+
     # Show what was created
     echo ""
     echo "Build outputs:"
     echo "--------------"
-    
+
     # Find and display package files
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS

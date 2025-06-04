@@ -1,6 +1,6 @@
 [build-system]
-requires = ["briefcase>=0.3.21"]
-build-backend = "briefcase"
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "r2midi"
@@ -63,7 +63,7 @@ license = {text = "MIT"}
 author = "R2MIDI Team"
 author_email = "tiran@tirans.com"
 
-[tool.briefcase.app.r2midi]
+[tool.briefcase.app.server]
 formal_name = "R2MIDI Server"
 description = "MIDI 2.0 Patch Selection Server API"
 long_description = """R2MIDI Server is a REST API for managing and selecting MIDI presets across various devices and manufacturers."""
@@ -91,7 +91,7 @@ requires = [
 startup_module = "server.main"
 startup_method = "main"
 
-[tool.briefcase.app.r2midic]
+[tool.briefcase.app.r2midi_client]
 formal_name = "R2MIDI Client"
 description = "MIDI 2.0 Patch Selection Client UI"
 long_description = """R2MIDI Client is a user interface for managing and selecting MIDI presets across various devices and manufacturers."""
@@ -118,7 +118,7 @@ startup_method = "main"
 # ========================================
 # macOS Configuration
 # ========================================
-[tool.briefcase.app.r2midi.macOS]
+[tool.briefcase.app.server.macOS]
 requires = [
     "fastapi>=0.104.0",
     "uvicorn>=0.23.2", 
@@ -135,7 +135,7 @@ requires = [
 codesign_identity = "Developer ID Application"
 entitlements_file = "entitlements.plist"
 
-[tool.briefcase.app.r2midic.macOS]
+[tool.briefcase.app.r2midi_client.macOS]
 requires = [
     "pyqt6>=6.9.0",
     "httpx>=0.28.1",
@@ -151,7 +151,7 @@ entitlements_file = "entitlements.plist"
 # ========================================
 # Windows Configuration  
 # ========================================
-[tool.briefcase.app.r2midi.windows]
+[tool.briefcase.app.server.windows]
 requires = [
     "fastapi>=0.104.0",
     "uvicorn>=0.23.2",
@@ -164,7 +164,7 @@ requires = [
     "psutil>=7.0.0",
 ]
 
-[tool.briefcase.app.r2midic.windows]
+[tool.briefcase.app.r2midi_client.windows]
 requires = [
     "pyqt6>=6.9.0",
     "httpx>=0.28.1",
@@ -176,7 +176,7 @@ requires = [
 # ========================================
 # Linux Configuration
 # ========================================
-[tool.briefcase.app.r2midi.linux]
+[tool.briefcase.app.server.linux]
 requires = [
     "fastapi>=0.104.0",
     "uvicorn>=0.23.2",
@@ -189,7 +189,7 @@ requires = [
     "psutil>=7.0.0",
 ]
 
-[tool.briefcase.app.r2midic.linux]
+[tool.briefcase.app.r2midi_client.linux]
 requires = [
     "pyqt6>=6.9.0",
     "httpx>=0.28.1",
@@ -201,10 +201,10 @@ requires = [
 # ========================================
 # Development Configuration
 # ========================================
-[tool.briefcase.app.r2midi.dev]
+[tool.briefcase.app.server.dev]
 debug = true
 console_app = true
 
-[tool.briefcase.app.r2midic.dev]
+[tool.briefcase.app.r2midi_client.dev]
 debug = true
 console_app = false

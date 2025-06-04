@@ -314,42 +314,42 @@ jobs:
           fi
         shell: bash
 
-      # Build Server Application (r2midi)
+      # Build Server Application (server)
       - name: Create Server Application
         run: |
           echo "Creating R2MIDI Server application..."
-          briefcase create r2midi ${{ matrix.platform }}
+          briefcase create ${{ matrix.platform }} app -a server
         shell: bash
 
       - name: Build Server Application
         run: |
           echo "Building R2MIDI Server application..."
-          briefcase build r2midi ${{ matrix.platform }}
+          briefcase build ${{ matrix.platform }} app -a server
         shell: bash
 
       - name: Package Server Application
         run: |
           echo "Packaging R2MIDI Server application..."
-          briefcase package r2midi ${{ matrix.platform }} --no-sign
+          briefcase package ${{ matrix.platform }} app -a server --no-sign
         shell: bash
 
-      # Build Client Application (r2midic)
+      # Build Client Application (r2midi_client)
       - name: Create Client Application
         run: |
           echo "Creating R2MIDI Client application..."
-          briefcase create r2midic ${{ matrix.platform }}
+          briefcase create ${{ matrix.platform }} app -a r2midi_client
         shell: bash
 
       - name: Build Client Application
         run: |
           echo "Building R2MIDI Client application..."
-          briefcase build r2midic ${{ matrix.platform }}
+          briefcase build ${{ matrix.platform }} app -a r2midi_client
         shell: bash
 
       - name: Package Client Application
         run: |
           echo "Packaging R2MIDI Client application..."
-          briefcase package r2midic ${{ matrix.platform }} --no-sign
+          briefcase package ${{ matrix.platform }} app -a r2midi_client --no-sign
         shell: bash
 
       # Debug: List build outputs
@@ -411,14 +411,14 @@ jobs:
 
           # If still no installers found, package the app directories
           if (-not ((Get-ChildItem -Path "release_files" -Filter "*.msi") -or (Get-ChildItem -Path "release_files" -Filter "*.exe"))) {
-            if (Test-Path "build\r2midi\windows\app") {
+            if (Test-Path "build\server\windows\app") {
               Write-Host "Packaging R2MIDI Server for Windows..."
-              Compress-Archive -Path "build\r2midi\windows\app\*" -DestinationPath "release_files\R2MIDI-Server-windows.zip" -Force
+              Compress-Archive -Path "build\server\windows\app\*" -DestinationPath "release_files\R2MIDI-Server-windows.zip" -Force
             }
 
-            if (Test-Path "build\r2midic\windows\app") {
+            if (Test-Path "build\r2midi_client\windows\app") {
               Write-Host "Packaging R2MIDI Client for Windows..."
-              Compress-Archive -Path "build\r2midic\windows\app\*" -DestinationPath "release_files\R2MIDI-Client-windows.zip" -Force
+              Compress-Archive -Path "build\r2midi_client\windows\app\*" -DestinationPath "release_files\R2MIDI-Client-windows.zip" -Force
             }
           }
 

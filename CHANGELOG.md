@@ -1,0 +1,28 @@
+# Changelog
+
+All notable changes to the R2MIDI project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.65] - 2025-06-06
+
+### Added
+- Added support for Linux system packaging
+- Improved error handling in MIDI device detection
+
+### Fixed
+- Fixed issue with MIDI channel selection in the client UI
+- Resolved compatibility issues with certain MIDI devices
+
+### Changed
+- Updated dependencies to latest versions
+- Improved performance of preset loading
+
+## [0.1.64] - 2025-05-15
+
+### Added
+- Initial public release
+- Support for Windows, macOS, and Linux
+- Basic MIDI preset selection functionality
+- Integration with community preset repository

@@ -268,40 +268,41 @@ jobs:
           fi
         shell: bash
 
-      - name: Prepare stable build artifacts
+      - name: Prepare stable build artifacts (Linux)
+        if: matrix.platform == 'linux'
         run: |
           mkdir -p stable_builds
+          echo "🐧 Packaging Linux stable builds..."
 
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            echo "🪟 Packaging Windows stable builds..."
-
-            if [ -d "build/server/windows/app" ]; then
-              cd build/server/windows/app
-              zip -r "$GITHUB_WORKSPACE/stable_builds/R2MIDI-Server-windows-stable-v${APP_VERSION}.zip" .
-              cd "$GITHUB_WORKSPACE"
-            fi
-
-            if [ -d "build/r2midi_client/windows/app" ]; then
-              cd build/r2midi_client/windows/app
-              zip -r "$GITHUB_WORKSPACE/stable_builds/R2MIDI-Client-windows-stable-v${APP_VERSION}.zip" .
-              cd "$GITHUB_WORKSPACE"
-            fi
-
-          else  # Linux
-            echo "🐧 Packaging Linux stable builds..."
-
-            if [ -d "build/server/linux/app" ]; then
-              tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C build/server/linux/app .
-            fi
-
-            if [ -d "build/r2midi_client/linux/app" ]; then
-              tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C build/r2midi_client/linux/app .
-            fi
+          if [ -d "build/server/linux/app" ]; then
+            tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C build/server/linux/app .
           fi
 
-          echo "${{ matrix.emoji }} Stable build artifacts:"
+          if [ -d "build/r2midi_client/linux/app" ]; then
+            tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C build/r2midi_client/linux/app .
+          fi
+
+          echo "🐧 Stable build artifacts:"
           ls -la stable_builds/
         shell: bash
+
+      - name: Prepare stable build artifacts (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          mkdir -p stable_builds
+          echo "🪟 Packaging Windows stable builds..."
+
+          if (Test-Path -Path "build/server/windows/app") {
+            Compress-Archive -Path "build/server/windows/app/*" -DestinationPath "stable_builds/R2MIDI-Server-windows-stable-v$env:APP_VERSION.zip" -Force
+          }
+
+          if (Test-Path -Path "build/r2midi_client/windows/app") {
+            Compress-Archive -Path "build/r2midi_client/windows/app/*" -DestinationPath "stable_builds/R2MIDI-Client-windows-stable-v$env:APP_VERSION.zip" -Force
+          }
+
+          echo "🪟 Stable build artifacts:"
+          Get-ChildItem -Path stable_builds
+        shell: pwsh
 
       - name: Upload stable build artifacts
         uses: actions/upload-artifact@v4

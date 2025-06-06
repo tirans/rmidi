@@ -162,6 +162,7 @@ requires = [
     "GitPython>=3.1.40",
     "psutil>=7.0.0",
 ]
+sign_app = false
 
 [tool.briefcase.app.r2midi_client.windows]
 requires = [
@@ -171,6 +172,7 @@ requires = [
     "pydantic>=2.11.5",
     "psutil>=7.0.0",
 ]
+sign_app = false
 
 # ========================================
 # Linux Configuration
@@ -187,6 +189,7 @@ requires = [
     "GitPython>=3.1.40",
     "psutil>=7.0.0",
 ]
+target = "system"
 
 [tool.briefcase.app.r2midi_client.linux]
 requires = [
@@ -196,6 +199,7 @@ requires = [
     "pydantic>=2.11.5",
     "psutil>=7.0.0",
 ]
+target = "system"
 
 # ========================================
 # Development Configuration

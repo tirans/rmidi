@@ -64,10 +64,10 @@ briefcase package macOS app -a r2midi_client --no-sign
 briefcase create linux app -a server
 
 # Build the application
-briefcase build linux app -a server
+briefcase build linux app -a server --target system
 
 # Package the application (creates an AppImage or .deb package)
-briefcase package linux app -a server --no-sign
+briefcase package linux app -a server
 ```
 
 ### Client Application
@@ -77,10 +77,10 @@ briefcase package linux app -a server --no-sign
 briefcase create linux app -a r2midi_client
 
 # Build the application
-briefcase build linux app -a r2midi_client
+briefcase build linux app -a r2midi_client --target system
 
 # Package the application (creates an AppImage or .deb package)
-briefcase package linux app -a r2midi_client --no-sign
+briefcase package linux app -a r2midi_client
 ```
 
 ## Building on Windows
@@ -95,7 +95,7 @@ briefcase create windows app -a server
 briefcase build windows app -a server
 
 # Package the application (creates an .msi installer)
-briefcase package windows app -a server --no-sign
+briefcase package windows app -a server
 ```
 
 ### Client Application
@@ -108,7 +108,7 @@ briefcase create windows app -a r2midi_client
 briefcase build windows app -a r2midi_client
 
 # Package the application (creates an .msi installer)
-briefcase package windows app -a r2midi_client --no-sign
+briefcase package windows app -a r2midi_client
 ```
 
 ## Running the Applications

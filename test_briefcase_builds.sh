@@ -32,11 +32,22 @@ test_app() {
 
     # Build
     echo "Building $app_name..."
-    if briefcase build $platform app -a $app_name; then
-        echo "✅ Build successful"
+    if [[ "$platform" == "linux" ]]; then
+        # For Linux, use the system target
+        if briefcase build $platform app -a $app_name --target system; then
+            echo "✅ Build successful"
+        else
+            echo "❌ Build failed for $app_name"
+            return 1
+        fi
     else
-        echo "❌ Build failed for $app_name"
-        return 1
+        # For other platforms
+        if briefcase build $platform app -a $app_name; then
+            echo "✅ Build successful"
+        else
+            echo "❌ Build failed for $app_name"
+            return 1
+        fi
     fi
 
     # Run (optional - comment out if you don't want to launch)
@@ -90,10 +101,28 @@ echo "Would you like to package the apps? (y/n)"
 read -r response
 if [[ "$response" == "y" ]]; then
     echo "Packaging server..."
-    briefcase package $PLATFORM app -a server --no-sign
+    if [[ "$PLATFORM" == "linux" ]]; then
+        # For Linux, don't use --no-sign as we're using system target
+        briefcase package $PLATFORM app -a server
+    elif [[ "$PLATFORM" == "windows" ]]; then
+        # For Windows, don't use --no-sign as it's configured in pyproject.toml
+        briefcase package $PLATFORM app -a server
+    else
+        # For other platforms (macOS)
+        briefcase package $PLATFORM app -a server --no-sign
+    fi
 
     echo "Packaging r2midi_client..."
-    briefcase package $PLATFORM app -a r2midi_client --no-sign
+    if [[ "$PLATFORM" == "linux" ]]; then
+        # For Linux, don't use --no-sign as we're using system target
+        briefcase package $PLATFORM app -a r2midi_client
+    elif [[ "$PLATFORM" == "windows" ]]; then
+        # For Windows, don't use --no-sign as it's configured in pyproject.toml
+        briefcase package $PLATFORM app -a r2midi_client
+    else
+        # For other platforms (macOS)
+        briefcase package $PLATFORM app -a r2midi_client --no-sign
+    fi
 
     echo ""
     echo "Packages created! Check the build directory for output files."

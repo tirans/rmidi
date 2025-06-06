@@ -5,6 +5,7 @@ import subprocess
 import shutil
 import time
 import concurrent.futures
+import re
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 # Import modules - handle both relative and absolute imports
@@ -14,6 +15,84 @@ try:
 except ImportError:
     # Fall back to absolute imports (when run directly)
     from server.models import Device, Preset, DirectoryStructureResponse
+
+# Path validation utility functions
+def validate_path_component(component: str) -> bool:
+    """
+    Validate a path component to prevent path traversal attacks.
+
+    Args:
+        component: A single path component (filename or directory name)
+
+    Returns:
+        True if the component is safe, False otherwise
+    """
+    # Reject empty components
+    if not component or component.isspace():
+        return False
+
+    # Reject components with path traversal sequences
+    if '..' in component or '/' in component or '\\' in component:
+        return False
+
+    # Only allow alphanumeric characters, underscores, hyphens, and spaces
+    return bool(re.match(r'^[a-zA-Z0-9_\-\s.]+$', component))
+
+def sanitize_path_component(component: str) -> str:
+    """
+    Sanitize a path component by removing or replacing unsafe characters.
+
+    Args:
+        component: A single path component (filename or directory name)
+
+    Returns:
+        A sanitized version of the component
+    """
+    # Replace spaces with underscores
+    sanitized = component.replace(' ', '_')
+
+    # Remove any characters that aren't alphanumeric, underscore, hyphen, or period
+    sanitized = re.sub(r'[^a-zA-Z0-9_\-.]', '', sanitized)
+
+    # Ensure the component doesn't start with a period (hidden file)
+    if sanitized.startswith('.'):
+        sanitized = 'x' + sanitized
+
+    return sanitized
+
+def safe_path_join(base_path: str, *components: str) -> Tuple[str, bool, bool]:
+    """
+    Safely join path components to prevent path traversal attacks.
+
+    Args:
+        base_path: The base directory path
+        *components: Path components to join
+
+    Returns:
+        Tuple of (joined_path, is_safe, was_sanitized)
+    """
+    # Create sanitized components
+    sanitized_components = []
+    was_sanitized = False
+
+    for component in components:
+        if not validate_path_component(component):
+            sanitized = sanitize_path_component(component)
+            sanitized_components.append(sanitized)
+            was_sanitized = True
+        else:
+            sanitized_components.append(component)
+
+    # Join the path components
+    joined_path = os.path.join(base_path, *sanitized_components)
+
+    # Ensure the joined path is within the base path
+    real_base = os.path.realpath(base_path)
+    real_joined = os.path.realpath(joined_path)
+
+    is_safe = real_joined.startswith(real_base)
+
+    return joined_path, is_safe, was_sanitized
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -139,7 +218,7 @@ class DeviceManager:
             from .git_operations import git_sync, get_midi_presets_mode
         except ImportError:
             from server.git_operations import git_sync, get_midi_presets_mode
-        
+
         mode = get_midi_presets_mode()
         logger.info(f"Running git sync in {mode} mode")
 
@@ -909,11 +988,20 @@ class DeviceManager:
         Returns:
             Tuple of (success, message)
         """
-        # Normalize name to avoid path issues
-        name_safe = name.replace(' ', '_')
+        # Validate and sanitize the manufacturer name
+        if not validate_path_component(name):
+            logger.warning(f"Unsafe manufacturer name: '{name}'")
+            name_safe = sanitize_path_component(name)
+            logger.info(f"Sanitized manufacturer name from '{name}' to '{name_safe}'")
+        else:
+            name_safe = name.replace(' ', '_')  # Still normalize spaces
 
-        # Construct path
-        manufacturer_path = os.path.join(self.devices_folder, name_safe)
+        # Construct path safely
+        manufacturer_path, is_safe, was_sanitized = safe_path_join(self.devices_folder, name_safe)
+
+        if not is_safe:
+            logger.error(f"Path traversal attempt detected for manufacturer: '{name}'")
+            return False, "Invalid manufacturer name"
 
         # Check if it already exists
         if os.path.exists(manufacturer_path):
@@ -946,8 +1034,15 @@ class DeviceManager:
         if name not in self.manufacturers:
             return False, f"Manufacturer '{name}' does not exist"
 
-        # Construct path
-        manufacturer_path = os.path.join(self.devices_folder, name)
+        # Construct path safely
+        manufacturer_path, is_safe, was_sanitized = safe_path_join(self.devices_folder, name)
+
+        if not is_safe:
+            logger.error(f"Path traversal attempt detected for manufacturer: '{name}'")
+            return False, "Invalid manufacturer name"
+
+        if was_sanitized:
+            logger.warning(f"Manufacturer name was sanitized: '{name}'")
 
         # Check if it exists
         if not os.path.exists(manufacturer_path):

@@ -7,15 +7,93 @@ import threading
 import time
 import socket
 import json
+import re
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Path validation utility functions
+def validate_path_component(component: str) -> bool:
+    """
+    Validate a path component to prevent path traversal attacks.
+
+    Args:
+        component: A single path component (filename or directory name)
+
+    Returns:
+        True if the component is safe, False otherwise
+    """
+    # Reject empty components
+    if not component or component.isspace():
+        return False
+
+    # Reject components with path traversal sequences
+    if '..' in component or '/' in component or '\\' in component:
+        return False
+
+    # Only allow alphanumeric characters, underscores, hyphens, and spaces
+    return bool(re.match(r'^[a-zA-Z0-9_\-\s.]+$', component))
+
+def sanitize_path_component(component: str) -> str:
+    """
+    Sanitize a path component by removing or replacing unsafe characters.
+
+    Args:
+        component: A single path component (filename or directory name)
+
+    Returns:
+        A sanitized version of the component
+    """
+    # Replace spaces with underscores
+    sanitized = component.replace(' ', '_')
+
+    # Remove any characters that aren't alphanumeric, underscore, hyphen, or period
+    sanitized = re.sub(r'[^a-zA-Z0-9_\-.]', '', sanitized)
+
+    # Ensure the component doesn't start with a period (hidden file)
+    if sanitized.startswith('.'):
+        sanitized = 'x' + sanitized
+
+    return sanitized
+
+def safe_path_join(base_path: str, *components: str) -> Tuple[str, bool, bool]:
+    """
+    Safely join path components to prevent path traversal attacks.
+
+    Args:
+        base_path: The base directory path
+        *components: Path components to join
+
+    Returns:
+        Tuple of (joined_path, is_safe, was_sanitized)
+    """
+    # Create sanitized components
+    sanitized_components = []
+    for component in components:
+        if not validate_path_component(component):
+            sanitized = sanitize_path_component(component)
+            # We'll log this later when the logger is available
+            sanitized_components.append(sanitized)
+        else:
+            sanitized_components.append(component)
+
+    # Join the path components
+    joined_path = os.path.join(base_path, *sanitized_components)
+
+    # Ensure the joined path is within the base path
+    real_base = os.path.realpath(base_path)
+    real_joined = os.path.realpath(joined_path)
+
+    is_safe = real_joined.startswith(real_base)
+
+    # We'll log any issues later when the logger is available
+    return joined_path, is_safe, sanitized_components != list(components)
 
 # Import modules - handle both relative and absolute imports
 try:
@@ -615,14 +693,35 @@ async def create_collection(manufacturer: str, device: str, collection_name: str
         # Update the device data
         device_data['preset_collections'] = preset_collections
 
-        # Save the device data
-        device_path = os.path.join(device_manager.devices_folder, manufacturer, device)
+        # Save the device data - use safe path handling
+        device_path, is_safe, was_sanitized = safe_path_join(device_manager.devices_folder, manufacturer, device)
+
+        if not is_safe:
+            logger.error(f"Path traversal attempt detected for manufacturer '{manufacturer}' and device '{device}'")
+            raise HTTPException(status_code=400, detail="Invalid path components")
+
+        if was_sanitized:
+            logger.warning(f"Path components were sanitized for manufacturer '{manufacturer}' and device '{device}'")
+
+        if not os.path.exists(device_path):
+            raise HTTPException(status_code=404, detail=f"Device path not found: '{device_path}'")
+
         json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
 
         if not json_files:
             raise HTTPException(status_code=404, detail=f"No JSON file found for device '{device}'")
 
-        json_path = os.path.join(device_path, json_files[0])
+        # Validate the JSON filename
+        json_filename = json_files[0]
+        if not validate_path_component(json_filename):
+            logger.warning(f"Unsafe JSON filename: '{json_filename}'")
+            json_filename = sanitize_path_component(json_filename)
+
+        json_path, is_safe, _ = safe_path_join(device_path, json_filename)
+
+        if not is_safe:
+            logger.error(f"Path traversal attempt detected for JSON file: '{json_filename}'")
+            raise HTTPException(status_code=400, detail="Invalid JSON filename")
 
         with open(json_path, 'w') as f:
             json.dump(device_data, f, indent=2)
@@ -680,14 +779,35 @@ async def update_collection(manufacturer: str, device: str, collection_name: str
         # Update the device data
         device_data['preset_collections'] = preset_collections
 
-        # Save the device data
-        device_path = os.path.join(device_manager.devices_folder, manufacturer, device)
+        # Save the device data - use safe path handling
+        device_path, is_safe, was_sanitized = safe_path_join(device_manager.devices_folder, manufacturer, device)
+
+        if not is_safe:
+            logger.error(f"Path traversal attempt detected for manufacturer '{manufacturer}' and device '{device}'")
+            raise HTTPException(status_code=400, detail="Invalid path components")
+
+        if was_sanitized:
+            logger.warning(f"Path components were sanitized for manufacturer '{manufacturer}' and device '{device}'")
+
+        if not os.path.exists(device_path):
+            raise HTTPException(status_code=404, detail=f"Device path not found: '{device_path}'")
+
         json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
 
         if not json_files:
             raise HTTPException(status_code=404, detail=f"No JSON file found for device '{device}'")
 
-        json_path = os.path.join(device_path, json_files[0])
+        # Validate the JSON filename
+        json_filename = json_files[0]
+        if not validate_path_component(json_filename):
+            logger.warning(f"Unsafe JSON filename: '{json_filename}'")
+            json_filename = sanitize_path_component(json_filename)
+
+        json_path, is_safe, _ = safe_path_join(device_path, json_filename)
+
+        if not is_safe:
+            logger.error(f"Path traversal attempt detected for JSON file: '{json_filename}'")
+            raise HTTPException(status_code=400, detail="Invalid JSON filename")
 
         with open(json_path, 'w') as f:
             json.dump(device_data, f, indent=2)

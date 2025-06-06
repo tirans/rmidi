@@ -362,14 +362,16 @@ jobs:
           mkdir -p release_files
 
           if [ "${{ matrix.platform }}" = "macOS" ]; then
-            for app in build/*/macOS/app/*.app; do
-              if [ -d "$app" ]; then
-                app_name=$(basename "$(dirname "$(dirname "$(dirname "$app")")")")
-                cd "$(dirname "$app")"
-                zip -r "$GITHUB_WORKSPACE/release_files/${app_name}-macos-signed.zip" "$(basename "$app")"
-                cd "$GITHUB_WORKSPACE"
-              fi
-            done
+            if [ -d "build/server/macOS/app" ]; then
+              cd build/server/macOS/app
+              zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Server-macos-signed.zip" *.app
+              cd "$GITHUB_WORKSPACE"
+            fi
+            if [ -d "build/r2midi_client/macOS/app" ]; then
+              cd build/r2midi_client/macOS/app
+              zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Client-macos-signed.zip" *.app
+              cd "$GITHUB_WORKSPACE"
+            fi
           elif [ "${{ matrix.platform }}" = "windows" ]; then
             if [ -d "build/server/windows/app" ]; then
               cd build/server/windows/app
@@ -737,8 +739,8 @@ jobs:
             ### 📦 Downloads
 
             #### 🍎 macOS (Code Signed & Notarized)
-            - **server-macos-signed.zip** - R2MIDI Server (.app bundle)
-            - **r2midi_client-macos-signed.zip** - R2MIDI Client (.app bundle)
+            - **R2MIDI-Server-macos-signed.zip** - R2MIDI Server (.app bundle)
+            - **R2MIDI-Client-macos-signed.zip** - R2MIDI Client (.app bundle)
 
             #### 🪟 Windows (Code Signed)
             - **R2MIDI-Server-windows-signed.zip** - R2MIDI Server (signed executable)

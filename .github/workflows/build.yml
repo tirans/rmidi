@@ -170,51 +170,6 @@ jobs:
           path: dist/
           retention-days: 30
 
-  publish-to-pypi:
-    needs: [test, build-python-package]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    environment: pypi-publishing
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Fetch all history for proper versioning
-          ref: master  # Ensure we're using the latest commit with the version bump
-
-      - name: Get version
-        id: get_version
-        run: |
-          VERSION=$(grep -o '__version__ = "[^"]*"' version.py | cut -d'"' -f2)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Using version: $VERSION (from increment-version job: ${{ needs.increment-version.outputs.version }})"
-
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Prepare distributions for PyPI
-        run: |
-          mkdir -p combined_dist
-          find artifacts -type f -exec cp {} combined_dist/ \;
-
-      - name: Create GitHub Release
-        id: create_release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.get_version.outputs.version }}
-          name: Release v${{ steps.get_version.outputs.version }}
-          draft: false
-          prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: combined_dist/
-          # OpenID Connect (OIDC) is used automatically, no credentials needed
 
   build-stable-cross-platform:
     needs: test
@@ -390,7 +345,7 @@ jobs:
           retention-days: 30
 
   create-staging-release:
-    needs: [build-stable-cross-platform, publish-to-pypi]
+    needs: [build-stable-cross-platform ]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
 

@@ -385,10 +385,10 @@ jobs:
             fi
           else  # Linux
             if [ -d "build/server/linux/app" ]; then
-              tar -czf "release_files/server-linux-signed.tar.gz" -C build/server/linux/app .
+              tar -czf "release_files/R2MIDI-Server-linux-signed.tar.gz" -C build/server/linux/app .
             fi
             if [ -d "build/r2midi_client/linux/app" ]; then
-              tar -czf "release_files/r2midi_client-linux-signed.tar.gz" -C build/r2midi_client/linux/app .
+              tar -czf "release_files/R2MIDI-Client-linux-signed.tar.gz" -C build/r2midi_client/linux/app .
             fi
           fi
 
@@ -747,8 +747,8 @@ jobs:
             - **R2MIDI-Client-windows-signed.zip** - R2MIDI Client (signed executable)
 
             #### 🐧 Linux (Production Ready)
-            - **server-linux-signed.tar.gz** - R2MIDI Server (native executable)
-            - **r2midi_client-linux-signed.tar.gz** - R2MIDI Client (native executable)
+            - **R2MIDI-Server-linux-signed.tar.gz** - R2MIDI Server (native executable)
+            - **R2MIDI-Client-linux-signed.tar.gz** - R2MIDI Client (native executable)
 
             ${{ needs.check-build-success.outputs.should_app_store == 'true' && '#### 🏪 Mac App Store\n- **R2MIDI Server** and **R2MIDI Client** submitted to App Store\n- Check App Store Connect for review status\n- App Store packages also available as release artifacts\n' || '#### 🏪 Mac App Store\n- App Store submission not configured\n- Set up App Store Connect API key to enable automatic submission\n' }}
 

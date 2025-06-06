@@ -226,8 +226,8 @@ jobs:
           echo "Creating applications..."
           briefcase create ${{ matrix.platform }} app -a server
           briefcase build ${{ matrix.platform }} app -a server
-          briefcase create ${{ matrix.platform }} app -a r2midi_client
-          briefcase build ${{ matrix.platform }} app -a r2midi_client
+          briefcase create ${{ matrix.platform }} app -a r2midi-client
+          briefcase build ${{ matrix.platform }} app -a r2midi-client
 
           if [ "${{ matrix.platform }}" = "macOS" ] && [ "$CODE_SIGNING_AVAILABLE" = "true" ]; then
             echo "Code signing macOS applications..."
@@ -251,7 +251,7 @@ jobs:
 
           echo "Packaging applications..."
           briefcase package ${{ matrix.platform }} app -a server
-          briefcase package ${{ matrix.platform }} app -a r2midi_client
+          briefcase package ${{ matrix.platform }} app -a r2midi-client
         shell: bash
 
       - name: Notarize macOS applications
@@ -576,8 +576,8 @@ jobs:
           echo "🏪 Creating App Store applications..."
           briefcase create macOS app -a server
           briefcase build macOS app -a server
-          briefcase create macOS app -a r2midi_client  
-          briefcase build macOS app -a r2midi_client
+          briefcase create macOS app -a r2midi-client  
+          briefcase build macOS app -a r2midi-client
 
       - name: Sign for App Store
         run: |

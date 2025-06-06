@@ -250,8 +250,13 @@ jobs:
           fi
 
           echo "Packaging applications..."
-          briefcase package ${{ matrix.platform }} app -a server
-          briefcase package ${{ matrix.platform }} app -a r2midi-client
+          if [ "${{ matrix.platform }}" = "macOS" ]; then
+            briefcase package ${{ matrix.platform }} app -a server --adhoc-sign
+            briefcase package ${{ matrix.platform }} app -a r2midi-client --adhoc-sign
+          else
+            briefcase package ${{ matrix.platform }} app -a server
+            briefcase package ${{ matrix.platform }} app -a r2midi-client
+          fi
         shell: bash
 
       - name: Notarize macOS applications

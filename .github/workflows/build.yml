@@ -313,8 +313,8 @@ jobs:
             briefcase package ${{ matrix.platform }} app -a server  
             briefcase package ${{ matrix.platform }} app -a r2midi-client
           elif [ "${{ matrix.platform }}" = "macOS" ]; then
-            briefcase package ${{ matrix.platform }} app -a server  
-            briefcase package ${{ matrix.platform }} app -a r2midi-client
+            briefcase package ${{ matrix.platform }} app -a server --adhoc-sign
+            briefcase package ${{ matrix.platform }} app -a r2midi-client --adhoc-sign
           else
             briefcase package ${{ matrix.platform }} system -a server  
             briefcase package ${{ matrix.platform }} system -a r2midi-client

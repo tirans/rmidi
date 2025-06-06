@@ -90,7 +90,7 @@ requires = [
 startup_module = "server.main"
 startup_method = "main"
 
-[tool.briefcase.app.r2midi_client]
+[tool.briefcase.app.r2midi-client]
 formal_name = "R2MIDI Client"
 description = "MIDI 2.0 Patch Selection Client UI"
 long_description = """R2MIDI Client is a user interface for managing and selecting MIDI presets across various devices and manufacturers."""
@@ -134,7 +134,7 @@ requires = [
 codesign_identity = "Developer ID Application"
 entitlements_file = "entitlements.plist"
 
-[tool.briefcase.app.r2midi_client.macOS]
+[tool.briefcase.app.r2midi-client.macOS]
 requires = [
     "pyqt6>=6.9.0",
     "httpx>=0.28.1",
@@ -164,7 +164,7 @@ requires = [
 ]
 sign_app = false
 
-[tool.briefcase.app.r2midi_client.windows]
+[tool.briefcase.app.r2midi-client.windows]
 requires = [
     "pyqt6>=6.9.0",
     "httpx>=0.28.1",
@@ -191,7 +191,7 @@ requires = [
 ]
 target = "system"
 
-[tool.briefcase.app.r2midi_client.linux]
+[tool.briefcase.app.r2midi-client.linux]
 requires = [
     "pyqt6>=6.9.0",
     "httpx>=0.28.1",
@@ -208,6 +208,6 @@ target = "system"
 debug = true
 console_app = true
 
-[tool.briefcase.app.r2midi_client.dev]
+[tool.briefcase.app.r2midi-client.dev]
 debug = true
 console_app = false

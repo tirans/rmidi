@@ -407,16 +407,20 @@ The application version is stored in `version.py` and is automatically increment
 
 ### How Version Incrementing Works
 
-The version incrementing is handled by the GitHub Actions workflow defined in `.github/workflows/python-package.yml`. When code is pushed to the master branch, the workflow:
+The version incrementing is handled by the GitHub Actions workflow defined in `.github/workflows/build.yml`. When code is pushed to the master branch, the workflow:
 
-1. Builds and tests the application
-2. Increments the preset version (the third number in the version)
-3. Updates both `version.py` and `pyproject.toml` with the new version
-4. Commits and pushes the version changes back to the repository
-5. Creates a GitHub release with the new version
-6. Publishes the package to PyPI
-7. Builds executable binaries for Windows, macOS, and Linux using PyInstaller
-8. Uploads the executables to the GitHub release
+1. Increments the patch version (the third number in the version)
+2. Updates `version.py`, `pyproject.toml`, and `CHANGELOG.md` with the new version
+3. Commits and pushes the version changes back to the repository
+4. Builds and tests the application with the new version
+5. Publishes the package to PyPI
+6. Builds cross-platform applications for Windows and Linux
+
+After the build workflow completes, the `.github/workflows/release.yml` workflow:
+
+1. Creates a GitHub release with the new version
+2. Builds signed applications for Windows, macOS, and Linux
+3. Uploads the executables to the GitHub release
 
 For example, if the current version is `0.1.0`, after a push to master it will be `0.1.1`.
 

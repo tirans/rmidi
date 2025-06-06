@@ -190,7 +190,6 @@ requires = [
     "psutil>=7.0.0",
 ]
 target = "system"
-package_name = "r2midi-server"
 
 [tool.briefcase.app.r2midi_client.linux]
 requires = [
@@ -201,7 +200,6 @@ requires = [
     "psutil>=7.0.0",
 ]
 target = "system"
-package_name = "r2midi-client"
 
 # ========================================
 # Development Configuration

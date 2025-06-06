@@ -397,7 +397,7 @@ jobs:
   app-store-submission:
     needs: [check-build-success, code-sign-and-package]
     if: needs.check-build-success.outputs.should_app_store == 'true'
-    runs-on: macos-13
+    runs-on: macos-14
     environment: app-store
     
     steps:

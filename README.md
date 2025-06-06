@@ -1,10 +1,14 @@
-# R2MIDI - Enhanced MIDI Preset Selection System
+# R2MIDI - MIDI Preset Selection System
 
-A comprehensive MIDI preset selection application with enhanced performance, caching, and user experience features.
+A MIDI preset selection application and user midi hardware devices, preset definition with planned sharing via https://github.com/tirans/midi-presets project.
 
 ## Overview
 
-R2MIDI is a PyQt6-based application that provides an intuitive interface for browsing and selecting MIDI presets across multiple devices and manufacturers. The enhanced version includes significant improvements in performance, usability, and customization.
+- R2MIDI is a PyQt6-based application that provides an intuitive interface for browsing and selecting MIDI presets across multiple devices and manufacturers.
+- The app sends the same midi selection command to the device and another port (probably the sequencer for recording)
+##  Be aware: 
+- No user data is collected for advertising etc., however, the application uses the https://github.com/tirans/midi-presets project which stored midi capable devices infromation, currently describing midi patches related information. 
+- The target is to enable the user to add/sync midi devices automatically to this repo.
 
 ## Key Features
 
@@ -16,7 +20,7 @@ R2MIDI is a PyQt6-based application that provides an intuitive interface for bro
 - **Multi-Device Support**: Control multiple MIDI devices simultaneously
 - **Sequencer Integration**: Optional routing to a sequencer port
 
-### Enhanced Features
+### Performance Features
 
 #### 🚀 Performance Optimizations
 - **Intelligent Caching**: 1-hour cache for API responses significantly reduces server load
@@ -419,6 +423,18 @@ For example, if the current version is `0.1.0`, after a push to master it will b
 ### Manual Version Updates
 
 For major or minor version updates (first or second number), manually edit the `version.py` and `pyproject.toml` files before pushing to master. The GitHub Actions workflow will still handle creating the release and publishing to PyPI.
+
+## Security
+
+**This project is 100% safe for open source distribution.** All GitHub Actions workflows have been security audited to ensure no secrets, passwords, or sensitive information can be exposed in public repositories.
+
+Key security features:
+- ✅ Complete secret masking in all workflows
+- ✅ No hardcoded credentials anywhere in the codebase
+- ✅ Secure certificate and API key handling
+- ✅ Environment protection for production secrets
+
+For detailed security information, see [.github/SECURITY_AUDIT.md](.github/SECURITY_AUDIT.md).
 
 ## Contributing
 

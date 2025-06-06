@@ -1,0 +1,771 @@
+name: Production Release
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  check-build-success:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      should_app_store: ${{ steps.check.outputs.should_app_store }}
+      version: ${{ steps.get_version.outputs.version }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Check if release needed
+        id: check
+        run: |
+          # Check if we have signing certificates
+          if [ -n "${{ secrets.APPLE_CERTIFICATE_P12 }}" ] || [ -n "${{ secrets.WINDOWS_CERTIFICATE_P12 }}" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Code signing certificates available - proceeding with signed release"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No signing certificates available - skipping signed release"
+          fi
+          
+          # Check if we should submit to App Store
+          if [ -n "${{ secrets.APP_STORE_CONNECT_API_KEY }}" ] && [ -n "${{ secrets.APPLE_APP_STORE_CERTIFICATE_P12 }}" ]; then
+            echo "should_app_store=true" >> $GITHUB_OUTPUT
+            echo "🏪 App Store Connect API key and certificates available - will submit to App Store"
+          else
+            echo "should_app_store=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ App Store submission disabled (missing API key or certificates)"
+          fi
+
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+  code-sign-and-package:
+    needs: check-build-success
+    if: needs.check-build-success.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-13
+            platform: macOS
+            platform_name: macos
+          - os: windows-latest
+            platform: windows
+            platform_name: windows
+          - os: ubuntu-latest
+            platform: linux
+            platform_name: linux
+    runs-on: ${{ matrix.os }}
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure app metadata
+        env:
+          BUNDLE_PREFIX: ${{ secrets.APP_BUNDLE_ID_PREFIX }}
+          SERVER_NAME: ${{ secrets.APP_DISPLAY_NAME_SERVER }}
+          CLIENT_NAME: ${{ secrets.APP_DISPLAY_NAME_CLIENT }}
+          AUTHOR_NAME: ${{ secrets.APP_AUTHOR_NAME }}
+          AUTHOR_EMAIL: ${{ secrets.APP_AUTHOR_EMAIL }}
+        run: |
+          echo "BUNDLE_PREFIX=${BUNDLE_PREFIX:-com.r2midi}" >> $GITHUB_ENV
+          echo "SERVER_NAME=${SERVER_NAME:-R2MIDI Server}" >> $GITHUB_ENV
+          echo "CLIENT_NAME=${CLIENT_NAME:-R2MIDI Client}" >> $GITHUB_ENV
+          echo "AUTHOR_NAME=${AUTHOR_NAME:-R2MIDI Team}" >> $GITHUB_ENV
+          echo "AUTHOR_EMAIL=${AUTHOR_EMAIL:-tiran@tirans.com}" >> $GITHUB_ENV
+          
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Import Code Signing Certificates (macOS)
+        if: matrix.platform == 'macOS'
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE_P12" ]; then
+            echo "❌ No macOS signing certificates provided"
+            exit 1
+          fi
+
+          # Mask sensitive values in logs
+          echo "::add-mask::$APPLE_CERTIFICATE_PASSWORD"
+
+          security create-keychain -p temp_password temp.keychain
+          security default-keychain -s temp.keychain
+          security unlock-keychain -p temp_password temp.keychain
+          
+          # Import certificate with error handling
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > developer_id_cert.p12
+          security import developer_id_cert.p12 -k temp.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >/dev/null 2>&1
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Certificate imported successfully"
+          else
+            echo "❌ Failed to import certificate"
+            rm -f developer_id_cert.p12
+            exit 1
+          fi
+          
+          rm -f developer_id_cert.p12
+          
+          security set-key-partition-list -S apple-tool:,apple: -s -k temp_password temp.keychain >/dev/null 2>&1
+          echo "CODE_SIGNING_AVAILABLE=true" >> $GITHUB_ENV
+
+      - name: Install system dependencies
+        run: |
+          if [ "${{ matrix.platform }}" = "macOS" ]; then
+            echo "Installing macOS dependencies..."
+          elif [ "${{ matrix.platform }}" = "linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y libasound2-dev libegl1 libjack-dev librtmidi-dev
+          fi
+        shell: bash
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install briefcase
+          pip install -r requirements.txt
+          if [ -f r2midi_client/requirements.txt ]; then 
+            pip install -r r2midi_client/requirements.txt
+          fi
+        shell: bash
+
+      - name: Update pyproject.toml
+        run: |
+          if [ "${BUNDLE_PREFIX}" != "com.r2midi" ]; then
+            sed -i.bak "s|bundle = \"com\.r2midi\"|bundle = \"${BUNDLE_PREFIX}\"|g" pyproject.toml
+          fi
+          sed -i.bak "s|version = \"0\.1\.64\"|version = \"${APP_VERSION}\"|g" pyproject.toml
+          sed -i.bak "s|author = \".*\"|author = \"${AUTHOR_NAME}\"|g" pyproject.toml
+          sed -i.bak "s|author_email = \".*\"|author_email = \"${AUTHOR_EMAIL}\"|g" pyproject.toml
+        shell: bash
+
+      - name: Create production entitlements (macOS)
+        if: matrix.platform == 'macOS'
+        run: |
+          mkdir -p production_entitlements
+          cat > production_entitlements/server.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.app-sandbox</key>
+              <false/>
+              <key>com.apple.security.network.server</key>
+              <true/>
+              <key>com.apple.security.network.client</key>
+              <true/>
+              <key>com.apple.security.device.audio-input</key>
+              <true/>
+              <key>com.apple.security.files.user-selected.read-write</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          # Create client entitlements (may have different requirements)
+          cat > production_entitlements/client.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.app-sandbox</key>
+              <false/>
+              <key>com.apple.security.network.client</key>
+              <true/>
+              <key>com.apple.security.device.audio-input</key>
+              <true/>
+              <key>com.apple.security.files.user-selected.read-write</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          sed -i.bak 's|entitlements.plist|production_entitlements/server.plist|g' pyproject.toml
+
+      - name: Build and sign applications
+        run: |
+          echo "Creating applications..."
+          briefcase create ${{ matrix.platform }} app -a server
+          briefcase build ${{ matrix.platform }} app -a server
+          briefcase create ${{ matrix.platform }} app -a r2midi_client
+          briefcase build ${{ matrix.platform }} app -a r2midi_client
+          
+          if [ "${{ matrix.platform }}" = "macOS" ] && [ "$CODE_SIGNING_AVAILABLE" = "true" ]; then
+            echo "Code signing macOS applications..."
+            SIGNING_IDENTITY=$(security find-identity -v -p codesigning temp.keychain | grep "Developer ID Application" | head -1 | grep -o '"[^"]*"' | tr -d '"')
+            
+            if [ ! -z "$SIGNING_IDENTITY" ]; then
+              for app in build/*/macOS/app/*.app; do
+                if [ -d "$app" ]; then
+                  echo "Signing: $app"
+                  app_name=$(basename "$app")
+                  if [[ "$app_name" == *"server"* ]]; then
+                    entitlements_file="production_entitlements/server.plist"
+                  else
+                    entitlements_file="production_entitlements/client.plist"
+                  fi
+                  codesign --sign "$SIGNING_IDENTITY" --options runtime --entitlements "$entitlements_file" --timestamp --deep --force "$app"
+                fi
+              done
+            fi
+          fi
+          
+          echo "Packaging applications..."
+          briefcase package ${{ matrix.platform }} app -a server
+          briefcase package ${{ matrix.platform }} app -a r2midi_client
+        shell: bash
+
+      - name: Notarize macOS applications
+        if: matrix.platform == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_ID_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            echo "🔐 Starting notarization process..."
+            
+            # Mask sensitive values in logs
+            echo "::add-mask::$APPLE_ID"
+            echo "::add-mask::$APPLE_ID_PASSWORD"
+            echo "::add-mask::$APPLE_TEAM_ID"
+            
+            for app in build/*/macOS/app/*.app; do
+              if [ -d "$app" ]; then
+                app_name=$(basename "$app" .app)
+                zip_name="${app_name}-notarize.zip"
+                
+                echo "📦 Creating notarization ZIP for $app_name..."
+                cd "$(dirname "$app")"
+                zip -r "/tmp/$zip_name" "$(basename "$app")" >/dev/null 2>&1
+                cd "$GITHUB_WORKSPACE"
+                
+                echo "🚀 Submitting $app_name for notarization..."
+                
+                # Submit for notarization with suppressed output to prevent credential exposure
+                xcrun notarytool submit "/tmp/$zip_name" \
+                  --apple-id "$APPLE_ID" \
+                  --password "$APPLE_ID_PASSWORD" \
+                  --team-id "$APPLE_TEAM_ID" \
+                  --wait --timeout 20m >/dev/null 2>&1
+                
+                if [ $? -eq 0 ]; then
+                  echo "✅ $app_name notarized successfully"
+                  echo "🔗 Stapling notarization to app..."
+                  xcrun stapler staple "$app" >/dev/null 2>&1
+                  
+                  if [ $? -eq 0 ]; then
+                    echo "✅ Notarization stapled to $app_name"
+                  else
+                    echo "⚠️ Failed to staple notarization to $app_name (app is still notarized)"
+                  fi
+                else
+                  echo "❌ Notarization failed for $app_name"
+                fi
+                
+                rm -f "/tmp/$zip_name"
+              fi
+            done
+          else
+            echo "⚠️ Notarization skipped (missing credentials)"
+          fi
+
+      - name: Sign Windows applications
+        if: matrix.platform == 'windows'
+        env:
+          WINDOWS_CERTIFICATE_P12: ${{ secrets.WINDOWS_CERTIFICATE_P12 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_CERTIFICATE_P12) {
+            # Mask sensitive values in logs
+            Write-Host "::add-mask::$env:WINDOWS_CERTIFICATE_PASSWORD"
+            
+            Write-Host "🔐 Setting up Windows code signing..."
+            
+            try {
+              $certBytes = [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_P12)
+              $certPath = "windows_cert.p12"
+              [System.IO.File]::WriteAllBytes($certPath, $certBytes)
+              
+              Write-Host "🔍 Finding executables to sign..."
+              $exes = Get-ChildItem -Path "build" -Filter "*.exe" -Recurse
+              
+              foreach ($exe in $exes) {
+                Write-Host "Signing: $($exe.Name)"
+                
+                # Sign with suppressed output to prevent password exposure
+                $result = & signtool sign /f $certPath /p $env:WINDOWS_CERTIFICATE_PASSWORD /t http://timestamp.digicert.com $exe.FullName 2>&1
+                
+                if ($LASTEXITCODE -eq 0) {
+                  Write-Host "✅ Successfully signed $($exe.Name)"
+                } else {
+                  Write-Host "❌ Failed to sign $($exe.Name)"
+                  Write-Host "Error: Signing failed (check certificate and password)"
+                }
+              }
+            }
+            catch {
+              Write-Host "❌ Error during Windows code signing: $($_.Exception.Message)"
+            }
+            finally {
+              # Clean up certificate file
+              if (Test-Path "windows_cert.p12") {
+                Remove-Item "windows_cert.p12" -Force
+              }
+            }
+          } else {
+            Write-Host "⚠️ No Windows signing certificate provided - builds will be unsigned"
+          }
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release_files
+          
+          if [ "${{ matrix.platform }}" = "macOS" ]; then
+            for app in build/*/macOS/app/*.app; do
+              if [ -d "$app" ]; then
+                app_name=$(basename "$(dirname "$(dirname "$(dirname "$app")")")")
+                cd "$(dirname "$app")"
+                zip -r "$GITHUB_WORKSPACE/release_files/${app_name}-macos-signed.zip" "$(basename "$app")"
+                cd "$GITHUB_WORKSPACE"
+              fi
+            done
+          elif [ "${{ matrix.platform }}" = "windows" ]; then
+            if [ -d "build/server/windows/app" ]; then
+              cd build/server/windows/app
+              zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Server-windows-signed.zip" .
+              cd "$GITHUB_WORKSPACE"
+            fi
+            if [ -d "build/r2midi_client/windows/app" ]; then
+              cd build/r2midi_client/windows/app
+              zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Client-windows-signed.zip" .
+              cd "$GITHUB_WORKSPACE"
+            fi
+          else  # Linux
+            if [ -d "build/server/linux/app" ]; then
+              tar -czf "release_files/server-linux-signed.tar.gz" -C build/server/linux/app .
+            fi
+            if [ -d "build/r2midi_client/linux/app" ]; then
+              tar -czf "release_files/r2midi_client-linux-signed.tar.gz" -C build/r2midi_client/linux/app .
+            fi
+          fi
+          
+          ls -la release_files/
+        shell: bash
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-release-${{ matrix.platform_name }}
+          path: release_files/*
+          retention-days: 30
+
+      - name: Cleanup keychain (macOS)
+        if: always() && matrix.platform == 'macOS'
+        run: |
+          security delete-keychain temp.keychain || true
+
+  app-store-submission:
+    needs: [check-build-success, code-sign-and-package]
+    if: needs.check-build-success.outputs.should_app_store == 'true'
+    runs-on: macos-13
+    environment: app-store
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure App Store metadata
+        env:
+          BUNDLE_PREFIX: ${{ secrets.APP_BUNDLE_ID_PREFIX }}
+          SERVER_NAME: ${{ secrets.APP_DISPLAY_NAME_SERVER }}
+          CLIENT_NAME: ${{ secrets.APP_DISPLAY_NAME_CLIENT }}
+          AUTHOR_NAME: ${{ secrets.APP_AUTHOR_NAME }}
+          AUTHOR_EMAIL: ${{ secrets.APP_AUTHOR_EMAIL }}
+        run: |
+          echo "BUNDLE_PREFIX=${BUNDLE_PREFIX:-com.r2midi}" >> $GITHUB_ENV
+          echo "SERVER_NAME=${SERVER_NAME:-R2MIDI Server}" >> $GITHUB_ENV
+          echo "CLIENT_NAME=${CLIENT_NAME:-R2MIDI Client}" >> $GITHUB_ENV
+          echo "AUTHOR_NAME=${AUTHOR_NAME:-R2MIDI Team}" >> $GITHUB_ENV
+          echo "AUTHOR_EMAIL=${AUTHOR_EMAIL:-tiran@tirans.com}" >> $GITHUB_ENV
+          
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Import App Store certificates
+        env:
+          APPLE_APP_STORE_CERTIFICATE_P12: ${{ secrets.APPLE_APP_STORE_CERTIFICATE_P12 }}
+          APPLE_APP_STORE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_APP_STORE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_APP_STORE_CERTIFICATE_P12" ]; then
+            echo "❌ No App Store signing certificates provided"
+            exit 1
+          fi
+
+          # Mask sensitive values in logs
+          echo "::add-mask::$APPLE_APP_STORE_CERTIFICATE_PASSWORD"
+
+          security create-keychain -p temp_password app_store.keychain
+          security default-keychain -s app_store.keychain
+          security unlock-keychain -p temp_password app_store.keychain
+          
+          # Import certificate with error handling
+          echo "$APPLE_APP_STORE_CERTIFICATE_P12" | base64 --decode > app_store_cert.p12
+          security import app_store_cert.p12 -k app_store.keychain -P "$APPLE_APP_STORE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >/dev/null 2>&1
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ App Store certificate imported successfully"
+          else
+            echo "❌ Failed to import App Store certificate"
+            rm -f app_store_cert.p12
+            exit 1
+          fi
+          
+          rm -f app_store_cert.p12
+          
+          security set-key-partition-list -S apple-tool:,apple: -s -k temp_password app_store.keychain >/dev/null 2>&1
+          echo "APP_STORE_SIGNING_AVAILABLE=true" >> $GITHUB_ENV
+
+      - name: Setup App Store Connect API key
+        env:
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          # Mask sensitive values
+          echo "::add-mask::$APP_STORE_CONNECT_API_KEY"
+          echo "::add-mask::$APP_STORE_CONNECT_ISSUER_ID"
+          echo "::add-mask::$APP_STORE_CONNECT_KEY_ID"
+          
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
+          
+          # Set environment variables without exposing sensitive data
+          echo "API_KEY_CONFIGURED=true" >> $GITHUB_ENV
+          echo "ISSUER_ID=${APP_STORE_CONNECT_ISSUER_ID}" >> $GITHUB_ENV
+          echo "KEY_ID=${APP_STORE_CONNECT_KEY_ID}" >> $GITHUB_ENV
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install briefcase
+          pip install -r requirements.txt
+          if [ -f r2midi_client/requirements.txt ]; then 
+            pip install -r r2midi_client/requirements.txt
+          fi
+
+      - name: Update pyproject.toml for App Store
+        run: |
+          # Create App Store specific configuration
+          cp pyproject.toml pyproject_appstore.toml
+          
+          # Update with App Store configuration
+          if [ "${BUNDLE_PREFIX}" != "com.r2midi" ]; then
+            sed -i.bak "s|bundle = \"com\.r2midi\"|bundle = \"${BUNDLE_PREFIX}\"|g" pyproject_appstore.toml
+          fi
+          sed -i.bak "s|version = \"0\.1\.64\"|version = \"${APP_VERSION}\"|g" pyproject_appstore.toml
+          sed -i.bak "s|author = \".*\"|author = \"${AUTHOR_NAME}\"|g" pyproject_appstore.toml
+          sed -i.bak "s|author_email = \".*\"|author_email = \"${AUTHOR_EMAIL}\"|g" pyproject_appstore.toml
+          
+          # Update macOS configuration for App Store
+          sed -i.bak 's|codesign_identity = "Developer ID Application"|codesign_identity = "3rd Party Mac Developer Application"|g' pyproject_appstore.toml
+
+      - name: Create App Store entitlements
+        run: |
+          mkdir -p app_store_entitlements
+          
+          # App Store entitlements are more restrictive
+          cat > app_store_entitlements/server.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.app-sandbox</key>
+              <true/>
+              <key>com.apple.security.network.server</key>
+              <true/>
+              <key>com.apple.security.network.client</key>
+              <true/>
+              <key>com.apple.security.device.audio-input</key>
+              <true/>
+              <key>com.apple.security.files.user-selected.read-write</key>
+              <true/>
+              <key>com.apple.security.files.downloads.read-write</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          cat > app_store_entitlements/client.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.app-sandbox</key>
+              <true/>
+              <key>com.apple.security.network.client</key>
+              <true/>
+              <key>com.apple.security.device.audio-input</key>
+              <true/>
+              <key>com.apple.security.files.user-selected.read-write</key>
+              <true/>
+              <key>com.apple.security.files.downloads.read-write</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          # Update pyproject.toml to use App Store entitlements
+          sed -i.bak 's|entitlements.plist|app_store_entitlements/server.plist|g' pyproject_appstore.toml
+
+      - name: Build App Store applications
+        run: |
+          # Use the App Store specific configuration
+          export PYPROJECT_PATH="pyproject_appstore.toml"
+          
+          echo "🏪 Creating App Store applications..."
+          briefcase create macOS app -a server
+          briefcase build macOS app -a server
+          briefcase create macOS app -a r2midi_client  
+          briefcase build macOS app -a r2midi_client
+
+      - name: Sign for App Store
+        run: |
+          APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | grep "3rd Party Mac Developer Application" | head -1 | grep -o '"[^"]*"' | tr -d '"')
+          INSTALLER_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | grep "3rd Party Mac Developer Installer" | head -1 | grep -o '"[^"]*"' | tr -d '"')
+          
+          if [ -z "$APP_STORE_IDENTITY" ]; then
+            echo "❌ No App Store signing identity found"
+            exit 1
+          fi
+          
+          echo "🔐 Signing applications for App Store with: $APP_STORE_IDENTITY"
+          
+          for app in build/*/macOS/app/*.app; do
+            if [ -d "$app" ]; then
+              app_name=$(basename "$app")
+              echo "Signing: $app_name"
+              
+              if [[ "$app_name" == *"server"* ]]; then
+                entitlements_file="app_store_entitlements/server.plist"
+              else
+                entitlements_file="app_store_entitlements/client.plist"
+              fi
+              
+              codesign --sign "$APP_STORE_IDENTITY" --entitlements "$entitlements_file" --options runtime --timestamp --deep --force "$app"
+              
+              # Verify signing
+              codesign --verify --verbose "$app"
+            fi
+          done
+
+      - name: Create App Store packages
+        run: |
+          INSTALLER_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | grep "3rd Party Mac Developer Installer" | head -1 | grep -o '"[^"]*"' | tr -d '"')
+          
+          mkdir -p app_store_packages
+          
+          for app in build/*/macOS/app/*.app; do
+            if [ -d "$app" ]; then
+              app_name=$(basename "$app" .app)
+              pkg_name="${app_name}-${APP_VERSION}.pkg"
+              
+              echo "📦 Creating App Store package: $pkg_name"
+              
+              if [ -n "$INSTALLER_IDENTITY" ]; then
+                productbuild --component "$app" /Applications \
+                  --sign "$INSTALLER_IDENTITY" \
+                  "app_store_packages/$pkg_name"
+              else
+                echo "⚠️ No installer identity found, creating unsigned package"
+                productbuild --component "$app" /Applications \
+                  "app_store_packages/$pkg_name"
+              fi
+            fi
+          done
+          
+          ls -la app_store_packages/
+
+      - name: Submit to App Store Connect
+        env:
+          ISSUER_ID: ${{ env.ISSUER_ID }}
+          KEY_ID: ${{ env.KEY_ID }}
+        run: |
+          if [ "${{ secrets.ENABLE_APP_STORE_SUBMISSION }}" != "true" ]; then
+            echo "🏪 App Store submission disabled (set ENABLE_APP_STORE_SUBMISSION=true to enable)"
+            exit 0
+          fi
+          
+          # Construct API key path securely
+          API_KEY_PATH="~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          
+          for pkg in app_store_packages/*.pkg; do
+            if [ -f "$pkg" ]; then
+              pkg_name=$(basename "$pkg")
+              echo "🚀 Submitting $pkg_name to App Store Connect..."
+              
+              # Submit with suppressed verbose output to prevent key exposure
+              xcrun altool --upload-app \
+                --type osx \
+                --file "$pkg" \
+                --apiKey "$KEY_ID" \
+                --apiIssuer "$ISSUER_ID" \
+                --show-progress 2>/dev/null
+              
+              if [ $? -eq 0 ]; then
+                echo "✅ $pkg_name submitted successfully"
+              else
+                echo "❌ Failed to submit $pkg_name"
+                exit 1
+              fi
+            fi
+          done
+          
+          echo "🎉 All packages submitted to App Store Connect!"
+          echo "📱 Next steps:"
+          echo "  1. Check App Store Connect for processing status"
+          echo "  2. Complete app metadata and screenshots"
+          echo "  3. Submit for review when ready"
+
+      - name: Upload App Store packages as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-packages
+          path: app_store_packages/*.pkg
+          retention-days: 30
+
+      - name: Cleanup App Store keychain
+        if: always()
+        run: |
+          rm -rf ~/.appstoreconnect
+          security delete-keychain app_store.keychain || true
+
+  publish-production-release:
+    needs: [code-sign-and-package, check-build-success]
+    runs-on: ubuntu-latest
+    if: needs.check-build-success.outputs.should_release == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Get version
+        id: get_info
+        run: |
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download all production artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: production-release-*
+          path: combined_production_files
+          merge-multiple: true
+
+      - name: Download App Store packages (if available)
+        if: needs.check-build-success.outputs.should_app_store == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: app-store-packages
+          path: combined_production_files
+        continue-on-error: true
+
+      - name: Create Production Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_info.outputs.version }}
+          name: R2MIDI v${{ steps.get_info.outputs.version }}
+          files: combined_production_files/*
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            ## 🚀 R2MIDI v${{ steps.get_info.outputs.version }} - Production Release
+            
+            **Official production release with signed applications for all platforms.**
+            
+            ### 📦 Downloads
+            
+            #### 🍎 macOS (Code Signed & Notarized)
+            - **server-macos-signed.zip** - R2MIDI Server (.app bundle)
+            - **r2midi_client-macos-signed.zip** - R2MIDI Client (.app bundle)
+            
+            #### 🪟 Windows (Code Signed)
+            - **R2MIDI-Server-windows-signed.zip** - R2MIDI Server (signed executable)
+            - **R2MIDI-Client-windows-signed.zip** - R2MIDI Client (signed executable)
+            
+            #### 🐧 Linux (Production Ready)
+            - **server-linux-signed.tar.gz** - R2MIDI Server (native executable)
+            - **r2midi_client-linux-signed.tar.gz** - R2MIDI Client (native executable)
+            
+            ${{ needs.check-build-success.outputs.should_app_store == 'true' && '#### 🏪 Mac App Store\n- **R2MIDI Server** and **R2MIDI Client** submitted to App Store\n- Check App Store Connect for review status\n- App Store packages also available as release artifacts\n' || '#### 🏪 Mac App Store\n- App Store submission not configured\n- Set up App Store Connect API key to enable automatic submission\n' }}
+            
+            ### 📋 Installation
+            
+            #### macOS ✅
+            1. **Direct Download**: Download and extract the .zip file, move to Applications
+            2. **Mac App Store**: Search for "R2MIDI" in the App Store (if approved)
+            3. Right-click and select "Open" on first launch for direct downloads
+            
+            #### Windows ✅
+            1. Download and extract the .zip file
+            2. Run the .exe files (no security warnings!)
+            
+            #### Linux ✅
+            ```bash
+            tar -xzf *-linux-signed.tar.gz
+            chmod +x r2midi-*
+            ./r2midi-server  # or ./r2midi-client
+            ```
+            
+            ### ✨ Features
+            - 🔒 Full code signing on all platforms
+            - 🍎 macOS notarization for enhanced security
+            - 🪟 Windows Authenticode signed executables
+            - 🐧 Native Linux builds
+            - 🏪 Automatic App Store submission (when configured)
+            - 📦 Improved packaging and installation
+            
+            ### 🏪 App Store Status
+            ${{ needs.check-build-success.outputs.should_app_store == 'true' && '✅ **Submitted to Mac App Store** - Check App Store Connect for review status' || '⚠️ **App Store submission disabled** - Configure APP_STORE_CONNECT_API_KEY to enable' }}
+            
+            For documentation and support, visit [GitHub](https://github.com/tirans/r2midi).

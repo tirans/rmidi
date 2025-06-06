@@ -77,6 +77,21 @@ fabric.properties
 .idea/httpRequests
 
 # Android studio 3.1+ serialized cache file
+
+# Apple Developer Credentials (local only)
+# This folder contains sensitive certificates, API keys, and credentials
+# that should NEVER be committed to git. The automated script processes
+# these files locally and creates GitHub secrets programmatically.
+apple_credentials/
+
+# Temporary certificate files (if any escape the credentials folder)
+*.p12
+*.cer
+*.p8
+*_cert_base64.txt
+exported_certificates.txt
+github_secrets.txt
+AuthKey_*.p8
 .idea/caches/build_file_checksums.ser
 
 ### JetBrains template

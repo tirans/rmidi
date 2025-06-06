@@ -619,7 +619,7 @@ This will:
         # Get GitHub token
         github_token = config['github']['personal_access_token']
 
-        if github_token.startswith('ghp_'):
+        if github_token.startswith('github'):
             # Create GitHub secrets
             if self.create_github_secrets(secrets, github_token):
                 self.cleanup_temp_files()

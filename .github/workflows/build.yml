@@ -241,18 +241,18 @@ jobs:
       - name: Build stable applications (unsigned)
         run: |
           echo "${{ matrix.emoji }} Creating stable applications for ${{ matrix.platform }}..."
-          briefcase create ${{ matrix.platform }} app -a server
-          briefcase build ${{ matrix.platform }} app -a server
+          briefcase create ${{ matrix.platform }} system -a server
+          briefcase build ${{ matrix.platform }} system -a server
 
-          briefcase create ${{ matrix.platform }} app -a r2midi_client
-          briefcase build ${{ matrix.platform }} app -a r2midi_client
+          briefcase create ${{ matrix.platform }} system -a r2midi_client
+          briefcase build ${{ matrix.platform }} system -a r2midi_client
         shell: bash
 
       - name: Package stable applications (unsigned)
         run: |
           echo "${{ matrix.emoji }} Packaging stable applications (unsigned)..."
-          briefcase package ${{ matrix.platform }} app -a server --no-sign
-          briefcase package ${{ matrix.platform }} app -a r2midi_client --no-sign
+          briefcase package ${{ matrix.platform }} system -a server  
+          briefcase package ${{ matrix.platform }} system -a r2midi_client
         shell: bash
 
       - name: Prepare stable build artifacts

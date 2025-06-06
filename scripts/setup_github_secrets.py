@@ -82,7 +82,7 @@ class GitHubSecretsGenerator:
             self.print_error("This script must be run on macOS for certificate management.")
             return False
         
-        required_commands = ["security", "git", "openssl"]
+        required_commands = [ "git", "openssl"]
         for cmd in required_commands:
             try:
                 subprocess.run([cmd, "--version"], capture_output=True, check=True)

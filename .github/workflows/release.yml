@@ -278,14 +278,46 @@ jobs:
             if [ ! -z "$SIGNING_IDENTITY" ]; then
               for app in build/*/macOS/app/*.app; do
                 if [ -d "$app" ]; then
-                  echo "Signing: $app"
+                  echo "Processing: $app"
                   app_name=$(basename "$app")
-                  if [[ "$app_name" == *"server"* ]]; then
+                  
+                  # Determine entitlements file based on path instead of app name
+                  if [[ "$app" == *"/server/"* ]]; then
                     entitlements_file="production_entitlements/server.plist"
+                    echo "Using server entitlements"
                   else
                     entitlements_file="production_entitlements/client.plist"
+                    echo "Using client entitlements"
                   fi
-                  codesign --sign "$SIGNING_IDENTITY" --options runtime --entitlements "$entitlements_file" --timestamp --deep --force "$app"
+                  
+                  # First, sign all frameworks and dylibs within the app bundle
+                  echo "Signing frameworks and libraries..."
+                  find "$app" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | while IFS= read -r -d '' lib; do
+                    echo "  Signing library: $(basename "$lib")"
+                    codesign --sign "$SIGNING_IDENTITY" --force --timestamp "$lib" || true
+                  done
+                  
+                  # Sign any frameworks
+                  find "$app/Contents/Frameworks" -name "*.framework" -type d -print0 2>/dev/null | while IFS= read -r -d '' framework; do
+                    echo "  Signing framework: $(basename "$framework")"
+                    codesign --sign "$SIGNING_IDENTITY" --force --timestamp --options runtime "$framework" || true
+                  done
+                  
+                  # Sign any helper apps or embedded executables
+                  find "$app" -type f -perm +111 ! -name "*.dylib" ! -name "*.so" -print0 | while IFS= read -r -d '' exe; do
+                    if file "$exe" | grep -q "Mach-O"; then
+                      echo "  Signing executable: $(basename "$exe")"
+                      codesign --sign "$SIGNING_IDENTITY" --force --timestamp --options runtime "$exe" || true
+                    fi
+                  done
+                  
+                  # Finally, sign the main app bundle
+                  echo "Signing main app bundle: $app_name"
+                  codesign --sign "$SIGNING_IDENTITY" --options runtime --entitlements "$entitlements_file" --timestamp --force "$app"
+                  
+                  # Verify the signature
+                  echo "Verifying signature..."
+                  codesign --verify --verbose "$app"
                 fi
               done
             fi
@@ -304,18 +336,23 @@ jobs:
                 app_name=$(basename "$app")
                 echo "Packaging $app_name"
 
-                # Determine if this is server or client
-                if [[ "$app_name" == *"server"* || "$app_name" == *"Server"* ]]; then
+                # Determine if this is server or client based on path
+                if [[ "$app" == *"/server/"* ]]; then
                   output_name="R2MIDI-Server-macos-signed.zip"
-                elif [[ "$app_name" == *"client"* || "$app_name" == *"Client"* ]]; then
+                elif [[ "$app" == *"/r2midi-client/"* ]] || [[ "$app" == *"/client/"* ]]; then
                   output_name="R2MIDI-Client-macos-signed.zip"
                 else
-                  output_name="${app_name}.zip"
+                  # Fallback: check app name
+                  if [[ "$app_name" == *"Server"* ]] || [[ "$app_name" == *"server"* ]]; then
+                    output_name="R2MIDI-Server-macos-signed.zip"
+                  else
+                    output_name="R2MIDI-Client-macos-signed.zip"
+                  fi
                 fi
 
-                # Create zip directly with the correct name
+                # Use ditto to preserve code signatures and file attributes
                 cd "$app_dir"
-                zip -r "$GITHUB_WORKSPACE/packaged/$output_name" "$app_name"
+                ditto -c -k --keepParent "$app_name" "$GITHUB_WORKSPACE/packaged/$output_name"
                 cd "$GITHUB_WORKSPACE"
               fi
             done
@@ -350,7 +387,9 @@ jobs:
 
                 echo "📦 Creating notarization ZIP for $app_name..."
                 cd "$(dirname "$app")"
-                zip -r "/tmp/$zip_name" "$(basename "$app")" >/dev/null 2>&1
+                
+                # Use ditto to preserve code signatures and file attributes
+                ditto -c -k --keepParent "$(basename "$app")" "/tmp/$zip_name"
                 cd "$GITHUB_WORKSPACE"
 
                 echo "🚀 Submitting $app_name for notarization..."
@@ -385,7 +424,7 @@ jobs:
 
                     # Try alternative stapling approach
                     echo "🔄 Trying alternative stapling approach..."
-                    xcrun stapler staple -v "$app" --no-progress > "${stapling_log}_alt" 2>&1
+                    xcrun stapler staple "$app" > "${stapling_log}_alt" 2>&1
 
                     if [ $? -eq 0 ]; then
                       echo "✅ Alternative stapling succeeded for $app_name"
@@ -715,15 +754,39 @@ jobs:
           for app in build/*/macOS/app/*.app; do
             if [ -d "$app" ]; then
               app_name=$(basename "$app")
-              echo "Signing: $app_name"
+              echo "Processing: $app_name"
 
-              if [[ "$app_name" == *"server"* ]]; then
+              # Determine entitlements based on path
+              if [[ "$app" == *"/server/"* ]]; then
                 entitlements_file="app_store_entitlements/server.plist"
               else
                 entitlements_file="app_store_entitlements/client.plist"
               fi
 
-              codesign --sign "$APP_STORE_IDENTITY" --entitlements "$entitlements_file" --options runtime --timestamp --deep --force "$app"
+              # First, sign all frameworks and dylibs within the app bundle
+              echo "Signing frameworks and libraries..."
+              find "$app" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | while IFS= read -r -d '' lib; do
+                echo "  Signing library: $(basename "$lib")"
+                codesign --sign "$APP_STORE_IDENTITY" --force --timestamp "$lib" || true
+              done
+              
+              # Sign any frameworks
+              find "$app/Contents/Frameworks" -name "*.framework" -type d -print0 2>/dev/null | while IFS= read -r -d '' framework; do
+                echo "  Signing framework: $(basename "$framework")"
+                codesign --sign "$APP_STORE_IDENTITY" --force --timestamp --options runtime "$framework" || true
+              done
+              
+              # Sign any helper apps or embedded executables
+              find "$app" -type f -perm +111 ! -name "*.dylib" ! -name "*.so" -print0 | while IFS= read -r -d '' exe; do
+                if file "$exe" | grep -q "Mach-O"; then
+                  echo "  Signing executable: $(basename "$exe")"
+                  codesign --sign "$APP_STORE_IDENTITY" --force --timestamp --options runtime "$exe" || true
+                fi
+              done
+
+              # Finally, sign the main app bundle
+              echo "Signing main app bundle: $app_name"
+              codesign --sign "$APP_STORE_IDENTITY" --entitlements "$entitlements_file" --options runtime --timestamp --force "$app"
 
               # Verify signing
               codesign --verify --verbose "$app"

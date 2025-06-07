@@ -3,8 +3,6 @@ import logging.handlers
 import sys
 import os
 import uvicorn
-import threading
-import time
 import socket
 import json
 import re
@@ -105,7 +103,6 @@ try:
         ManufacturerCreate, DeviceCreate, PresetCreate, 
         DirectoryStructureRequest, DirectoryStructureResponse
     )
-    from .ui_launcher import UILauncher
     from .version import __version__
     from .git_operations import git_sync as git_sync_operation
 except ImportError:
@@ -117,7 +114,6 @@ except ImportError:
         ManufacturerCreate, DeviceCreate, PresetCreate, 
         DirectoryStructureRequest, DirectoryStructureResponse
     )
-    from server.ui_launcher import UILauncher
     from server.version import __version__
     from server.git_operations import git_sync as git_sync_operation
 
@@ -237,32 +233,6 @@ def find_available_port(start_port: int, max_attempts: int = 10) -> int:
 
 # Initialize components
 device_manager = DeviceManager()
-ui_launcher = None  # Will be initialized after server starts with correct URL
-
-# Function to launch UI client after a delay
-def launch_ui_client_with_delay(delay_seconds: int = 3):
-    """
-    Launch the UI client after a specified delay to ensure the server is ready
-
-    Args:
-        delay_seconds: Number of seconds to wait before launching the UI client
-    """
-    global ui_launcher
-
-    # Wait for the server to initialize
-    logger.info(f"Waiting {delay_seconds} seconds before launching UI client...")
-    time.sleep(delay_seconds)
-
-    # Launch UI client if ui_launcher is initialized
-    if ui_launcher:
-        logger.info("Launching UI client...")
-        success = ui_launcher.launch_client()
-        if success:
-            logger.info("UI client launched successfully")
-        else:
-            logger.warning("Failed to launch UI client")
-    else:
-        logger.warning("UI launcher not initialized, skipping client launch")
 
 # Define lifespan context manager (replaces on_event handlers)
 @asynccontextmanager
@@ -289,14 +259,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown: Clean up resources
     logger.info("Application shutting down...")
-    try:
-        if ui_launcher:
-            ui_launcher.shutdown_client()
-            logger.info("UI client shut down")
-        else:
-            logger.warning("UI launcher not initialized, skipping client shutdown")
-    except Exception as e:
-        logger.error(f"Error during shutdown: {str(e)}")
 
 # Create FastAPI app with lifespan
 app = FastAPI(
@@ -942,8 +904,6 @@ def main():
 
 def run_server():
     """Run the server application"""
-    global ui_launcher
-
     # Get port from environment variable with default of 7777
     requested_port = int(os.getenv("PORT", 7777))
 
@@ -954,17 +914,6 @@ def run_server():
         logger.info(f"Port {requested_port} is in use, using port {port} instead")
 
     logger.info(f"Starting server on port {port}")
-
-    # Initialize UI launcher with the correct server URL
-    server_url = f"http://localhost:{port}"
-    logger.info(f"Server URL: {server_url}")
-    ui_launcher = UILauncher(server_url=server_url)
-
-    # Start a thread to launch the UI client after a delay
-    ui_thread = threading.Thread(target=launch_ui_client_with_delay, args=(3,))
-    ui_thread.daemon = True  # Thread will exit when main thread exits
-    ui_thread.start()
-    logger.info("UI client launch thread started")
 
     # Start the server
     logger.info(f"Starting server on port {port}...")

@@ -269,8 +269,7 @@ jobs:
               # Package and notarize R2MIDI Server
               echo "Packaging and notarizing R2MIDI Server..."
               briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server \
-                --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-                --notarize || {
+                --identity "$BRIEFCASE_SIGNING_IDENTITY"  || {
                 echo "Notarization failed for server. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
                 exit 1
               }
@@ -278,24 +277,23 @@ jobs:
               # Package and notarize R2MIDI Client
               echo "Packaging and notarizing R2MIDI Client..."
               briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client \
-                --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-                --notarize || {
+                --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
                 echo "Notarization failed for client. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
                 exit 1
               }
             else
               echo "⚠️ Notarization credentials missing. Packaging without notarization..."
               # Package without notarization
-              briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server \
+              briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server --no-notarize \
                 --identity "$BRIEFCASE_SIGNING_IDENTITY"
-              briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client \
+              briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client --no-notarize \
                 --identity "$BRIEFCASE_SIGNING_IDENTITY"
             fi
           else
             # Package without signing or notarization for other platforms
             echo "Packaging for non-macOS platform..."
-            briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server
-            briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client
+            briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server --no-notarize 
+            briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client --no-notarize 
           fi
         shell: bash
 

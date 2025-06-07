@@ -326,15 +326,49 @@ jobs:
         run: |
           mkdir -p stable_builds
           echo "🐧 Packaging Linux stable builds..."
-            if [ -d "build/server/linux" ]; then
-               ls -la build/server/linux
-            fi
 
-          if [ -d "build/server/linux/system" ]; then
+          # Copy the .deb packages from dist directory to stable_builds with proper naming
+          if [ -f "dist/server_${APP_VERSION}-1~ubuntu-noble_amd64.deb" ]; then
+            cp "dist/server_${APP_VERSION}-1~ubuntu-noble_amd64.deb" "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.deb"
+          fi
+
+          if [ -f "dist/r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb" ]; then
+            cp "dist/r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb" "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.deb"
+          fi
+
+          # Create tar.gz files from the .deb packages for compatibility with release.yml
+          if [ -f "dist/server_${APP_VERSION}-1~ubuntu-noble_amd64.deb" ]; then
+            # Create a temporary directory to extract and package the .deb contents
+            mkdir -p temp_extract/server
+            cp "dist/server_${APP_VERSION}-1~ubuntu-noble_amd64.deb" temp_extract/server/
+            cd temp_extract/server
+            ar x "server_${APP_VERSION}-1~ubuntu-noble_amd64.deb"
+            mkdir -p data
+            tar -xf data.tar.* -C data
+            cd "$GITHUB_WORKSPACE"
+            tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C temp_extract/server/data .
+            rm -rf temp_extract/server
+          fi
+
+          if [ -f "dist/r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb" ]; then
+            # Create a temporary directory to extract and package the .deb contents
+            mkdir -p temp_extract/client
+            cp "dist/r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb" temp_extract/client/
+            cd temp_extract/client
+            ar x "r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb"
+            mkdir -p data
+            tar -xf data.tar.* -C data
+            cd "$GITHUB_WORKSPACE"
+            tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C temp_extract/client/data .
+            rm -rf temp_extract/client
+          fi
+
+          # Fallback to using build directory if .deb extraction fails
+          if [ ! -f "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" ] && [ -d "build/server/linux/system" ]; then
             tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C build/server/linux/system .
           fi
 
-          if [ -d "build/r2midi-client/linux/system" ]; then
+          if [ ! -f "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" ] && [ -d "build/r2midi-client/linux/system" ]; then
             tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C build/r2midi-client/linux/system .
           fi
 

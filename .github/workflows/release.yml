@@ -231,14 +231,43 @@ jobs:
 
           sed -i.bak 's|entitlements.plist|production_entitlements/server.plist|g' pyproject.toml
 
-      - name: Build and sign applications
-        run: |
-          echo "Creating applications..."
-          briefcase create ${{ matrix.platform }} app -a server
-          briefcase build ${{ matrix.platform }} app -a server
-          briefcase create ${{ matrix.platform }} app -a r2midi-client
-          briefcase build ${{ matrix.platform }} app -a r2midi-client
+      - name: Download artifacts from build workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: stable-builds-${{ matrix.platform_name }}
+          path: stable_builds/
 
+      - name: Extract build artifacts
+        run: |
+          echo "Extracting build artifacts for ${{ matrix.platform }}..."
+          mkdir -p build/server/${{ matrix.platform }}/app
+          mkdir -p build/r2midi-client/${{ matrix.platform }}/app
+
+          if [ "${{ matrix.platform }}" = "macOS" ]; then
+            # Extract macOS artifacts
+            unzip -q "stable_builds/R2MIDI-Server-macos-stable-v${APP_VERSION}.zip" -d build/server/${{ matrix.platform }}/app/
+            unzip -q "stable_builds/R2MIDI-Client-macos-stable-v${APP_VERSION}.zip" -d build/r2midi-client/${{ matrix.platform }}/app/
+          elif [ "${{ matrix.platform }}" = "windows" ]; then
+            # Extract Windows artifacts
+            unzip -q "stable_builds/R2MIDI-Server-windows-stable-v${APP_VERSION}.zip" -d build/server/${{ matrix.platform }}/app/
+            unzip -q "stable_builds/R2MIDI-Client-windows-stable-v${APP_VERSION}.zip" -d build/r2midi-client/${{ matrix.platform }}/app/
+          else
+            # Extract Linux artifacts
+            mkdir -p temp_extract
+            tar -xzf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C temp_extract
+            cp -r temp_extract/* build/server/${{ matrix.platform }}/app/
+            rm -rf temp_extract/*
+            tar -xzf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C temp_extract
+            cp -r temp_extract/* build/r2midi-client/${{ matrix.platform }}/app/
+            rm -rf temp_extract
+          fi
+
+          ls -la build/server/${{ matrix.platform }}/app/
+          ls -la build/r2midi-client/${{ matrix.platform }}/app/
+        shell: bash
+
+      - name: Sign applications
+        run: |
           if [ "${{ matrix.platform }}" = "macOS" ] && [ "$CODE_SIGNING_AVAILABLE" = "true" ]; then
             echo "Code signing macOS applications..."
             SIGNING_IDENTITY=$(security find-identity -v -p codesigning temp.keychain | grep "Developer ID Application" | head -1 | grep -o '"[^"]*"' | tr -d '"')
@@ -257,16 +286,47 @@ jobs:
                 fi
               done
             fi
+          elif [ "${{ matrix.platform }}" = "windows" ]; then
+            echo "Windows signing will be handled in the 'Sign Windows applications' step"
+          else
+            echo "No signing needed for Linux applications"
           fi
 
+      - name: Package applications
+        run: |
           echo "Packaging applications..."
+          mkdir -p packaged
+
           if [ "${{ matrix.platform }}" = "macOS" ]; then
-            briefcase package ${{ matrix.platform }} app -a server --adhoc-sign
-            briefcase package ${{ matrix.platform }} app -a r2midi-client --adhoc-sign
+            # For macOS, we need to repackage after signing
+            for app in build/*/macOS/app/*.app; do
+              if [ -d "$app" ]; then
+                app_dir=$(dirname "$app")
+                app_name=$(basename "$app")
+                echo "Packaging $app_name"
+
+                # Determine if this is server or client
+                if [[ "$app_name" == *"server"* || "$app_name" == *"Server"* ]]; then
+                  output_name="R2MIDI-Server-macos-signed.zip"
+                elif [[ "$app_name" == *"client"* || "$app_name" == *"Client"* ]]; then
+                  output_name="R2MIDI-Client-macos-signed.zip"
+                else
+                  output_name="${app_name}.zip"
+                fi
+
+                # Create zip directly with the correct name
+                cd "$app_dir"
+                zip -r "$GITHUB_WORKSPACE/packaged/$output_name" "$app_name"
+                cd "$GITHUB_WORKSPACE"
+              fi
+            done
           else
-            briefcase package ${{ matrix.platform }} app -a server
-            briefcase package ${{ matrix.platform }} app -a r2midi-client
+            echo "Using pre-packaged artifacts for ${{ matrix.platform }}"
+            cp stable_builds/* packaged/
           fi
+
+          echo "Packaged files:"
+          ls -la packaged/
         shell: bash
 
       - name: Notarize macOS applications
@@ -296,28 +356,54 @@ jobs:
 
                 echo "🚀 Submitting $app_name for notarization..."
 
-                # Submit for notarization with suppressed output to prevent credential exposure
+                # Create a log file for notarization output
+                notarization_log="/tmp/${app_name}_notarization.log"
+
+                # Submit for notarization with output redirected to log file
                 xcrun notarytool submit "/tmp/$zip_name" \
                   --apple-id "$APPLE_ID" \
                   --password "$APPLE_ID_PASSWORD" \
                   --team-id "$APPLE_TEAM_ID" \
-                  --wait --timeout 20m >/dev/null 2>&1
+                  --wait --timeout 20m > "$notarization_log" 2>&1
 
                 if [ $? -eq 0 ]; then
                   echo "✅ $app_name notarized successfully"
                   echo "🔗 Stapling notarization to app..."
-                  xcrun stapler staple "$app" >/dev/null 2>&1
 
-                  if [ $? -eq 0 ]; then
+                  # Create a log file for stapling output
+                  stapling_log="/tmp/${app_name}_stapling.log"
+
+                  # Try stapling with verbose output to log file
+                  xcrun stapler staple -v "$app" > "$stapling_log" 2>&1
+                  staple_result=$?
+
+                  if [ $staple_result -eq 0 ]; then
                     echo "✅ Notarization stapled to $app_name"
                   else
-                    echo "⚠️ Failed to staple notarization to $app_name (app is still notarized)"
+                    echo "⚠️ Failed to staple notarization to $app_name (exit code: $staple_result)"
+                    echo "⚠️ Stapling log (last 10 lines):"
+                    tail -n 10 "$stapling_log" || echo "No stapling log available"
+
+                    # Try alternative stapling approach
+                    echo "🔄 Trying alternative stapling approach..."
+                    xcrun stapler staple -v "$app" --no-progress > "${stapling_log}_alt" 2>&1
+
+                    if [ $? -eq 0 ]; then
+                      echo "✅ Alternative stapling succeeded for $app_name"
+                    else
+                      echo "❌ All stapling attempts failed. App is notarized but not stapled."
+                      echo "   Users may need to be online for the first launch."
+                    fi
                   fi
                 else
                   echo "❌ Notarization failed for $app_name"
+                  echo "❌ Notarization log (last 10 lines):"
+                  tail -n 10 "$notarization_log" || echo "No notarization log available"
                 fi
 
+                # Clean up
                 rm -f "/tmp/$zip_name"
+                rm -f "$notarization_log" "$stapling_log" "${stapling_log}_alt" 2>/dev/null || true
               fi
             done
           else
@@ -376,37 +462,74 @@ jobs:
         run: |
           mkdir -p release_files
 
-          if [ "${{ matrix.platform }}" = "macOS" ]; then
-            if [ -d "build/server/macOS/app" ]; then
-              cd build/server/macOS/app
-              zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Server-macos-signed.zip" *.app
-              cd "$GITHUB_WORKSPACE"
+          # Simply copy the packaged files to release_files directory
+          # The files are already named correctly in the Package applications step
+          if [ -d "packaged" ]; then
+            echo "Copying packaged files to release_files..."
+
+            # For macOS, the files are already named correctly
+            if [ "${{ matrix.platform }}" = "macOS" ]; then
+              cp packaged/R2MIDI-*-macos-signed.zip release_files/ 2>/dev/null || true
+
+            # For Windows, rename to ensure consistent naming
+            elif [ "${{ matrix.platform }}" = "windows" ]; then
+              for zip_file in packaged/*windows*.zip; do
+                if [ -f "$zip_file" ]; then
+                  if [[ "$zip_file" == *"Server"* ]]; then
+                    cp "$zip_file" "release_files/R2MIDI-Server-windows-signed.zip"
+                  elif [[ "$zip_file" == *"Client"* ]]; then
+                    cp "$zip_file" "release_files/R2MIDI-Client-windows-signed.zip"
+                  fi
+                fi
+              done
+
+            # For Linux, rename to ensure consistent naming
+            else
+              for tar_file in packaged/*linux*.tar.gz; do
+                if [ -f "$tar_file" ]; then
+                  if [[ "$tar_file" == *"Server"* ]]; then
+                    cp "$tar_file" "release_files/R2MIDI-Server-linux-signed.tar.gz"
+                  elif [[ "$tar_file" == *"Client"* ]]; then
+                    cp "$tar_file" "release_files/R2MIDI-Client-linux-signed.tar.gz"
+                  fi
+                fi
+              done
             fi
-            if [ -d "build/r2midi-client/macOS/app" ]; then
-              cd build/r2midi-client/macOS/app
-              zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Client-macos-signed.zip" *.app
-              cd "$GITHUB_WORKSPACE"
-            fi
-          elif [ "${{ matrix.platform }}" = "windows" ]; then
-            if [ -d "build/server/windows/app" ]; then
-              cd build/server/windows/app
-              zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Server-windows-signed.zip" .
-              cd "$GITHUB_WORKSPACE"
-            fi
-            if [ -d "build/r2midi-client/windows/app" ]; then
-              cd build/r2midi-client/windows/app
-              zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Client-windows-signed.zip" .
-              cd "$GITHUB_WORKSPACE"
-            fi
-          else  # Linux
-            if [ -d "build/server/linux/app" ]; then
-              tar -czf "release_files/R2MIDI-Server-linux-signed.tar.gz" -C build/server/linux/app .
-            fi
-            if [ -d "build/r2midi-client/linux/app" ]; then
-              tar -czf "release_files/R2MIDI-Client-linux-signed.tar.gz" -C build/r2midi-client/linux/app .
+          else
+            echo "Warning: packaged directory not found, using fallback method"
+
+            # Fallback methods if packaged directory doesn't exist
+            if [ "${{ matrix.platform }}" = "macOS" ]; then
+              if [ -d "build/server/macOS/app" ]; then
+                cd build/server/macOS/app
+                zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Server-macos-signed.zip" *.app
+                cd "$GITHUB_WORKSPACE"
+              fi
+              if [ -d "build/r2midi-client/macOS/app" ]; then
+                cd build/r2midi-client/macOS/app
+                zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Client-macos-signed.zip" *.app
+                cd "$GITHUB_WORKSPACE"
+              fi
+            elif [ "${{ matrix.platform }}" = "windows" ]; then
+              if [ -d "build/server/windows/app" ]; then
+                # Use PowerShell for Windows zip operations
+                echo "Using PowerShell to create Windows zip files"
+                powershell -Command "Compress-Archive -Path 'build/server/windows/app/*' -DestinationPath 'release_files/R2MIDI-Server-windows-signed.zip' -Force"
+              fi
+              if [ -d "build/r2midi-client/windows/app" ]; then
+                powershell -Command "Compress-Archive -Path 'build/r2midi-client/windows/app/*' -DestinationPath 'release_files/R2MIDI-Client-windows-signed.zip' -Force"
+              fi
+            else  # Linux
+              if [ -d "build/server/linux/system" ]; then
+                tar -czf "release_files/R2MIDI-Server-linux-signed.tar.gz" -C build/server/linux/system .
+              fi
+              if [ -d "build/r2midi-client/linux/system" ]; then
+                tar -czf "release_files/R2MIDI-Client-linux-signed.tar.gz" -C build/r2midi-client/linux/system .
+              fi
             fi
           fi
 
+          echo "Release files prepared:"
           ls -la release_files/
         shell: bash
 
@@ -595,16 +718,35 @@ jobs:
           # Update pyproject.toml to use App Store entitlements
           sed -i.bak 's|entitlements.plist|app_store_entitlements/server.plist|g' pyproject_appstore.toml
 
-      - name: Build App Store applications
+      - name: Download artifacts from build workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: stable-builds-macos
+          path: stable_builds/
+
+      - name: Extract build artifacts for App Store
+        run: |
+          echo "Extracting macOS build artifacts for App Store..."
+          mkdir -p build/server/macOS/app
+          mkdir -p build/r2midi-client/macOS/app
+
+          # Extract macOS artifacts
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          unzip -q "stable_builds/R2MIDI-Server-macos-stable-v${VERSION}.zip" -d build/server/macOS/app/
+          unzip -q "stable_builds/R2MIDI-Client-macos-stable-v${VERSION}.zip" -d build/r2midi-client/macOS/app/
+
+          echo "Extracted App Store artifacts:"
+          ls -la build/server/macOS/app/
+          ls -la build/r2midi-client/macOS/app/
+        shell: bash
+
+      - name: Prepare for App Store signing
         run: |
           # Use the App Store specific configuration
           export PYPROJECT_PATH="pyproject_appstore.toml"
+          echo "🏪 Preparing applications for App Store signing..."
 
-          echo "🏪 Creating App Store applications..."
-          briefcase create macOS app -a server
-          briefcase build macOS app -a server
-          briefcase create macOS app -a r2midi-client  
-          briefcase build macOS app -a r2midi-client
+          # No need to create and build again, just prepare the existing apps for signing
 
       - name: Sign for App Store
         run: |

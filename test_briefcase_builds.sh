@@ -13,6 +13,15 @@ fi
 
 echo "✅ Briefcase is installed"
 
+# Clean build directory if it exists
+if [ -d "build" ]; then
+    echo "Cleaning build directory..."
+    find build -mindepth 1 -delete
+    echo "✅ Build directory cleaned"
+else
+    echo "⚠️ Build directory not found, will be created during build"
+fi
+
 # Function to test an app
 test_app() {
     local app_name=$1

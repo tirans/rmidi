@@ -298,11 +298,11 @@ jobs:
             briefcase create ${{ matrix.platform }} app -a r2midi-client
             briefcase build ${{ matrix.platform }} app -a r2midi-client
           else
-            briefcase create ${{ matrix.platform }} app -a server
-            briefcase build ${{ matrix.platform }} app -a server --target system
+            briefcase create ${{ matrix.platform }} system -a server
+            briefcase build ${{ matrix.platform }} system -a server --target system
 
-            briefcase create ${{ matrix.platform }} app -a r2midi-client
-            briefcase build ${{ matrix.platform }} app -a r2midi-client --target system
+            briefcase create ${{ matrix.platform }} system -a r2midi-client
+            briefcase build ${{ matrix.platform }} system -a r2midi-client --target system
           fi
         shell: bash
 
@@ -316,8 +316,8 @@ jobs:
             briefcase package ${{ matrix.platform }} app -a server --adhoc-sign
             briefcase package ${{ matrix.platform }} app -a r2midi-client --adhoc-sign
           else
-            briefcase package ${{ matrix.platform }} app -a server  
-            briefcase package ${{ matrix.platform }} app -a r2midi-client
+            briefcase package ${{ matrix.platform }} system -a server  
+            briefcase package ${{ matrix.platform }} system -a r2midi-client
           fi
         shell: bash
 
@@ -327,12 +327,12 @@ jobs:
           mkdir -p stable_builds
           echo "🐧 Packaging Linux stable builds..."
 
-          if [ -d "build/server/linux/app" ]; then
-            tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C build/server/linux/app .
+          if [ -d "build/server/linux/system" ]; then
+            tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C build/server/linux/system .
           fi
 
-          if [ -d "build/r2midi-client/linux/app" ]; then
-            tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C build/r2midi-client/linux/app .
+          if [ -d "build/r2midi-client/linux/system" ]; then
+            tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C build/r2midi-client/linux/system .
           fi
 
           echo "🐧 Stable build artifacts:"

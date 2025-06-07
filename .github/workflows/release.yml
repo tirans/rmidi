@@ -236,8 +236,8 @@ jobs:
           echo "Creating applications..."
           briefcase create ${{ matrix.platform }} app -a server
           briefcase build ${{ matrix.platform }} app -a server
-          briefcase create ${{ matrix.platform }} app -a r2midi_client
-          briefcase build ${{ matrix.platform }} app -a r2midi_client
+          briefcase create ${{ matrix.platform }} app -a r2midi-client
+          briefcase build ${{ matrix.platform }} app -a r2midi-client
 
           if [ "${{ matrix.platform }}" = "macOS" ] && [ "$CODE_SIGNING_AVAILABLE" = "true" ]; then
             echo "Code signing macOS applications..."
@@ -262,10 +262,10 @@ jobs:
           echo "Packaging applications..."
           if [ "${{ matrix.platform }}" = "macOS" ]; then
             briefcase package ${{ matrix.platform }} app -a server --adhoc-sign
-            briefcase package ${{ matrix.platform }} app -a r2midi_client --adhoc-sign
+            briefcase package ${{ matrix.platform }} app -a r2midi-client --adhoc-sign
           else
             briefcase package ${{ matrix.platform }} app -a server
-            briefcase package ${{ matrix.platform }} app -a r2midi_client
+            briefcase package ${{ matrix.platform }} app -a r2midi-client
           fi
         shell: bash
 
@@ -382,8 +382,8 @@ jobs:
               zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Server-macos-signed.zip" *.app
               cd "$GITHUB_WORKSPACE"
             fi
-            if [ -d "build/r2midi_client/macOS/app" ]; then
-              cd build/r2midi_client/macOS/app
+            if [ -d "build/r2midi-client/macOS/app" ]; then
+              cd build/r2midi-client/macOS/app
               zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Client-macos-signed.zip" *.app
               cd "$GITHUB_WORKSPACE"
             fi
@@ -393,8 +393,8 @@ jobs:
               zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Server-windows-signed.zip" .
               cd "$GITHUB_WORKSPACE"
             fi
-            if [ -d "build/r2midi_client/windows/app" ]; then
-              cd build/r2midi_client/windows/app
+            if [ -d "build/r2midi-client/windows/app" ]; then
+              cd build/r2midi-client/windows/app
               zip -r "$GITHUB_WORKSPACE/release_files/R2MIDI-Client-windows-signed.zip" .
               cd "$GITHUB_WORKSPACE"
             fi
@@ -402,8 +402,8 @@ jobs:
             if [ -d "build/server/linux/app" ]; then
               tar -czf "release_files/R2MIDI-Server-linux-signed.tar.gz" -C build/server/linux/app .
             fi
-            if [ -d "build/r2midi_client/linux/app" ]; then
-              tar -czf "release_files/R2MIDI-Client-linux-signed.tar.gz" -C build/r2midi_client/linux/app .
+            if [ -d "build/r2midi-client/linux/app" ]; then
+              tar -czf "release_files/R2MIDI-Client-linux-signed.tar.gz" -C build/r2midi-client/linux/app .
             fi
           fi
 
@@ -603,8 +603,8 @@ jobs:
           echo "🏪 Creating App Store applications..."
           briefcase create macOS app -a server
           briefcase build macOS app -a server
-          briefcase create macOS app -a r2midi_client  
-          briefcase build macOS app -a r2midi_client
+          briefcase create macOS app -a r2midi-client  
+          briefcase build macOS app -a r2midi-client
 
       - name: Sign for App Store
         run: |

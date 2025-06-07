@@ -38,13 +38,13 @@ jobs:
       - name: Check if release needed
         id: check
         run: |
-          # Check if we have signing certificates
-          if [ -n "${{ secrets.APPLE_CERTIFICATE_P12 }}" ] || [ -n "${{ secrets.WINDOWS_CERTIFICATE_P12 }}" ]; then
+          # Check if we have signing certificates (only macOS required now)
+          if [ -n "${{ secrets.APPLE_CERTIFICATE_P12 }}" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "✅ Code signing certificates available - proceeding with signed release"
+            echo "✅ macOS code signing certificates available - proceeding with release"
           else
             echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No signing certificates available - skipping signed release"
+            echo "⚠️ No macOS signing certificates available - skipping signed release"
           fi
 
           # Check if we should submit to App Store
@@ -236,6 +236,8 @@ jobs:
         with:
           name: stable-builds-${{ matrix.platform_name }}
           path: stable_builds/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract build artifacts
         run: |
@@ -266,9 +268,10 @@ jobs:
           ls -la build/r2midi-client/${{ matrix.platform }}/app/
         shell: bash
 
-      - name: Sign applications
+      - name: Sign applications (macOS only)
+        if: matrix.platform == 'macOS'
         run: |
-          if [ "${{ matrix.platform }}" = "macOS" ] && [ "$CODE_SIGNING_AVAILABLE" = "true" ]; then
+          if [ "$CODE_SIGNING_AVAILABLE" = "true" ]; then
             echo "Code signing macOS applications..."
             SIGNING_IDENTITY=$(security find-identity -v -p codesigning temp.keychain | grep "Developer ID Application" | head -1 | grep -o '"[^"]*"' | tr -d '"')
 
@@ -286,10 +289,6 @@ jobs:
                 fi
               done
             fi
-          elif [ "${{ matrix.platform }}" = "windows" ]; then
-            echo "Windows signing will be handled in the 'Sign Windows applications' step"
-          else
-            echo "No signing needed for Linux applications"
           fi
 
       - name: Package applications
@@ -410,60 +409,11 @@ jobs:
             echo "⚠️ Notarization skipped (missing credentials)"
           fi
 
-      - name: Sign Windows applications
-        if: matrix.platform == 'windows'
-        env:
-          WINDOWS_CERTIFICATE_P12: ${{ secrets.WINDOWS_CERTIFICATE_P12 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        shell: pwsh
-        run: |
-          if ($env:WINDOWS_CERTIFICATE_P12) {
-            # Mask sensitive values in logs
-            Write-Host "::add-mask::$env:WINDOWS_CERTIFICATE_PASSWORD"
-
-            Write-Host "🔐 Setting up Windows code signing..."
-
-            try {
-              $certBytes = [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_P12)
-              $certPath = "windows_cert.p12"
-              [System.IO.File]::WriteAllBytes($certPath, $certBytes)
-
-              Write-Host "🔍 Finding executables to sign..."
-              $exes = Get-ChildItem -Path "build" -Filter "*.exe" -Recurse
-
-              foreach ($exe in $exes) {
-                Write-Host "Signing: $($exe.Name)"
-
-                # Sign with suppressed output to prevent password exposure
-                $result = & signtool sign /f $certPath /p $env:WINDOWS_CERTIFICATE_PASSWORD /t http://timestamp.digicert.com $exe.FullName 2>&1
-
-                if ($LASTEXITCODE -eq 0) {
-                  Write-Host "✅ Successfully signed $($exe.Name)"
-                } else {
-                  Write-Host "❌ Failed to sign $($exe.Name)"
-                  Write-Host "Error: Signing failed (check certificate and password)"
-                }
-              }
-            }
-            catch {
-              Write-Host "❌ Error during Windows code signing: $($_.Exception.Message)"
-            }
-            finally {
-              # Clean up certificate file
-              if (Test-Path "windows_cert.p12") {
-                Remove-Item "windows_cert.p12" -Force
-              }
-            }
-          } else {
-            Write-Host "⚠️ No Windows signing certificate provided - builds will be unsigned"
-          }
-
       - name: Prepare release files
         run: |
           mkdir -p release_files
 
           # Simply copy the packaged files to release_files directory
-          # The files are already named correctly in the Package applications step
           if [ -d "packaged" ]; then
             echo "Copying packaged files to release_files..."
 
@@ -471,26 +421,26 @@ jobs:
             if [ "${{ matrix.platform }}" = "macOS" ]; then
               cp packaged/R2MIDI-*-macos-signed.zip release_files/ 2>/dev/null || true
 
-            # For Windows, rename to ensure consistent naming
+            # For Windows, remove "-signed" suffix
             elif [ "${{ matrix.platform }}" = "windows" ]; then
               for zip_file in packaged/*windows*.zip; do
                 if [ -f "$zip_file" ]; then
                   if [[ "$zip_file" == *"Server"* ]]; then
-                    cp "$zip_file" "release_files/R2MIDI-Server-windows-signed.zip"
+                    cp "$zip_file" "release_files/R2MIDI-Server-windows.zip"
                   elif [[ "$zip_file" == *"Client"* ]]; then
-                    cp "$zip_file" "release_files/R2MIDI-Client-windows-signed.zip"
+                    cp "$zip_file" "release_files/R2MIDI-Client-windows.zip"
                   fi
                 fi
               done
 
-            # For Linux, rename to ensure consistent naming
+            # For Linux, remove "-signed" suffix
             else
               for tar_file in packaged/*linux*.tar.gz; do
                 if [ -f "$tar_file" ]; then
                   if [[ "$tar_file" == *"Server"* ]]; then
-                    cp "$tar_file" "release_files/R2MIDI-Server-linux-signed.tar.gz"
+                    cp "$tar_file" "release_files/R2MIDI-Server-linux.tar.gz"
                   elif [[ "$tar_file" == *"Client"* ]]; then
-                    cp "$tar_file" "release_files/R2MIDI-Client-linux-signed.tar.gz"
+                    cp "$tar_file" "release_files/R2MIDI-Client-linux.tar.gz"
                   fi
                 fi
               done
@@ -514,17 +464,17 @@ jobs:
               if [ -d "build/server/windows/app" ]; then
                 # Use PowerShell for Windows zip operations
                 echo "Using PowerShell to create Windows zip files"
-                powershell -Command "Compress-Archive -Path 'build/server/windows/app/*' -DestinationPath 'release_files/R2MIDI-Server-windows-signed.zip' -Force"
+                powershell -Command "Compress-Archive -Path 'build/server/windows/app/*' -DestinationPath 'release_files/R2MIDI-Server-windows.zip' -Force"
               fi
               if [ -d "build/r2midi-client/windows/app" ]; then
-                powershell -Command "Compress-Archive -Path 'build/r2midi-client/windows/app/*' -DestinationPath 'release_files/R2MIDI-Client-windows-signed.zip' -Force"
+                powershell -Command "Compress-Archive -Path 'build/r2midi-client/windows/app/*' -DestinationPath 'release_files/R2MIDI-Client-windows.zip' -Force"
               fi
             else  # Linux
               if [ -d "build/server/linux/system" ]; then
-                tar -czf "release_files/R2MIDI-Server-linux-signed.tar.gz" -C build/server/linux/system .
+                tar -czf "release_files/R2MIDI-Server-linux.tar.gz" -C build/server/linux/system .
               fi
               if [ -d "build/r2midi-client/linux/system" ]; then
-                tar -czf "release_files/R2MIDI-Client-linux-signed.tar.gz" -C build/r2midi-client/linux/system .
+                tar -czf "release_files/R2MIDI-Client-linux.tar.gz" -C build/r2midi-client/linux/system .
               fi
             fi
           fi
@@ -723,6 +673,8 @@ jobs:
         with:
           name: stable-builds-macos
           path: stable_builds/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract build artifacts for App Store
         run: |
@@ -901,7 +853,7 @@ jobs:
           body: |
             ## 🚀 R2MIDI v${{ steps.get_info.outputs.version }} - Production Release${{ needs.check-build-success.outputs.build_status == 'failure' && ' (Failed Build)' || '' }}
 
-            ${{ needs.check-build-success.outputs.build_status == 'failure' && '⚠️ **WARNING: This release was created from a failed build. It may contain bugs or incomplete features.** ⚠️\n\n' || '' }}**Official production release with signed applications for all platforms.**
+            ${{ needs.check-build-success.outputs.build_status == 'failure' && '⚠️ **WARNING: This release was created from a failed build. It may contain bugs or incomplete features.** ⚠️\n\n' || '' }}**Official production release with signed applications for macOS.**
 
             ### 📦 Downloads
 
@@ -909,13 +861,14 @@ jobs:
             - **R2MIDI-Server-macos-signed.zip** - R2MIDI Server (.app bundle)
             - **R2MIDI-Client-macos-signed.zip** - R2MIDI Client (.app bundle)
 
-            #### 🪟 Windows (Code Signed)
-            - **R2MIDI-Server-windows-signed.zip** - R2MIDI Server (signed executable)
-            - **R2MIDI-Client-windows-signed.zip** - R2MIDI Client (signed executable)
+            #### 🪟 Windows (Unsigned)
+            - **R2MIDI-Server-windows.zip** - R2MIDI Server
+            - **R2MIDI-Client-windows.zip** - R2MIDI Client
+            - ⚠️ Windows builds are unsigned and may show security warnings
 
-            #### 🐧 Linux (Production Ready)
-            - **R2MIDI-Server-linux-signed.tar.gz** - R2MIDI Server (native executable)
-            - **R2MIDI-Client-linux-signed.tar.gz** - R2MIDI Client (native executable)
+            #### 🐧 Linux (Ready to Use)
+            - **R2MIDI-Server-linux.tar.gz** - R2MIDI Server
+            - **R2MIDI-Client-linux.tar.gz** - R2MIDI Client
 
             ${{ needs.check-build-success.outputs.should_app_store == 'true' && '#### 🏪 Mac App Store\n- **R2MIDI Server** and **R2MIDI Client** submitted to App Store\n- Check App Store Connect for review status\n- App Store packages also available as release artifacts\n' || '#### 🏪 Mac App Store\n- App Store submission not configured\n- Set up App Store Connect API key to enable automatic submission\n' }}
 
@@ -926,26 +879,31 @@ jobs:
             2. **Mac App Store**: Search for "R2MIDI" in the App Store (if approved)
             3. Right-click and select "Open" on first launch for direct downloads
 
-            #### Windows ✅
+            #### Windows ⚠️
             1. Download and extract the .zip file
-            2. Run the .exe files (no security warnings!)
+            2. You may need to allow the app through Windows Defender
+            3. Right-click the .exe and select "Run as administrator" if needed
 
             #### Linux ✅
             ```bash
-            tar -xzf *-linux-signed.tar.gz
+            tar -xzf R2MIDI-*-linux.tar.gz
             chmod +x r2midi-*
             ./r2midi-server  # or ./r2midi-client
             ```
 
             ### ✨ Features
-            - 🔒 Full code signing on all platforms
-            - 🍎 macOS notarization for enhanced security
-            - 🪟 Windows Authenticode signed executables
-            - 🐧 Native Linux builds
+            - 🔒 macOS applications are fully code signed and notarized
+            - 🐧 Native Linux builds ready to use
+            - 🪟 Windows builds (unsigned - security warnings expected)
             - 🏪 Automatic App Store submission (when configured)
             - 📦 Improved packaging and installation
 
             ### 🏪 App Store Status
             ${{ needs.check-build-success.outputs.should_app_store == 'true' && '✅ **Submitted to Mac App Store** - Check App Store Connect for review status' || '⚠️ **App Store submission disabled** - Configure APP_STORE_CONNECT_API_KEY to enable' }}
+
+            ### ⚠️ Security Notes
+            - **macOS**: Fully signed and notarized - no security warnings
+            - **Windows**: Unsigned - expect security warnings from Windows Defender
+            - **Linux**: No signing required
 
             For documentation and support, visit [GitHub](https://github.com/tirans/r2midi).

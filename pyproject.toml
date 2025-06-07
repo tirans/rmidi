@@ -128,11 +128,13 @@ requires = [
     "python-dotenv>=1.0.0",
     "GitPython>=3.1.40",
     "psutil>=7.0.0",
+    "std-nslog",
 ]
 
 # macOS specific settings
 codesign_identity = "Developer ID Application"
 entitlements_file = "entitlements.plist"
+packaging_format = "dmg,pkg"
 
 [tool.briefcase.app.r2midi-client.macOS]
 requires = [
@@ -141,11 +143,13 @@ requires = [
     "python-dotenv>=1.1.0",
     "pydantic>=2.11.5",
     "psutil>=7.0.0",
+    "std-nslog",
 ]
 
 # macOS specific settings
 codesign_identity = "Developer ID Application"
 entitlements_file = "entitlements.plist"
+packaging_format = "dmg,pkg"
 
 # ========================================
 # Windows Configuration  

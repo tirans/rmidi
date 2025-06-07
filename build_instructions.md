@@ -38,7 +38,7 @@ briefcase create macOS app -a server
 # Build the application
 briefcase build macOS app -a server
 
-# Package the application (creates a .dmg or .app bundle)
+# Package the application (creates a .dmg, .pkg, or .app bundle)
 briefcase package macOS app -a server --no-sign
 ```
 
@@ -46,13 +46,13 @@ briefcase package macOS app -a server --no-sign
 
 ```bash
 # Create the application
-briefcase create macOS app -a r2midi_client
+briefcase create macOS app -a r2midi-client
 
 # Build the application
-briefcase build macOS app -a r2midi_client
+briefcase build macOS app -a r2midi-client
 
-# Package the application (creates a .dmg or .app bundle)
-briefcase package macOS app -a r2midi_client --no-sign
+# Package the application (creates a .dmg, .pkg, or .app bundle)
+briefcase package macOS app -a r2midi-client --no-sign
 ```
 
 ## Building on Linux
@@ -74,13 +74,13 @@ briefcase package linux app -a server
 
 ```bash
 # Create the application
-briefcase create linux app -a r2midi_client
+briefcase create linux app -a r2midi-client
 
 # Build the application
-briefcase build linux app -a r2midi_client --target system
+briefcase build linux app -a r2midi-client --target system
 
 # Package the application (creates an AppImage or .deb package)
-briefcase package linux app -a r2midi_client
+briefcase package linux app -a r2midi-client
 ```
 
 ## Building on Windows
@@ -102,13 +102,13 @@ briefcase package windows app -a server
 
 ```bash
 # Create the application
-briefcase create windows app -a r2midi_client
+briefcase create windows app -a r2midi-client
 
 # Build the application
-briefcase build windows app -a r2midi_client
+briefcase build windows app -a r2midi-client
 
 # Package the application (creates an .msi installer)
-briefcase package windows app -a r2midi_client
+briefcase package windows app -a r2midi-client
 ```
 
 ## Running the Applications
@@ -130,13 +130,13 @@ briefcase run windows app -a server
 
 ```bash
 # macOS
-briefcase run macOS app -a r2midi_client
+briefcase run macOS app -a r2midi-client
 
 # Linux
-briefcase run linux app -a r2midi_client
+briefcase run linux app -a r2midi-client
 
 # Windows
-briefcase run windows app -a r2midi_client
+briefcase run windows app -a r2midi-client
 ```
 
 ## Automated Build Script
@@ -165,12 +165,12 @@ You can also use the included `test_briefcase_builds.sh` script to build both ap
 
 The built applications can be found in the following locations:
 
-- macOS: `build/server/macOS/app` and `build/r2midi_client/macOS/app`
-- Linux: `build/server/linux/app` and `build/r2midi_client/linux/app`
-- Windows: `build/server/windows/app` and `build/r2midi_client/windows/app`
+- macOS: `build/server/macOS/app` and `build/r2midi-client/macOS/app`
+- Linux: `build/server/linux/app` and `build/r2midi-client/linux/app`
+- Windows: `build/server/windows/app` and `build/r2midi-client/windows/app`
 
 The packaged applications can be found in:
 
-- macOS: Look for `.dmg` files or `.app` bundles in the build directory
+- macOS: Look for `.dmg`, `.pkg` files or `.app` bundles in the build directory
 - Linux: Look for `.AppImage` or `.deb` files in the build directory
 - Windows: Look for `.msi` or `.exe` files in the build directory

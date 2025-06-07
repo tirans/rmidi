@@ -298,11 +298,11 @@ jobs:
             briefcase create ${{ matrix.platform }} app -a r2midi-client
             briefcase build ${{ matrix.platform }} app -a r2midi-client
           else
-            briefcase create ${{ matrix.platform }} system -a server
-            briefcase build ${{ matrix.platform }} system -a server
+            briefcase create ${{ matrix.platform }} app -a server
+            briefcase build ${{ matrix.platform }} app -a server --target system
 
-            briefcase create ${{ matrix.platform }} system -a r2midi-client
-            briefcase build ${{ matrix.platform }} system -a r2midi-client
+            briefcase create ${{ matrix.platform }} app -a r2midi-client
+            briefcase build ${{ matrix.platform }} app -a r2midi-client --target system
           fi
         shell: bash
 
@@ -316,8 +316,8 @@ jobs:
             briefcase package ${{ matrix.platform }} app -a server --adhoc-sign
             briefcase package ${{ matrix.platform }} app -a r2midi-client --adhoc-sign
           else
-            briefcase package ${{ matrix.platform }} system -a server  
-            briefcase package ${{ matrix.platform }} system -a r2midi-client
+            briefcase package ${{ matrix.platform }} app -a server  
+            briefcase package ${{ matrix.platform }} app -a r2midi-client
           fi
         shell: bash
 
@@ -331,8 +331,8 @@ jobs:
             tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C build/server/linux/app .
           fi
 
-          if [ -d "build/r2midi_client/linux/app" ]; then
-            tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C build/r2midi_client/linux/app .
+          if [ -d "build/r2midi-client/linux/app" ]; then
+            tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C build/r2midi-client/linux/app .
           fi
 
           echo "🐧 Stable build artifacts:"
@@ -349,8 +349,8 @@ jobs:
             Compress-Archive -Path "build/server/windows/app/*" -DestinationPath "stable_builds/R2MIDI-Server-windows-stable-v$env:APP_VERSION.zip" -Force
           }
 
-          if (Test-Path -Path "build/r2midi_client/windows/app") {
-            Compress-Archive -Path "build/r2midi_client/windows/app/*" -DestinationPath "stable_builds/R2MIDI-Client-windows-stable-v$env:APP_VERSION.zip" -Force
+          if (Test-Path -Path "build/r2midi-client/windows/app") {
+            Compress-Archive -Path "build/r2midi-client/windows/app/*" -DestinationPath "stable_builds/R2MIDI-Client-windows-stable-v$env:APP_VERSION.zip" -Force
           }
 
           echo "🪟 Stable build artifacts:"
@@ -369,8 +369,8 @@ jobs:
             cd "$GITHUB_WORKSPACE"
           fi
 
-          if [ -d "build/r2midi_client/macOS/app" ]; then
-            cd build/r2midi_client/macOS/app
+          if [ -d "build/r2midi-client/macOS/app" ]; then
+            cd build/r2midi-client/macOS/app
             zip -r "$GITHUB_WORKSPACE/stable_builds/R2MIDI-Client-macos-stable-v${APP_VERSION}.zip" *.app
             cd "$GITHUB_WORKSPACE"
           fi

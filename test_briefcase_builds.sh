@@ -88,10 +88,10 @@ else
 fi
 
 # Test client app
-if test_app "r2midi_client" "$PLATFORM"; then
-    echo "✅ Client app (r2midi_client) passed all tests"
+if test_app "r2midi-client" "$PLATFORM"; then
+    echo "✅ Client app (r2midi-client) passed all tests"
 else
-    echo "❌ Client app (r2midi_client) failed"
+    echo "❌ Client app (r2midi-client) failed"
     exit 1
 fi
 
@@ -112,16 +112,16 @@ if [[ "$response" == "y" ]]; then
         briefcase package $PLATFORM app -a server --no-sign
     fi
 
-    echo "Packaging r2midi_client..."
+    echo "Packaging r2midi-client..."
     if [[ "$PLATFORM" == "linux" ]]; then
         # For Linux, don't use --no-sign as we're using system target
-        briefcase package $PLATFORM app -a r2midi_client
+        briefcase package $PLATFORM app -a r2midi-client
     elif [[ "$PLATFORM" == "windows" ]]; then
         # For Windows, don't use --no-sign as it's configured in pyproject.toml
-        briefcase package $PLATFORM app -a r2midi_client
+        briefcase package $PLATFORM app -a r2midi-client
     else
         # For other platforms (macOS)
-        briefcase package $PLATFORM app -a r2midi_client --no-sign
+        briefcase package $PLATFORM app -a r2midi-client --no-sign
     fi
 
     echo ""
@@ -135,7 +135,7 @@ if [[ "$response" == "y" ]]; then
     # Find and display package files
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        find build -name "*.dmg" -o -name "*.app" | grep -E "(dmg|app)$"
+        find build -name "*.dmg" -o -name "*.app" -o -name "*.pkg" | grep -E "(dmg|app|pkg)$"
     elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
         # Windows
         find build -name "*.msi" -o -name "*.exe" | grep -E "(msi|exe)$"

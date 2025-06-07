@@ -266,11 +266,19 @@ curl http://localhost:7777/git/sync
 
 ## Architecture
 
+### Naming Convention Note
+
+The project uses two different naming conventions:
+- The Python code for the client is located in the `r2midi_client` directory (with an underscore)
+- The built project artifacts are named `r2midi-client` (with a hyphen) due to Briefcase packaging convention
+
+This distinction is important when working with the codebase versus referencing the built applications.
+
 ### Module Structure
 
 ```
 r2midi/
-├── midi_preset_client/
+├── r2midi_client/              # Client code (note the underscore in directory name)
 │   ├── api_client.py            # Enhanced API client with caching
 │   ├── config.py                # Configuration management
 │   ├── models.py                # Data models
@@ -341,7 +349,7 @@ python -m pytest tests/test_enhanced_functionality.py -v
 python -m pytest tests/test_comprehensive_features.py -v
 
 # Run with coverage
-python -m pytest tests/ --cov=midi_preset_client --cov-report=html
+python -m pytest tests/ --cov=r2midi_client --cov-report=html
 ```
 
 ## Performance

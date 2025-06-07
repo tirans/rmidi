@@ -81,9 +81,9 @@ build_server() {
 
 build_client() {
     print_status "Building R2MIDI client..."
-    briefcase create r2midic
-    briefcase build r2midic
-    briefcase package r2midic
+    briefcase create r2midi-client
+    briefcase build r2midi-client
+    briefcase package r2midi-client
     print_success "Client build completed"
 }
 
@@ -98,21 +98,21 @@ build_all() {
 build_macos() {
     print_status "Building for macOS..."
     briefcase package r2midi macOS
-    briefcase package r2midic macOS
+    briefcase package r2midi-client macOS
     print_success "macOS builds completed"
 }
 
 build_windows() {
     print_status "Building for Windows..."
     briefcase package r2midi windows
-    briefcase package r2midic windows
+    briefcase package r2midi-client windows
     print_success "Windows builds completed"
 }
 
 build_linux() {
     print_status "Building for Linux..."
     briefcase package r2midi linux
-    briefcase package r2midic linux
+    briefcase package r2midi-client linux
     print_success "Linux builds completed"
 }
 
@@ -121,7 +121,7 @@ clean_build() {
     print_status "Cleaning build artifacts..."
     if [ -d "build" ]; then
         rm -rf build/r2midi/*/app/
-        rm -rf build/r2midic/*/app/
+        rm -rf build/r2midi-client/*/app/
         print_success "Build artifacts cleaned"
     else
         print_warning "No build directory found"
@@ -131,20 +131,20 @@ clean_build() {
 # Initial project setup
 setup_project() {
     print_status "Setting up R2MIDI project..."
-    
+
     # Install briefcase if not already installed
     if ! command -v briefcase &> /dev/null; then
         print_status "Installing briefcase..."
         pip install briefcase
     fi
-    
+
     # Install project dependencies
     print_status "Installing project dependencies..."
     pip install -r requirements.txt
-    
+
     # Run initial test
     run_tests
-    
+
     print_success "Project setup completed"
 }
 

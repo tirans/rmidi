@@ -87,8 +87,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
           ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Fix submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule deinit -f server/midi-presets || true
+          rm -rf .git/modules/server/midi-presets || true
+          git rm -rf server/midi-presets || true
+          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+          git submodule init
+          git submodule update --init --recursive
+        shell: bash
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -226,8 +236,8 @@ jobs:
           echo "Creating applications..."
           briefcase create ${{ matrix.platform }} app -a server
           briefcase build ${{ matrix.platform }} app -a server
-          briefcase create ${{ matrix.platform }} app -a r2midi-client
-          briefcase build ${{ matrix.platform }} app -a r2midi-client
+          briefcase create ${{ matrix.platform }} app -a r2midi_client
+          briefcase build ${{ matrix.platform }} app -a r2midi_client
 
           if [ "${{ matrix.platform }}" = "macOS" ] && [ "$CODE_SIGNING_AVAILABLE" = "true" ]; then
             echo "Code signing macOS applications..."
@@ -252,10 +262,10 @@ jobs:
           echo "Packaging applications..."
           if [ "${{ matrix.platform }}" = "macOS" ]; then
             briefcase package ${{ matrix.platform }} app -a server --adhoc-sign
-            briefcase package ${{ matrix.platform }} app -a r2midi-client --adhoc-sign
+            briefcase package ${{ matrix.platform }} app -a r2midi_client --adhoc-sign
           else
             briefcase package ${{ matrix.platform }} app -a server
-            briefcase package ${{ matrix.platform }} app -a r2midi-client
+            briefcase package ${{ matrix.platform }} app -a r2midi_client
           fi
         shell: bash
 
@@ -423,8 +433,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
           ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Fix submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule deinit -f server/midi-presets || true
+          rm -rf .git/modules/server/midi-presets || true
+          git rm -rf server/midi-presets || true
+          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+          git submodule init
+          git submodule update --init --recursive
+        shell: bash
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -583,8 +603,8 @@ jobs:
           echo "🏪 Creating App Store applications..."
           briefcase create macOS app -a server
           briefcase build macOS app -a server
-          briefcase create macOS app -a r2midi-client  
-          briefcase build macOS app -a r2midi-client
+          briefcase create macOS app -a r2midi_client  
+          briefcase build macOS app -a r2midi_client
 
       - name: Sign for App Store
         run: |

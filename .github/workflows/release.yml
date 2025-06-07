@@ -74,7 +74,6 @@ jobs:
             platform: macOS
             platform_name: macos
             briefcase_platform: macOS
-            briefcase_format: app
     runs-on: ${{ matrix.os }}
     environment: production
 
@@ -147,18 +146,65 @@ jobs:
           security default-keychain -s briefcase.keychain
           security unlock-keychain -p briefcase briefcase.keychain
 
-          # Import the certificate
-          security import developer_id_cert.p12 -k briefcase.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # Import the certificate with additional tools for PKG creation
+          security import developer_id_cert.p12 -k briefcase.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
           rm -f developer_id_cert.p12
 
           security set-key-partition-list -S apple-tool:,apple: -s -k briefcase briefcase.keychain
 
-          # Find the signing identity
-          SIGNING_IDENTITY=$(security find-identity -v -p codesigning briefcase.keychain | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          # Debug: List all available identities
+          echo "🔍 Available signing identities:"
+          security find-identity -v -p codesigning briefcase.keychain
+
+          # Find the signing identity with robust parsing and fallbacks
+          SIGNING_IDENTITY=""
+          
+          # Method 1: Try to find Developer ID Application by name using sed
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning briefcase.keychain | grep "Developer ID Application" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
+          echo "🔍 Method 1 (sed name): '$SIGNING_IDENTITY'"
+          
+          # Method 2: If name extraction fails, try using SHA-1 hash
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "⚠️ Certificate name method failed, trying SHA-1 method..."
+            SIGNING_IDENTITY=$(security find-identity -v -p codesigning briefcase.keychain | grep "Developer ID Application" | head -1 | awk '{print $2}')
+            echo "🔍 Method 2 (SHA-1): '$SIGNING_IDENTITY'"
+          fi
+          
+          # Method 3: If still empty, try any valid codesigning identity by name
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "⚠️ SHA-1 method failed, trying to find any valid identity by name..."
+            SIGNING_IDENTITY=$(security find-identity -v -p codesigning briefcase.keychain | grep -E "(Developer ID|Apple)" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
+            echo "🔍 Method 3 (any name): '$SIGNING_IDENTITY'"
+          fi
+          
+          # Method 4: Last resort - try SHA-1 of any valid identity
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "⚠️ Name-based methods failed, trying SHA-1 of any identity..."
+            SIGNING_IDENTITY=$(security find-identity -v -p codesigning briefcase.keychain | grep -E "(Developer ID|Apple)" | head -1 | awk '{print $2}')
+            echo "🔍 Method 4 (any SHA-1): '$SIGNING_IDENTITY'"
+          fi
+
+          echo "🔍 Final signing identity: '$SIGNING_IDENTITY'"
+          echo "🔍 Identity length: ${#SIGNING_IDENTITY}"
 
           if [ -z "$SIGNING_IDENTITY" ]; then
-            echo "❌ No valid signing identity found"
+            echo "❌ No valid signing identity found after all methods"
+            echo "Available identities:"
+            security find-identity -v briefcase.keychain
             exit 1
+          fi
+
+          # Test the identity by signing a dummy file
+          echo "🧪 Testing signing identity..."
+          echo "test content" > test_signing.txt
+          if codesign -s "$SIGNING_IDENTITY" test_signing.txt 2>/dev/null; then
+            echo "✅ Signing identity verified and working"
+            rm -f test_signing.txt
+          else
+            echo "❌ Signing identity verification failed"
+            rm -f test_signing.txt
+            # Try to proceed anyway, but warn
+            echo "⚠️ Proceeding with potentially problematic identity"
           fi
 
           echo "BRIEFCASE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
@@ -171,13 +217,8 @@ jobs:
         run: |
           if [ "${{ matrix.platform }}" = "macOS" ]; then
             echo "Installing macOS dependencies..."
-          elif [ "${{ matrix.platform }}" = "linux" ]; then
-            sudo apt-get update
-            sudo apt-get install -y \
-              libasound2-dev libegl1 libjack-dev librtmidi-dev \
-              libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 \
-              libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
-              libxcb-xinerama0 libxcb-xfixes0
+            # Install any required packages via Homebrew if needed
+            # brew install <package> || true
           fi
         shell: bash
 
@@ -238,62 +279,86 @@ jobs:
 
           # Create applications
           echo "Creating R2MIDI Server..."
-          briefcase create ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server
+          briefcase create ${{ matrix.briefcase_platform }} app -a server
 
           echo "Creating R2MIDI Client..."
-          briefcase create ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client
+          briefcase create ${{ matrix.briefcase_platform }} app -a r2midi-client
 
           # Build applications
           echo "Building R2MIDI Server..."
-          briefcase build ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server
+          briefcase build ${{ matrix.briefcase_platform }} app -a server
 
           echo "Building R2MIDI Client..."
-          briefcase build ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client
+          briefcase build ${{ matrix.briefcase_platform }} app -a r2midi-client
         shell: bash
 
-      - name: Package with Briefcase (with signing and notarization)
-        env:
-          # Map GitHub Secrets to environment variables expected by Briefcase
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          BRIEFCASE_SIGNING_IDENTITY: ${{ secrets.APPLE_CERTIFICATE_P12 }} # Adjust if this is not the correct secret
+      - name: Package DMG with Briefcase (with signing and notarization)
         run: |
-          echo "📦 Packaging ${{ matrix.platform }} applications..."
+          echo "📦 Packaging ${{ matrix.platform }} applications as DMG..."
 
           if [ "${{ matrix.platform }}" = "macOS" ]; then
             # Ensure notarization is enabled if credentials are available
-            if [ -n "$APPLE_ID" ] && [ -n "$APPLE_ID_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
-              echo "🔐 Setting up notarization credentials..."
+            if [ -n "$BRIEFCASE_APPLE_ID" ] && [ -n "$BRIEFCASE_APPLE_ID_PASSWORD" ] && [ -n "$BRIEFCASE_APPLE_TEAM_ID" ]; then
+              echo "🔐 Setting up notarization credentials for DMG..."
 
-              # Package and notarize R2MIDI Server
-              echo "Packaging and notarizing R2MIDI Server..."
-              briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server \
-                --identity "$BRIEFCASE_SIGNING_IDENTITY"  || {
-                echo "Notarization failed for server. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
+              # Package and notarize R2MIDI Server as DMG
+              echo "Packaging and notarizing R2MIDI Server DMG..."
+              briefcase package ${{ matrix.briefcase_platform }} app -a server \
+                --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
+                echo "❌ DMG packaging failed for server. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
                 exit 1
               }
 
-              # Package and notarize R2MIDI Client
-              echo "Packaging and notarizing R2MIDI Client..."
-              briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client \
+              # Package and notarize R2MIDI Client as DMG
+              echo "Packaging and notarizing R2MIDI Client DMG..."
+              briefcase package ${{ matrix.briefcase_platform }} app -a r2midi-client \
                 --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
-                echo "Notarization failed for client. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
+                echo "❌ DMG packaging failed for client. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
                 exit 1
               }
             else
-              echo "⚠️ Notarization credentials missing. Packaging without notarization..."
+              echo "⚠️ Notarization credentials missing. Packaging DMG without notarization..."
               # Package without notarization
-              briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server --no-notarize \
+              briefcase package ${{ matrix.briefcase_platform }} app -a server --no-notarize \
                 --identity "$BRIEFCASE_SIGNING_IDENTITY"
-              briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client --no-notarize \
+              briefcase package ${{ matrix.briefcase_platform }} app -a r2midi-client --no-notarize \
                 --identity "$BRIEFCASE_SIGNING_IDENTITY"
             fi
-          else
-            # Package without signing or notarization for other platforms
-            echo "Packaging for non-macOS platform..."
-            briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server --no-notarize 
-            briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client --no-notarize 
+          fi
+        shell: bash
+
+      - name: Package PKG with Briefcase (with signing and notarization)
+        run: |
+          echo "📦 Packaging ${{ matrix.platform }} applications as PKG..."
+
+          if [ "${{ matrix.platform }}" = "macOS" ]; then
+            # Package as PKG installer
+            if [ -n "$BRIEFCASE_APPLE_ID" ] && [ -n "$BRIEFCASE_APPLE_ID_PASSWORD" ] && [ -n "$BRIEFCASE_APPLE_TEAM_ID" ]; then
+              echo "🔐 Setting up notarization credentials for PKG..."
+
+              # Package and notarize R2MIDI Server as PKG
+              echo "Packaging and notarizing R2MIDI Server PKG..."
+              briefcase package ${{ matrix.briefcase_platform }} installer -a server \
+                --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
+                echo "❌ PKG packaging failed for server. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
+                exit 1
+              }
+
+              # Package and notarize R2MIDI Client as PKG
+              echo "Packaging and notarizing R2MIDI Client PKG..."
+              briefcase package ${{ matrix.briefcase_platform }} installer -a r2midi-client \
+                --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
+                echo "❌ PKG packaging failed for client. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
+                exit 1
+              }
+            else
+              echo "⚠️ Notarization credentials missing. Packaging PKG without notarization..."
+              # Package without notarization
+              briefcase package ${{ matrix.briefcase_platform }} installer -a server --no-notarize \
+                --identity "$BRIEFCASE_SIGNING_IDENTITY"
+              briefcase package ${{ matrix.briefcase_platform }} installer -a r2midi-client --no-notarize \
+                --identity "$BRIEFCASE_SIGNING_IDENTITY"
+            fi
           fi
         shell: bash
 
@@ -302,36 +367,74 @@ jobs:
           mkdir -p release_files
 
           if [ "${{ matrix.platform }}" = "macOS" ]; then
-            # Find and package DMG files
-            find dist -name "*.dmg" | while read dmg; do
+            echo "📁 Organizing macOS release files..."
+            
+            # Find and copy DMG files
+            echo "Looking for DMG files in dist/..."
+            find dist -name "*.dmg" -print0 | while IFS= read -r -d '' dmg; do
+              echo "Found DMG: $dmg"
               if [[ "$dmg" == *"Server"* ]] || [[ "$dmg" == *"server"* ]]; then
                 cp "$dmg" "release_files/R2MIDI-Server-macos-signed.dmg"
+                echo "✅ Copied server DMG"
               else
                 cp "$dmg" "release_files/R2MIDI-Client-macos-signed.dmg"
+                echo "✅ Copied client DMG"
               fi
             done
-          elif [ "${{ matrix.platform }}" = "windows" ]; then
-            # Find and package MSI files - not signed
-            find dist -name "*.msi" | while read msi; do
-              if [[ "$msi" == *"Server"* ]] || [[ "$msi" == *"server"* ]]; then
-                cp "$msi" "release_files/R2MIDI-Server-windows-unsigned.msi"
-              else
-                cp "$msi" "release_files/R2MIDI-Client-windows-unsigned.msi"
-              fi
-            done
-          else
-            # Linux - package DEB files - not signed
-            find dist -name "*.deb" | while read deb; do
-              if [[ "$deb" == *"server"* ]]; then
-                cp "$deb" "release_files/R2MIDI-Server-linux-unsigned.deb"
-              else
-                cp "$deb" "release_files/R2MIDI-Client-linux-unsigned.deb"
-              fi
-            done
-          fi
 
-          echo "Release artifacts prepared:"
-          ls -la release_files/
+            # Find and copy PKG files
+            echo "Looking for PKG files in dist/..."
+            find dist -name "*.pkg" -print0 | while IFS= read -r -d '' pkg; do
+              echo "Found PKG: $pkg"
+              if [[ "$pkg" == *"Server"* ]] || [[ "$pkg" == *"server"* ]]; then
+                cp "$pkg" "release_files/R2MIDI-Server-macos-signed.pkg"
+                echo "✅ Copied server PKG"
+              else
+                cp "$pkg" "release_files/R2MIDI-Client-macos-signed.pkg"
+                echo "✅ Copied client PKG"
+              fi
+            done
+
+            # Fallback: check build directories if dist is empty
+            if [ ! -f "release_files/R2MIDI-Server-macos-signed.dmg" ]; then
+              echo "⚠️ No DMG found in dist, checking build directories..."
+              find build -name "*.dmg" | head -2 | while read dmg; do
+                if [[ "$dmg" == *"server"* ]]; then
+                  cp "$dmg" "release_files/R2MIDI-Server-macos-signed.dmg"
+                  echo "✅ Copied server DMG from build"
+                else
+                  cp "$dmg" "release_files/R2MIDI-Client-macos-signed.dmg"
+                  echo "✅ Copied client DMG from build"
+                fi
+              done
+            fi
+
+            if [ ! -f "release_files/R2MIDI-Server-macos-signed.pkg" ]; then
+              echo "⚠️ No PKG found in dist, checking build directories..."
+              find build -name "*.pkg" | head -2 | while read pkg; do
+                if [[ "$pkg" == *"server"* ]]; then
+                  cp "$pkg" "release_files/R2MIDI-Server-macos-signed.pkg"
+                  echo "✅ Copied server PKG from build"
+                else
+                  cp "$pkg" "release_files/R2MIDI-Client-macos-signed.pkg"
+                  echo "✅ Copied client PKG from build"
+                fi
+              done
+            fi
+
+            # Final verification
+            echo "📋 Final release artifacts:"
+            ls -la release_files/ || echo "❌ No release files directory created"
+            
+            # Double-check that we have at least DMG files
+            if [ ! -f "release_files/R2MIDI-Server-macos-signed.dmg" ] && [ ! -f "release_files/R2MIDI-Client-macos-signed.dmg" ]; then
+              echo "❌ ERROR: No DMG files found! Listing all dist contents:"
+              find dist -type f -name "*" | head -20
+              echo "Listing all build contents:"
+              find build -type f -name "*" | head -20
+              exit 1
+            fi
+          fi
         shell: bash
 
       - name: Upload release artifacts
@@ -438,11 +541,18 @@ jobs:
 
           security set-key-partition-list -S apple-tool:,apple: -s -k briefcase app_store.keychain
 
-          # Find the App Store signing identity
-          APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | grep "3rd Party Mac Developer Application" | head -1 | awk -F'"' '{print $2}')
+          # Find the App Store signing identity with improved parsing
+          APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | grep "3rd Party Mac Developer Application" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
+
+          # Fallback to SHA-1 if name parsing fails
+          if [ -z "$APP_STORE_IDENTITY" ]; then
+            APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | grep "3rd Party Mac Developer Application" | head -1 | awk '{print $2}')
+          fi
 
           if [ -z "$APP_STORE_IDENTITY" ]; then
             echo "❌ No App Store signing identity found"
+            echo "Available identities:"
+            security find-identity -v app_store.keychain
             exit 1
           fi
 
@@ -607,8 +717,10 @@ jobs:
             ### 📦 Downloads
 
             #### 🍎 macOS (Code Signed & Notarized)
-            - **R2MIDI-Server-macos-signed.dmg** - R2MIDI Server installer
-            - **R2MIDI-Client-macos-signed.dmg** - R2MIDI Client installer
+            - **R2MIDI-Server-macos-signed.dmg** - R2MIDI Server disk image (drag & drop install)
+            - **R2MIDI-Client-macos-signed.dmg** - R2MIDI Client disk image (drag & drop install)
+            - **R2MIDI-Server-macos-signed.pkg** - R2MIDI Server installer package (automated install)
+            - **R2MIDI-Client-macos-signed.pkg** - R2MIDI Client installer package (automated install)
 
             #### 🪟 Windows (Unsigned)
             - **R2MIDI-Server-windows-unsigned.zip** - R2MIDI Server package
@@ -623,10 +735,17 @@ jobs:
             ### 📋 Installation
 
             #### macOS ✅
+            **Option 1: DMG (Recommended for most users)**
             1. Download the .dmg file
             2. Double-click to mount
             3. Drag the app to Applications folder
             4. First launch: right-click and select "Open"
+
+            **Option 2: PKG (For automated/scripted installation)**
+            1. Download the .pkg file
+            2. Double-click to run installer
+            3. Follow installation wizard
+            4. Apps will be installed to /Applications
 
             #### Windows ✅  
             1. Download the .zip file
@@ -642,7 +761,7 @@ jobs:
 
             ### ✨ Features
             - 🔒 macOS applications are fully code signed and notarized
-            - 📦 Professional packages for all platforms
+            - 📦 Professional packages for all platforms (DMG + PKG for macOS)
             - 🏪 Automatic App Store submission (when configured)
             - 🚀 Built with Briefcase for consistent packaging
             - ⚡ Optimized workflow reuses Windows and Linux builds to reduce redundancy

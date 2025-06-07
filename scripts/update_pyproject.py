@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-Script to update pyproject.toml with code signing identity and other metadata.
-Usage: 
-  - For regular builds: python update_pyproject.py --codesign-identity "Developer ID Application: Name (TEAM_ID)"
-  - For App Store: python update_pyproject.py --app-store --codesign-identity "3rd Party Mac Developer Application: Name (TEAM_ID)"
+Script to update pyproject.toml with build metadata and signing configuration.
+Used by GitHub Actions workflows to configure Briefcase builds.
 """
 
 import argparse
@@ -11,131 +9,193 @@ import re
 import sys
 from pathlib import Path
 
-def update_pyproject(file_path, **kwargs):
-    """Update pyproject.toml with provided parameters."""
-    with open(file_path, 'r') as f:
-        content = f.read()
 
-    # Update bundle ID if provided
-    if kwargs.get('bundle_prefix'):
+def update_pyproject_toml(
+    version=None,
+    author=None,
+    author_email=None,
+    server_name=None,
+    client_name=None,
+    bundle_prefix=None,
+    codesign_identity=None,
+    app_store=False
+):
+    """Update pyproject.toml with the provided metadata."""
+    
+    pyproject_path = Path("pyproject.toml")
+    if not pyproject_path.exists():
+        print(f"❌ pyproject.toml not found at {pyproject_path.absolute()}")
+        sys.exit(1)
+    
+    print(f"📝 Updating {pyproject_path} with build metadata...")
+    
+    # Read the current content
+    content = pyproject_path.read_text()
+    
+    # Update version
+    if version:
         content = re.sub(
-            r'bundle\s*=\s*"com\.r2midi"', 
-            f'bundle = "{kwargs["bundle_prefix"]}"', 
+            r'version = "[^"]*"',
+            f'version = "{version}"',
             content
         )
-
-    # Update version if provided
-    if kwargs.get('version'):
+        print(f"✅ Updated version to: {version}")
+    
+    # Update author
+    if author:
         content = re.sub(
-            r'version\s*=\s*"[^"]*"', 
-            f'version = "{kwargs["version"]}"', 
+            r'author = "[^"]*"',
+            f'author = "{author}"',
             content
         )
-
-    # Update author if provided
-    if kwargs.get('author'):
+        print(f"✅ Updated author to: {author}")
+    
+    # Update author email
+    if author_email:
         content = re.sub(
-            r'author\s*=\s*"[^"]*"', 
-            f'author = "{kwargs["author"]}"', 
+            r'author_email = "[^"]*"',
+            f'author_email = "{author_email}"',
             content
         )
-
-    # Update author email if provided
-    if kwargs.get('author_email'):
+        print(f"✅ Updated author_email to: {author_email}")
+    
+    # Update server formal name
+    if server_name:
         content = re.sub(
-            r'author_email\s*=\s*"[^"]*"', 
-            f'author_email = "{kwargs["author_email"]}"', 
+            r'(\[tool\.briefcase\.app\.server\]\s*[\s\S]*?)formal_name = "[^"]*"',
+            f'\\1formal_name = "{server_name}"',
             content
         )
-
-    # Update formal names if provided
-    if kwargs.get('server_name'):
+        print(f"✅ Updated server formal_name to: {server_name}")
+    
+    # Update client formal name
+    if client_name:
         content = re.sub(
-            r'formal_name\s*=\s*"R2MIDI Server"', 
-            f'formal_name = "{kwargs["server_name"]}"', 
+            r'(\[tool\.briefcase\.app\.r2midi-client\]\s*[\s\S]*?)formal_name = "[^"]*"',
+            f'\\1formal_name = "{client_name}"',
             content
         )
-
-    if kwargs.get('client_name'):
+        print(f"✅ Updated client formal_name to: {client_name}")
+    
+    # Update bundle prefix for both apps
+    if bundle_prefix:
+        # Update server bundle ID
         content = re.sub(
-            r'formal_name\s*=\s*"R2MIDI Client"', 
-            f'formal_name = "{kwargs["client_name"]}"', 
+            r'(\[tool\.briefcase\.app\.server\]\s*[\s\S]*?)bundle = "[^"]*"',
+            f'\\1bundle = "{bundle_prefix}.server"',
             content
         )
-
-    # Update codesign identity if provided
-    if kwargs.get('codesign_identity'):
-        # Escape any special characters in the codesign identity
-        escaped_identity = kwargs['codesign_identity'].replace('"', '\\"')
-
-        # Check if codesign_identity already exists
-        if re.search(r'codesign_identity\s*=\s*"[^"]*"', content) or re.search(r"codesign_identity\s*=\s*'[^']*'", content):
-            # Update existing codesign_identity - handle both single and double quotes
+        # Update client bundle ID
+        content = re.sub(
+            r'(\[tool\.briefcase\.app\.r2midi-client\]\s*[\s\S]*?)bundle = "[^"]*"',
+            f'\\1bundle = "{bundle_prefix}.client"',
+            content
+        )
+        print(f"✅ Updated bundle prefix to: {bundle_prefix}")
+    
+    # Handle codesign identity
+    if codesign_identity:
+        # Determine the platform section to update
+        if app_store:
+            platform_section = "tool.briefcase.app.server.macOS.app"
+            identity_key = "codesign_identity"
+        else:
+            platform_section = "tool.briefcase.app.server.macOS.app"
+            identity_key = "codesign_identity"
+        
+        # First, try to update existing codesign_identity
+        server_pattern = rf'(\[{platform_section}\][\s\S]*?){identity_key} = "[^"]*"'
+        if re.search(server_pattern, content):
             content = re.sub(
-                r'codesign_identity\s*=\s*"[^"]*"', 
-                f'codesign_identity = "{escaped_identity}"', 
-                content
-            )
-            content = re.sub(
-                r"codesign_identity\s*=\s*'[^']*'", 
-                f'codesign_identity = "{escaped_identity}"', 
+                server_pattern,
+                f'\\1{identity_key} = "{codesign_identity}"',
                 content
             )
         else:
-            # Add codesign_identity to macOS sections
-            for section in ['[tool.briefcase.app.server.macOS]', '[tool.briefcase.app.r2midi-client.macOS]']:
-                section_pos = content.find(section)
-                if section_pos != -1:
-                    # Find the end of the section header line
-                    section_end = content.find('\n', section_pos)
-                    if section_end != -1:
-                        # Insert after the section header
-                        insert_pos = section_end + 1
-                        content = (
-                            content[:insert_pos] + 
-                            f'codesign_identity = "{escaped_identity}"\n' + 
-                            content[insert_pos:]
-                        )
+            # Add codesign_identity to server macOS section
+            server_section_pattern = rf'(\[{platform_section}\])([\s\S]*?)(?=\[|\Z)'
+            match = re.search(server_section_pattern, content)
+            if match:
+                section_start = match.group(1)
+                section_content = match.group(2)
+                new_section = f'{section_start}\n{identity_key} = "{codesign_identity}"{section_content}'
+                content = re.sub(server_section_pattern, new_section, content)
+            else:
+                # Create the section if it doesn't exist
+                server_app_pattern = r'(\[tool\.briefcase\.app\.server\][\s\S]*?)(?=\[tool\.briefcase\.app\.r2midi-client\]|\Z)'
+                match = re.search(server_app_pattern, content)
+                if match:
+                    server_content = match.group(1)
+                    new_server_content = f'{server_content}\n[{platform_section}]\n{identity_key} = "{codesign_identity}"\n'
+                    content = re.sub(server_app_pattern, new_server_content, content)
+        
+        # Update client codesign_identity
+        client_platform_section = "tool.briefcase.app.r2midi-client.macOS.app"
+        client_pattern = rf'(\[{client_platform_section}\][\s\S]*?){identity_key} = "[^"]*"'
+        if re.search(client_pattern, content):
+            content = re.sub(
+                client_pattern,
+                f'\\1{identity_key} = "{codesign_identity}"',
+                content
+            )
+        else:
+            # Add codesign_identity to client macOS section
+            client_section_pattern = rf'(\[{client_platform_section}\])([\s\S]*?)(?=\[|\Z)'
+            match = re.search(client_section_pattern, content)
+            if match:
+                section_start = match.group(1)
+                section_content = match.group(2)
+                new_section = f'{section_start}\n{identity_key} = "{codesign_identity}"{section_content}'
+                content = re.sub(client_section_pattern, new_section, content)
+            else:
+                # Create the section if it doesn't exist
+                client_app_pattern = r'(\[tool\.briefcase\.app\.r2midi-client\][\s\S]*)(\Z)'
+                match = re.search(client_app_pattern, content)
+                if match:
+                    client_content = match.group(1)
+                    new_client_content = f'{client_content}\n[{client_platform_section}]\n{identity_key} = "{codesign_identity}"\n'
+                    content = re.sub(client_app_pattern, new_client_content, content)
+        
+        print(f"✅ Updated codesign_identity to: {codesign_identity}")
+        if app_store:
+            print("✅ Configured for App Store distribution")
+    
+    # Write the updated content back
+    pyproject_path.write_text(content)
+    print(f"✅ Successfully updated {pyproject_path}")
 
-    # Write the updated content back to the file
-    with open(file_path, 'w') as f:
-        f.write(content)
-
-    print(f"Updated {file_path} with provided parameters")
 
 def main():
-    parser = argparse.ArgumentParser(description='Update pyproject.toml with code signing identity and other metadata')
-    parser.add_argument('--codesign-identity', help='Code signing identity to use')
-    parser.add_argument('--app-store', action='store_true', help='Update for App Store submission')
-    parser.add_argument('--bundle-prefix', help='Bundle ID prefix')
-    parser.add_argument('--version', help='App version')
-    parser.add_argument('--author', help='Author name')
-    parser.add_argument('--author-email', help='Author email')
-    parser.add_argument('--server-name', help='Server app formal name')
-    parser.add_argument('--client-name', help='Client app formal name')
-
+    parser = argparse.ArgumentParser(
+        description="Update pyproject.toml with build metadata and signing configuration"
+    )
+    
+    parser.add_argument("--version", help="App version")
+    parser.add_argument("--author", help="Author name")
+    parser.add_argument("--author-email", help="Author email")
+    parser.add_argument("--server-name", help="Server app formal name")
+    parser.add_argument("--client-name", help="Client app formal name")
+    parser.add_argument("--bundle-prefix", help="Bundle ID prefix")
+    parser.add_argument("--codesign-identity", help="Code signing identity")
+    parser.add_argument("--app-store", action="store_true", help="Configure for App Store")
+    
     args = parser.parse_args()
-
-    pyproject_path = Path('pyproject.toml')
-    if not pyproject_path.exists():
-        print(f"Error: {pyproject_path} not found", file=sys.stderr)
+    
+    try:
+        update_pyproject_toml(
+            version=args.version,
+            author=args.author,
+            author_email=args.author_email,
+            server_name=args.server_name,
+            client_name=args.client_name,
+            bundle_prefix=args.bundle_prefix,
+            codesign_identity=args.codesign_identity,
+            app_store=args.app_store
+        )
+    except Exception as e:
+        print(f"❌ Error updating pyproject.toml: {e}")
         sys.exit(1)
 
-    # Convert args to dictionary for update_pyproject function
-    kwargs = {
-        'codesign_identity': args.codesign_identity,
-        'bundle_prefix': args.bundle_prefix,
-        'version': args.version,
-        'author': args.author,
-        'author_email': args.author_email,
-        'server_name': args.server_name,
-        'client_name': args.client_name,
-    }
 
-    # Filter out None values
-    kwargs = {k: v for k, v in kwargs.items() if v is not None}
-
-    update_pyproject(pyproject_path, **kwargs)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

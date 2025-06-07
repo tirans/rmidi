@@ -1,148 +1,256 @@
 #!/usr/bin/env python3
 """
-Generate icon files for R2MIDI applications
+Script to generate icon files for R2MIDI applications.
+Creates icons in various sizes and formats for different platforms.
 """
+
 import os
 import sys
-import subprocess
 from pathlib import Path
 
-def create_placeholder_icon():
-    """Create a placeholder icon using the existing script"""
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-    except ImportError:
-        print("Installing Pillow...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "Pillow"])
-        from PIL import Image, ImageDraw, ImageFont
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except ImportError:
+    print("❌ PIL (Pillow) is required. Install with: pip install pillow")
+    sys.exit(1)
 
-    # Create a new image with a gradient background
-    size = 512
+
+def create_base_icon(size=512):
+    """Create a base icon for R2MIDI with a simple but recognizable design."""
+
+    # Create a new image with a transparent background
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Draw a rounded rectangle background
-    padding = 50
-    draw.rounded_rectangle(
-        [(padding, padding), (size-padding, size-padding)],
-        radius=50,
-        fill=(41, 128, 185, 255),  # Nice blue color
-        outline=(255, 255, 255, 255),
-        width=5
+    # Define colors
+    primary_color = "#2D5A8A"  # Blue
+    secondary_color = "#4A90C2"  # Lighter blue
+    accent_color = "#F39C12"  # Orange
+    text_color = "#FFFFFF"  # White
+
+    # Draw circular background
+    margin = size // 20
+    draw.ellipse(
+        [margin, margin, size - margin, size - margin],
+        fill=primary_color,
+        outline=secondary_color,
+        width=size // 40
     )
 
-    # Try to use a nice font, fall back to default if not available
+    # Draw MIDI connector representation (5-pin DIN)
+    center_x, center_y = size // 2, size // 2
+    connector_radius = size // 8
+
+    # Main connector circle
+    draw.ellipse(
+        [center_x - connector_radius, center_y - connector_radius,
+         center_x + connector_radius, center_y + connector_radius],
+        fill=accent_color,
+        outline=text_color,
+        width=size // 80
+    )
+
+    # 5 pins (simplified as dots)
+    pin_radius = size // 40
+    pin_positions = [
+        (center_x, center_y - connector_radius // 2),  # Top
+        (center_x - connector_radius // 3, center_y + connector_radius // 3),  # Bottom left
+        (center_x + connector_radius // 3, center_y + connector_radius // 3),  # Bottom right
+        (center_x - connector_radius // 2, center_y - connector_radius // 6),  # Left
+        (center_x + connector_radius // 2, center_y - connector_radius // 6),  # Right
+    ]
+
+    for pin_x, pin_y in pin_positions:
+        draw.ellipse(
+            [pin_x - pin_radius, pin_y - pin_radius,
+             pin_x + pin_radius, pin_y + pin_radius],
+            fill=primary_color
+        )
+
+    # Add "R2" text at the top
     try:
-        # Try common system fonts
-        font_paths = [
-            "/System/Library/Fonts/Helvetica.ttc",  # macOS
-            "/Library/Fonts/Arial.ttf",             # macOS
-            "/Windows/Fonts/arial.ttf",             # Windows
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux
-        ]
+        # Try to use a system font
+        font_size = size // 8
+        try:
+            font = ImageFont.truetype("Arial", font_size)
+        except (OSError, IOError):
+            try:
+                font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", font_size)
+            except (OSError, IOError):
+                try:
+                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+                except (OSError, IOError):
+                    font = ImageFont.load_default()
 
-        font = None
-        for path in font_paths:
-            if os.path.exists(path):
-                font = ImageFont.truetype(path, 120)
-                break
+        # Get text dimensions
+        bbox = draw.textbbox((0, 0), "R2", font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
 
-        if font is None:
-            font = ImageFont.load_default()
-    except:
-        font = ImageFont.load_default()
+        # Position text at the top
+        text_x = center_x - text_width // 2
+        text_y = center_y - connector_radius - text_height - size // 20
 
-    # Draw the text
-    text = "R2\nMIDI"
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
+        draw.text((text_x, text_y), "R2", fill=text_color, font=font)
 
-    position = ((size - text_width) // 2, (size - text_height) // 2)
-    draw.text(position, text, fill=(255, 255, 255, 255), font=font, align="center")
+    except Exception as e:
+        print(f"⚠️ Could not add text to icon: {e}")
+
+    # Add "MIDI" text at the bottom
+    try:
+        font_size_small = size // 12
+        try:
+            font_small = ImageFont.truetype("Arial", font_size_small)
+        except (OSError, IOError):
+            try:
+                font_small = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", font_size_small)
+            except (OSError, IOError):
+                try:
+                    font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size_small)
+                except (OSError, IOError):
+                    font_small = ImageFont.load_default()
+
+        # Get text dimensions
+        bbox = draw.textbbox((0, 0), "MIDI", font=font_small)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        # Position text at the bottom
+        text_x = center_x - text_width // 2
+        text_y = center_y + connector_radius + size // 20
+
+        draw.text((text_x, text_y), "MIDI", fill=text_color, font=font_small)
+
+    except Exception as e:
+        print(f"⚠️ Could not add bottom text to icon: {e}")
 
     return img
 
-def save_png(img, output_dir):
-    """Save the image as PNG"""
-    png_path = os.path.join(output_dir, "r2midi.png")
-    img.save(png_path, 'PNG')
-    print(f"Created PNG icon: {png_path}")
-    return png_path
 
-def create_icns(png_path, output_dir):
-    """Create macOS .icns file from PNG"""
-    # Create iconset directory
-    iconset_dir = os.path.join(output_dir, "r2midi.iconset")
-    os.makedirs(iconset_dir, exist_ok=True)
+def generate_icon_sizes(base_icon, output_dir, base_name):
+    """Generate icons in various sizes required by different platforms."""
 
-    # Generate different sizes
-    sizes = [16, 32, 128, 256, 512]
-    for size in sizes:
-        # Regular resolution
-        output_path = os.path.join(iconset_dir, f"icon_{size}x{size}.png")
-        subprocess.run(["sips", "-z", str(size), str(size), png_path, "--out", output_path], 
-                      check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Retina resolution (2x)
-        if size * 2 <= 1024:  # Don't exceed 1024
-            output_path = os.path.join(iconset_dir, f"icon_{size}x{size}@2x.png")
-            subprocess.run(["sips", "-z", str(size*2), str(size*2), png_path, "--out", output_path],
-                          check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Create iconset directory for macOS
+    iconset_dir = output_dir / f"{base_name}.iconset"
+    iconset_dir.mkdir(exist_ok=True)
+    print(f"📁 Created iconset directory: {iconset_dir}")
 
-    # Convert iconset to icns
-    icns_path = os.path.join(output_dir, "r2midi.icns")
+    # macOS iconset sizes
+    iconset_sizes = {
+        'icon_16x16.png': 16,
+        'icon_16x16@2x.png': 32,
+        'icon_32x32.png': 32,
+        'icon_32x32@2x.png': 64,
+        'icon_128x128.png': 128,
+        'icon_128x128@2x.png': 256,
+        'icon_256x256.png': 256,
+        'icon_256x256@2x.png': 512,
+        'icon_512x512.png': 512,
+        'icon_512x512@2x.png': 1024,
+    }
+
+    # Generate macOS iconset files
+    for filename, size in iconset_sizes.items():
+        output_path = iconset_dir / filename
+        resized_icon = base_icon.resize((size, size), Image.Resampling.LANCZOS)
+        resized_icon.save(output_path, format='PNG')
+        print(f"✅ Created iconset {size}x{size}: {filename}")
+
+    # Try to convert iconset to icns using iconutil (macOS only)
     try:
-        subprocess.run(["iconutil", "-c", "icns", iconset_dir, "-o", icns_path], check=True)
-        print(f"Created ICNS icon: {icns_path}")
-    except subprocess.CalledProcessError:
-        print("Failed to create ICNS file. This is expected on non-macOS platforms.")
-        # Create an empty file as a placeholder
-        Path(icns_path).touch()
-        print(f"Created empty placeholder ICNS file: {icns_path}")
+        import subprocess
+        icns_path = output_dir / f"{base_name}.icns"
+        subprocess.run(["iconutil", "-c", "icns", str(iconset_dir), "-o", str(icns_path)], check=True)
+        print(f"✅ Created ICNS: {icns_path}")
+    except (ImportError, subprocess.SubprocessError) as e:
+        print(f"⚠️ Could not create ICNS file: {e}")
+        # Create an empty ICNS file as a placeholder on non-macOS platforms
+        icns_path = output_dir / f"{base_name}.icns"
+        if not icns_path.exists():
+            icns_path.touch()
+            print(f"✅ Created empty placeholder ICNS: {icns_path}")
 
-    return icns_path
+    # Other standard icon sizes for different platforms
+    other_sizes = {
+        # Windows
+        'icon_24x24.png': 24,
+        'icon_48x48.png': 48,
+        'icon_96x96.png': 96,
 
-def create_ico(png_path, output_dir):
-    """Create Windows .ico file from PNG"""
+        # Generic/other
+        'icon.png': 512,  # Default icon
+        f'{base_name}.png': 512,  # Named icon
+    }
+
+    # Generate other icon sizes
+    for filename, size in other_sizes.items():
+        output_path = output_dir / filename
+        resized_icon = base_icon.resize((size, size), Image.Resampling.LANCZOS)
+        resized_icon.save(output_path, format='PNG')
+        print(f"✅ Created {size}x{size}: {output_path}")
+
+    # Create Windows ICO file
+    ico_sizes = [16, 32, 48, 64, 128, 256]
+    ico_images = []
+
+    for ico_size in ico_sizes:
+        ico_img = base_icon.resize((ico_size, ico_size), Image.Resampling.LANCZOS)
+        ico_images.append(ico_img)
+
     try:
-        from PIL import Image
-        img = Image.open(png_path)
-
-        # Create different sizes for ICO
-        sizes = [16, 32, 48, 64, 128, 256]
-        ico_path = os.path.join(output_dir, "r2midi.ico")
-
-        # Resize and save as ICO
-        img.save(ico_path, sizes=[(size, size) for size in sizes])
-        print(f"Created ICO icon: {ico_path}")
-        return ico_path
+        ico_path = output_dir / f"{base_name}.ico"
+        ico_images[0].save(
+            ico_path,
+            format='ICO',
+            sizes=[(s, s) for s in ico_sizes],
+            append_images=ico_images[1:]
+        )
+        print(f"✅ Created ICO: {ico_path}")
     except Exception as e:
-        print(f"Failed to create ICO file: {e}")
-        # Create an empty file as a placeholder
-        ico_path = os.path.join(output_dir, "r2midi.ico")
-        Path(ico_path).touch()
-        print(f"Created empty placeholder ICO file: {ico_path}")
-        return ico_path
+        print(f"⚠️ Could not create ICO file: {e}")
+
 
 def main():
-    # Determine output directory - default to resources folder
-    output_dir = os.environ.get("ICON_OUTPUT_DIR", "resources")
+    """Generate all icon files for R2MIDI applications."""
 
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    print("🎨 Generating R2MIDI application icons...")
 
-    # Create placeholder icon
-    img = create_placeholder_icon()
+    # Create resources directory
+    resources_dir = Path("resources")
+    resources_dir.mkdir(exist_ok=True)
 
-    # Save as PNG
-    png_path = save_png(img, output_dir)
+    # Generate base icon
+    print("🖼️ Creating base icon design...")
+    base_icon = create_base_icon(1024)  # Create high-resolution base
 
-    # Create platform-specific icons
-    create_icns(png_path, output_dir)
-    create_ico(png_path, output_dir)
+    # Generate icons for the main application
+    print("📱 Generating icon sizes...")
+    generate_icon_sizes(base_icon, resources_dir, "r2midi")
 
-    print(f"All icon files generated in {output_dir}")
+    # Create specific app icons if needed
+    # You can customize these for server vs client if desired
+    server_icon = base_icon.copy()
+    client_icon = base_icon.copy()
+
+    # Save the main icons
+    (resources_dir / "r2midi_server.png").write_bytes(
+        (resources_dir / "r2midi.png").read_bytes()
+    )
+    (resources_dir / "r2midi_client.png").write_bytes(
+        (resources_dir / "r2midi.png").read_bytes()
+    )
+
+    print("✅ Icon generation complete!")
+    print(f"📁 Icons saved to: {resources_dir.absolute()}")
+
+    # List generated files
+    print("\n📋 Generated files:")
+    for icon_file in sorted(resources_dir.glob("*.png")) + sorted(resources_dir.glob("*.ico")):
+        print(f"  - {icon_file.name}")
+
 
 if __name__ == "__main__":
     main()

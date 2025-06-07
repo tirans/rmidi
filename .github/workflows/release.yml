@@ -225,9 +225,9 @@ jobs:
             else
               # Add to macOS section
               sed -i.bak "/\[tool\.briefcase\.app\.server\.macOS\]/a\\
-codesign_identity = \"$BRIEFCASE_SIGNING_IDENTITY\"" pyproject.toml
+codesign_identity = \\\"$BRIEFCASE_SIGNING_IDENTITY\\\"" pyproject.toml
               sed -i.bak "/\[tool\.briefcase\.app\.r2midi-client\.macOS\]/a\\
-codesign_identity = \"$BRIEFCASE_SIGNING_IDENTITY\"" pyproject.toml
+codesign_identity = \\\"$BRIEFCASE_SIGNING_IDENTITY\\\"" pyproject.toml
             fi
           fi
         shell: bash

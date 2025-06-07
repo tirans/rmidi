@@ -203,33 +203,19 @@ jobs:
 
       - name: Update pyproject.toml
         run: |
-          # Update bundle ID if needed
-          if [ "${BUNDLE_PREFIX}" != "com.r2midi" ]; then
-            sed -i.bak "s|bundle = \"com\.r2midi\"|bundle = \"${BUNDLE_PREFIX}\"|g" pyproject.toml
-          fi
+          # Use Python script to update all pyproject.toml settings
+          python scripts/update_pyproject.py \
+            --version "${APP_VERSION}" \
+            --author "${AUTHOR_NAME}" \
+            --author-email "${AUTHOR_EMAIL}" \
+            --server-name "${SERVER_NAME}" \
+            --client-name "${CLIENT_NAME}" \
+            $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}") \
+            $([ "${{ matrix.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ] && echo "--codesign-identity \"$BRIEFCASE_SIGNING_IDENTITY\"")
 
-          # Update version and metadata
-          sed -i.bak "s|version = \"0\.1\.64\"|version = \"${APP_VERSION}\"|g" pyproject.toml
-          sed -i.bak "s|author = \".*\"|author = \"${AUTHOR_NAME}\"|g" pyproject.toml
-          sed -i.bak "s|author_email = \".*\"|author_email = \"${AUTHOR_EMAIL}\"|g" pyproject.toml
-
-          # Update formal names
-          sed -i.bak "s|formal_name = \"R2MIDI Server\"|formal_name = \"${SERVER_NAME}\"|g" pyproject.toml
-          sed -i.bak "s|formal_name = \"R2MIDI Client\"|formal_name = \"${CLIENT_NAME}\"|g" pyproject.toml
-
-          # Add signing configuration for macOS
-          if [ "${{ matrix.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
-            # Update or add code signing identity
-            if grep -q "codesign_identity" pyproject.toml; then
-              sed -i.bak "s|codesign_identity = \".*\"|codesign_identity = \"$BRIEFCASE_SIGNING_IDENTITY\"|g" pyproject.toml
-            else
-              # Add to macOS section
-              sed -i.bak "/\[tool\.briefcase\.app\.server\.macOS\]/a\\
-codesign_identity = \\\"$BRIEFCASE_SIGNING_IDENTITY\\\"" pyproject.toml
-              sed -i.bak "/\[tool\.briefcase\.app\.r2midi-client\.macOS\]/a\\
-codesign_identity = \\\"$BRIEFCASE_SIGNING_IDENTITY\\\"" pyproject.toml
-            fi
-          fi
+          # Show updated pyproject.toml for debugging
+          echo "Updated pyproject.toml:"
+          grep -A 2 "codesign_identity" pyproject.toml || echo "No codesign_identity found"
         shell: bash
 
       - name: Build with Briefcase
@@ -441,17 +427,20 @@ codesign_identity = \\\"$BRIEFCASE_SIGNING_IDENTITY\\\"" pyproject.toml
 
       - name: Update pyproject.toml for App Store
         run: |
-          # Update bundle ID and metadata
-          if [ "${BUNDLE_PREFIX}" != "com.r2midi" ]; then
-            sed -i.bak "s|bundle = \"com\.r2midi\"|bundle = \"${BUNDLE_PREFIX}\"|g" pyproject.toml
-          fi
+          # Use Python script to update all pyproject.toml settings for App Store
+          python scripts/update_pyproject.py \
+            --app-store \
+            --version "${APP_VERSION}" \
+            --author "${AUTHOR_NAME}" \
+            --author-email "${AUTHOR_EMAIL}" \
+            --server-name "${SERVER_NAME}" \
+            --client-name "${CLIENT_NAME}" \
+            $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}") \
+            --codesign-identity "$BRIEFCASE_APP_STORE_IDENTITY"
 
-          sed -i.bak "s|version = \"0\.1\.64\"|version = \"${APP_VERSION}\"|g" pyproject.toml
-          sed -i.bak "s|author = \".*\"|author = \"${AUTHOR_NAME}\"|g" pyproject.toml
-          sed -i.bak "s|author_email = \".*\"|author_email = \"${AUTHOR_EMAIL}\"|g" pyproject.toml
-
-          # Update macOS configuration for App Store
-          sed -i.bak "s|codesign_identity = \"Developer ID Application.*\"|codesign_identity = \"$BRIEFCASE_APP_STORE_IDENTITY\"|g" pyproject.toml
+          # Show updated pyproject.toml for debugging
+          echo "Updated pyproject.toml for App Store:"
+          grep -A 2 "codesign_identity" pyproject.toml || echo "No codesign_identity found"
 
       - name: Build and submit to App Store
         run: |

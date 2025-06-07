@@ -185,10 +185,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install briefcase
+          pip install pillow
           pip install -r requirements.txt
           if [ -f r2midi_client/requirements.txt ]; then
             pip install -r r2midi_client/requirements.txt
           fi
+        shell: bash
+
+      - name: Generate icon files
+        run: |
+          echo "Generating icon files..."
+          # Make the script executable
+          chmod +x scripts/generate_icons.py
+          # Run the script to generate icons (will place them in resources/ folder)
+          python scripts/generate_icons.py
+          # List the generated files
+          ls -la resources/r2midi.*
         shell: bash
 
       - name: Update pyproject.toml
@@ -257,21 +269,29 @@ jobs:
             if [ -n "$BRIEFCASE_APPLE_ID" ] && [ -n "$BRIEFCASE_APPLE_ID_PASSWORD" ] && [ -n "$BRIEFCASE_APPLE_TEAM_ID" ]; then
               echo "🔐 Notarizing applications..."
 
-              # Notarize server
+              # Create a temporary file with credentials to avoid keychain
+              echo "Creating temporary credentials file..."
+              CREDENTIALS_FILE=$(mktemp)
+              echo "apple-id = \"$BRIEFCASE_APPLE_ID\"" > "$CREDENTIALS_FILE"
+              echo "apple-id-password = \"$BRIEFCASE_APPLE_ID_PASSWORD\"" >> "$CREDENTIALS_FILE"
+              echo "apple-team-id = \"$BRIEFCASE_APPLE_TEAM_ID\"" >> "$CREDENTIALS_FILE"
+
+              # Notarize server with credentials file
+              echo "Notarizing server with credentials file..."
               briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a server \
                 --notarize \
                 --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-                --apple-id "$BRIEFCASE_APPLE_ID" \
-                --apple-id-password "$BRIEFCASE_APPLE_ID_PASSWORD" \
-                --apple-team-id "$BRIEFCASE_APPLE_TEAM_ID"
+                --credential-file "$CREDENTIALS_FILE"
 
-              # Notarize client
+              # Notarize client with credentials file
+              echo "Notarizing client with credentials file..."
               briefcase package ${{ matrix.briefcase_platform }} ${{ matrix.briefcase_format }} -a r2midi-client \
                 --notarize \
                 --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-                --apple-id "$BRIEFCASE_APPLE_ID" \
-                --apple-id-password "$BRIEFCASE_APPLE_ID_PASSWORD" \
-                --apple-team-id "$BRIEFCASE_APPLE_TEAM_ID"
+                --credential-file "$CREDENTIALS_FILE"
+
+              # Clean up credentials file
+              rm -f "$CREDENTIALS_FILE"
             fi
           else
             # Package without signing for other platforms
@@ -361,6 +381,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install briefcase
+          pip install pillow
           pip install -r requirements.txt
           if [ -f r2midi_client/requirements.txt ]; then
             pip install -r r2midi_client/requirements.txt
@@ -382,6 +403,17 @@ jobs:
 
           VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Generate icon files
+        run: |
+          echo "Generating icon files..."
+          # Make the script executable
+          chmod +x scripts/generate_icons.py
+          # Run the script to generate icons (will place them in resources/ folder)
+          python scripts/generate_icons.py
+          # List the generated files
+          ls -la resources/r2midi.*
+        shell: bash
 
       - name: Import App Store certificates
         env:
@@ -469,17 +501,29 @@ jobs:
           # Package for App Store with upload
           echo "📦 Packaging and uploading to App Store Connect..."
 
+          # Create a temporary file with credentials to avoid keychain
+          echo "Creating temporary credentials file for App Store submission..."
+          CREDENTIALS_FILE=$(mktemp)
+          echo "apple-id = \"${{ secrets.APPLE_ID }}\"" > "$CREDENTIALS_FILE"
+          echo "apple-id-password = \"${{ secrets.APPLE_ID_PASSWORD }}\"" >> "$CREDENTIALS_FILE"
+          echo "apple-team-id = \"${{ secrets.APPLE_TEAM_ID }}\"" >> "$CREDENTIALS_FILE"
+          echo "app-store-connect-key-id = \"$BRIEFCASE_APP_STORE_CONNECT_KEY_ID\"" >> "$CREDENTIALS_FILE"
+          echo "app-store-connect-issuer-id = \"$BRIEFCASE_APP_STORE_CONNECT_ISSUER_ID\"" >> "$CREDENTIALS_FILE"
+
+          # Package server for App Store with credentials file
           briefcase package macOS app -a server \
             --app-store \
             --identity "$BRIEFCASE_APP_STORE_IDENTITY" \
-            --key-id "$BRIEFCASE_APP_STORE_CONNECT_KEY_ID" \
-            --issuer-id "$BRIEFCASE_APP_STORE_CONNECT_ISSUER_ID"
+            --credential-file "$CREDENTIALS_FILE"
 
+          # Package client for App Store with credentials file
           briefcase package macOS app -a r2midi-client \
             --app-store \
             --identity "$BRIEFCASE_APP_STORE_IDENTITY" \
-            --key-id "$BRIEFCASE_APP_STORE_CONNECT_KEY_ID" \
-            --issuer-id "$BRIEFCASE_APP_STORE_CONNECT_ISSUER_ID"
+            --credential-file "$CREDENTIALS_FILE"
+
+          # Clean up credentials file
+          rm -f "$CREDENTIALS_FILE"
 
           echo "🎉 Apps submitted to App Store Connect!"
 

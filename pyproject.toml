@@ -66,7 +66,7 @@ author_email = "tiran@tirans.com"
 formal_name = "R2MIDI Server"
 description = "MIDI 2.0 Patch Selection Server API"
 long_description = """R2MIDI Server is a REST API for managing and selecting MIDI presets across various devices and manufacturers."""
-icon = "r2midi"
+icon = "resources/r2midi"
 
 sources = [
     "server",
@@ -94,7 +94,7 @@ startup_method = "main"
 formal_name = "R2MIDI Client"
 description = "MIDI 2.0 Patch Selection Client UI"
 long_description = """R2MIDI Client is a user interface for managing and selecting MIDI presets across various devices and manufacturers."""
-icon = "r2midi"
+icon = "resources/r2midi"
 
 sources = [
     "r2midi_client",

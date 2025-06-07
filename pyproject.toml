@@ -132,7 +132,7 @@ requires = [
 ]
 
 # macOS specific settings
-codesign_identity = "Developer ID Application"
+codesign_identity = "Developer ID Application: Your Name (TEAM_ID)"
 entitlements_file = "entitlements.plist"
 packaging_format = "dmg,pkg"
 
@@ -147,7 +147,7 @@ requires = [
 ]
 
 # macOS specific settings
-codesign_identity = "Developer ID Application"
+codesign_identity = "Developer ID Application: Your Name (TEAM_ID)"
 entitlements_file = "entitlements.plist"
 packaging_format = "dmg,pkg"
 

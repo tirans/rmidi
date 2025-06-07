@@ -68,23 +68,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-13, windows-latest, ubuntu-latest]
+        os: [macos-13]
         include:
           - os: macos-13
             platform: macOS
             platform_name: macos
             briefcase_platform: macOS
             briefcase_format: app
-          - os: windows-latest
-            platform: windows
-            platform_name: windows
-            briefcase_platform: windows
-            briefcase_format: app
-          - os: ubuntu-latest
-            platform: linux
-            platform_name: linux
-            briefcase_platform: linux
-            briefcase_format: system
     runs-on: ${{ matrix.os }}
     environment: production
 
@@ -204,14 +194,26 @@ jobs:
       - name: Update pyproject.toml
         run: |
           # Use Python script to update all pyproject.toml settings
-          python scripts/update_pyproject.py \
-            --version "${APP_VERSION}" \
-            --author "${AUTHOR_NAME}" \
-            --author-email "${AUTHOR_EMAIL}" \
-            --server-name "${SERVER_NAME}" \
-            --client-name "${CLIENT_NAME}" \
-            $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}") \
-            $([ "${{ matrix.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ] && echo "--codesign-identity \"$BRIEFCASE_SIGNING_IDENTITY\"")
+          if [ "${{ matrix.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
+            # For macOS with signing identity, pass it as a separate argument to avoid quoting issues
+            python scripts/update_pyproject.py \
+              --version "${APP_VERSION}" \
+              --author "${AUTHOR_NAME}" \
+              --author-email "${AUTHOR_EMAIL}" \
+              --server-name "${SERVER_NAME}" \
+              --client-name "${CLIENT_NAME}" \
+              $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}") \
+              --codesign-identity "$BRIEFCASE_SIGNING_IDENTITY"
+          else
+            # For other platforms, don't include codesign identity
+            python scripts/update_pyproject.py \
+              --version "${APP_VERSION}" \
+              --author "${AUTHOR_NAME}" \
+              --author-email "${AUTHOR_EMAIL}" \
+              --server-name "${SERVER_NAME}" \
+              --client-name "${CLIENT_NAME}" \
+              $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}")
+          fi
 
           # Show updated pyproject.toml for debugging
           echo "Updated pyproject.toml:"
@@ -292,21 +294,21 @@ jobs:
               fi
             done
           elif [ "${{ matrix.platform }}" = "windows" ]; then
-            # Find and package MSI files
+            # Find and package MSI files - not signed
             find dist -name "*.msi" | while read msi; do
               if [[ "$msi" == *"Server"* ]] || [[ "$msi" == *"server"* ]]; then
-                cp "$msi" "release_files/R2MIDI-Server-windows.msi"
+                cp "$msi" "release_files/R2MIDI-Server-windows-unsigned.msi"
               else
-                cp "$msi" "release_files/R2MIDI-Client-windows.msi"
+                cp "$msi" "release_files/R2MIDI-Client-windows-unsigned.msi"
               fi
             done
           else
-            # Linux - package DEB files
+            # Linux - package DEB files - not signed
             find dist -name "*.deb" | while read deb; do
               if [[ "$deb" == *"server"* ]]; then
-                cp "$deb" "release_files/R2MIDI-Server-linux.deb"
+                cp "$deb" "release_files/R2MIDI-Server-linux-unsigned.deb"
               else
-                cp "$deb" "release_files/R2MIDI-Client-linux.deb"
+                cp "$deb" "release_files/R2MIDI-Client-linux-unsigned.deb"
               fi
             done
           fi
@@ -428,15 +430,21 @@ jobs:
       - name: Update pyproject.toml for App Store
         run: |
           # Use Python script to update all pyproject.toml settings for App Store
-          python scripts/update_pyproject.py \
-            --app-store \
-            --version "${APP_VERSION}" \
-            --author "${AUTHOR_NAME}" \
-            --author-email "${AUTHOR_EMAIL}" \
-            --server-name "${SERVER_NAME}" \
-            --client-name "${CLIENT_NAME}" \
-            $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}") \
-            --codesign-identity "$BRIEFCASE_APP_STORE_IDENTITY"
+          if [ -n "$BRIEFCASE_APP_STORE_IDENTITY" ]; then
+            # Pass codesign identity as a separate argument to avoid quoting issues
+            python scripts/update_pyproject.py \
+              --app-store \
+              --version "${APP_VERSION}" \
+              --author "${AUTHOR_NAME}" \
+              --author-email "${AUTHOR_EMAIL}" \
+              --server-name "${SERVER_NAME}" \
+              --client-name "${CLIENT_NAME}" \
+              $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}") \
+              --codesign-identity "$BRIEFCASE_APP_STORE_IDENTITY"
+          else
+            echo "❌ No App Store signing identity available"
+            exit 1
+          fi
 
           # Show updated pyproject.toml for debugging
           echo "Updated pyproject.toml for App Store:"
@@ -498,12 +506,50 @@ jobs:
           VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Download all production artifacts
+      - name: Download macOS signed artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: production-release-*
           path: combined_production_files
           merge-multiple: true
+
+      - name: Download Windows and Linux artifacts from build workflow
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stable-builds-*
+          path: stable_builds_temp
+          merge-multiple: true
+
+      - name: Prepare Windows and Linux artifacts for release
+        run: |
+          # Get version from the previous step
+          VERSION="${{ steps.get_info.outputs.version }}"
+          echo "Using version: $VERSION"
+
+          mkdir -p combined_production_files
+
+          # Copy Windows artifacts
+          if [ -f "stable_builds_temp/R2MIDI-Server-windows-stable-v${VERSION}.zip" ]; then
+            cp "stable_builds_temp/R2MIDI-Server-windows-stable-v${VERSION}.zip" "combined_production_files/R2MIDI-Server-windows-unsigned.zip"
+          fi
+          if [ -f "stable_builds_temp/R2MIDI-Client-windows-stable-v${VERSION}.zip" ]; then
+            cp "stable_builds_temp/R2MIDI-Client-windows-stable-v${VERSION}.zip" "combined_production_files/R2MIDI-Client-windows-unsigned.zip"
+          fi
+
+          # Copy Linux artifacts
+          if [ -f "stable_builds_temp/R2MIDI-Server-linux-stable-v${VERSION}.deb" ]; then
+            cp "stable_builds_temp/R2MIDI-Server-linux-stable-v${VERSION}.deb" "combined_production_files/R2MIDI-Server-linux-unsigned.deb"
+          fi
+          if [ -f "stable_builds_temp/R2MIDI-Client-linux-stable-v${VERSION}.deb" ]; then
+            cp "stable_builds_temp/R2MIDI-Client-linux-stable-v${VERSION}.deb" "combined_production_files/R2MIDI-Client-linux-unsigned.deb"
+          fi
+
+          # List all files in stable_builds_temp to help with debugging
+          echo "Available stable build artifacts:"
+          ls -la stable_builds_temp/
+
+          echo "Combined release artifacts:"
+          ls -la combined_production_files/
 
       - name: Create Production Release
         uses: softprops/action-gh-release@v2
@@ -523,13 +569,13 @@ jobs:
             - **R2MIDI-Server-macos-signed.dmg** - R2MIDI Server installer
             - **R2MIDI-Client-macos-signed.dmg** - R2MIDI Client installer
 
-            #### 🪟 Windows
-            - **R2MIDI-Server-windows.msi** - R2MIDI Server installer
-            - **R2MIDI-Client-windows.msi** - R2MIDI Client installer
+            #### 🪟 Windows (Unsigned)
+            - **R2MIDI-Server-windows-unsigned.zip** - R2MIDI Server package
+            - **R2MIDI-Client-windows-unsigned.zip** - R2MIDI Client package
 
-            #### 🐧 Linux
-            - **R2MIDI-Server-linux.deb** - R2MIDI Server package
-            - **R2MIDI-Client-linux.deb** - R2MIDI Client package
+            #### 🐧 Linux (Unsigned)
+            - **R2MIDI-Server-linux-unsigned.deb** - R2MIDI Server package
+            - **R2MIDI-Client-linux-unsigned.deb** - R2MIDI Client package
 
             ${{ needs.check-build-success.outputs.should_app_store == 'true' && '#### 🏪 Mac App Store\n- **R2MIDI Server** and **R2MIDI Client** submitted to App Store\n- Check App Store Connect for review status\n' || '' }}
 
@@ -542,9 +588,9 @@ jobs:
             4. First launch: right-click and select "Open"
 
             #### Windows ✅  
-            1. Download the .msi installer
-            2. Double-click to run the installer
-            3. Follow the installation wizard
+            1. Download the .zip file
+            2. Extract the contents to a folder
+            3. Run the executable (.exe) file
 
             #### Linux ✅
             ```bash
@@ -555,9 +601,10 @@ jobs:
 
             ### ✨ Features
             - 🔒 macOS applications are fully code signed and notarized
-            - 📦 Professional installers for all platforms
+            - 📦 Professional packages for all platforms
             - 🏪 Automatic App Store submission (when configured)
             - 🚀 Built with Briefcase for consistent packaging
+            - ⚡ Optimized workflow reuses Windows and Linux builds to reduce redundancy
 
             ### 🏪 App Store Status
             ${{ needs.check-build-success.outputs.should_app_store == 'true' && '✅ **Submitted to Mac App Store** - Check App Store Connect for review status' || '⚠️ **App Store submission disabled** - Configure APP_STORE_CONNECT_API_KEY to enable' }}

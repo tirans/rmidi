@@ -65,12 +65,20 @@ def update_pyproject(file_path, **kwargs):
 
     # Update codesign identity if provided
     if kwargs.get('codesign_identity'):
+        # Escape any special characters in the codesign identity
+        escaped_identity = kwargs['codesign_identity'].replace('"', '\\"')
+
         # Check if codesign_identity already exists
-        if re.search(r'codesign_identity\s*=\s*"[^"]*"', content):
-            # Update existing codesign_identity
+        if re.search(r'codesign_identity\s*=\s*"[^"]*"', content) or re.search(r"codesign_identity\s*=\s*'[^']*'", content):
+            # Update existing codesign_identity - handle both single and double quotes
             content = re.sub(
                 r'codesign_identity\s*=\s*"[^"]*"', 
-                f'codesign_identity = "{kwargs["codesign_identity"]}"', 
+                f'codesign_identity = "{escaped_identity}"', 
+                content
+            )
+            content = re.sub(
+                r"codesign_identity\s*=\s*'[^']*'", 
+                f'codesign_identity = "{escaped_identity}"', 
                 content
             )
         else:
@@ -85,7 +93,7 @@ def update_pyproject(file_path, **kwargs):
                         insert_pos = section_end + 1
                         content = (
                             content[:insert_pos] + 
-                            f'codesign_identity = "{kwargs["codesign_identity"]}"\n' + 
+                            f'codesign_identity = "{escaped_identity}"\n' + 
                             content[insert_pos:]
                         )
 

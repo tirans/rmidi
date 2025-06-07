@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient as FastAPITestClient
 import pytest
 
 # Import the app and functions from server.main
-from server.main import app, is_port_in_use, find_available_port, launch_ui_client_with_delay
+from server.main import app, is_port_in_use, find_available_port
 
 # Create a custom TestClient that's compatible with newer versions of httpx
 class TestClient(FastAPITestClient):
@@ -122,44 +122,6 @@ class TestMainFunctions(unittest.TestCase):
         self.assertEqual(result, 8000)  # Should return the original port
         self.assertEqual(mock_is_port_in_use.call_count, 3)
 
-    @patch('time.sleep')
-    @patch('server.main.ui_launcher')
-    def test_launch_ui_client_with_delay_success(self, mock_ui_launcher, mock_sleep):
-        """Test launching UI client with delay when ui_launcher is initialized"""
-        # Set up mock ui_launcher
-        mock_ui_launcher.launch_client.return_value = True
-
-        # Call the function
-        launch_ui_client_with_delay(1)
-
-        # Verify the results
-        mock_sleep.assert_called_once_with(1)
-        mock_ui_launcher.launch_client.assert_called_once()
-
-    @patch('time.sleep')
-    @patch('server.main.ui_launcher')
-    def test_launch_ui_client_with_delay_failure(self, mock_ui_launcher, mock_sleep):
-        """Test launching UI client with delay when ui_launcher is initialized but launch fails"""
-        # Set up mock ui_launcher
-        mock_ui_launcher.launch_client.return_value = False
-
-        # Call the function
-        launch_ui_client_with_delay(1)
-
-        # Verify the results
-        mock_sleep.assert_called_once_with(1)
-        mock_ui_launcher.launch_client.assert_called_once()
-
-    @patch('time.sleep')
-    @patch('server.main.ui_launcher', None)
-    def test_launch_ui_client_with_delay_no_launcher(self, mock_sleep):
-        """Test launching UI client with delay when ui_launcher is not initialized"""
-        # Call the function
-        launch_ui_client_with_delay(1)
-
-        # Verify the results
-        mock_sleep.assert_called_once_with(1)
-        # No launcher to call, so no assertions on launcher methods
 
 class TestFastAPIEndpoints:
     """Test cases for the FastAPI endpoints"""

@@ -41,10 +41,10 @@ jobs:
           # Check if we have signing certificates (only macOS required now)
           if [ -n "${{ secrets.APPLE_CERTIFICATE_P12 }}" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "✅ macOS code signing certificates available - proceeding with release"
+            echo "✅ macOS code signing certificates available - proceeding with signed release"
           else
             echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No macOS signing certificates available - skipping signed release"
+            echo "⚠️ No macOS signing certificates available - will build unsigned packages only"
           fi
 
           # Check if we should submit to App Store
@@ -158,25 +158,25 @@ jobs:
 
           # Find the signing identity with robust parsing and fallbacks
           SIGNING_IDENTITY=""
-          
+
           # Method 1: Try to find Developer ID Application by name using sed
           SIGNING_IDENTITY=$(security find-identity -v -p codesigning briefcase.keychain | grep "Developer ID Application" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
           echo "🔍 Method 1 (sed name): '$SIGNING_IDENTITY'"
-          
+
           # Method 2: If name extraction fails, try using SHA-1 hash
           if [ -z "$SIGNING_IDENTITY" ]; then
             echo "⚠️ Certificate name method failed, trying SHA-1 method..."
             SIGNING_IDENTITY=$(security find-identity -v -p codesigning briefcase.keychain | grep "Developer ID Application" | head -1 | awk '{print $2}')
             echo "🔍 Method 2 (SHA-1): '$SIGNING_IDENTITY'"
           fi
-          
+
           # Method 3: If still empty, try any valid codesigning identity by name
           if [ -z "$SIGNING_IDENTITY" ]; then
             echo "⚠️ SHA-1 method failed, trying to find any valid identity by name..."
             SIGNING_IDENTITY=$(security find-identity -v -p codesigning briefcase.keychain | grep -E "(Developer ID|Apple)" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
             echo "🔍 Method 3 (any name): '$SIGNING_IDENTITY'"
           fi
-          
+
           # Method 4: Last resort - try SHA-1 of any valid identity
           if [ -z "$SIGNING_IDENTITY" ]; then
             echo "⚠️ Name-based methods failed, trying SHA-1 of any identity..."
@@ -368,7 +368,7 @@ jobs:
 
           if [ "${{ matrix.platform }}" = "macOS" ]; then
             echo "📁 Organizing macOS release files..."
-            
+
             # Find and copy DMG files
             echo "Looking for DMG files in dist/..."
             find dist -name "*.dmg" -print0 | while IFS= read -r -d '' dmg; do
@@ -425,7 +425,7 @@ jobs:
             # Final verification
             echo "📋 Final release artifacts:"
             ls -la release_files/ || echo "❌ No release files directory created"
-            
+
             # Double-check that we have at least DMG files
             if [ ! -f "release_files/R2MIDI-Server-macos-signed.dmg" ] && [ ! -f "release_files/R2MIDI-Client-macos-signed.dmg" ]; then
               echo "❌ ERROR: No DMG files found! Listing all dist contents:"
@@ -448,6 +448,233 @@ jobs:
         if: always() && matrix.platform == 'macOS'
         run: |
           security delete-keychain briefcase.keychain || true
+
+  build-unsigned-releases:
+    needs: check-build-success
+    # This job runs regardless of whether signing certificates are available
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Fix submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule deinit -f server/midi-presets || true
+          rm -rf .git/modules/server/midi-presets || true
+          git rm -rf server/midi-presets || true
+          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+          git submodule init
+          git submodule update --init --recursive
+        shell: bash
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure app metadata
+        env:
+          BUNDLE_PREFIX: ${{ secrets.APP_BUNDLE_ID_PREFIX }}
+          SERVER_NAME: ${{ secrets.APP_DISPLAY_NAME_SERVER }}
+          CLIENT_NAME: ${{ secrets.APP_DISPLAY_NAME_CLIENT }}
+          AUTHOR_NAME: ${{ secrets.APP_AUTHOR_NAME }}
+          AUTHOR_EMAIL: ${{ secrets.APP_AUTHOR_EMAIL }}
+        run: |
+          echo "BUNDLE_PREFIX=${BUNDLE_PREFIX:-com.r2midi}" >> $GITHUB_ENV
+          echo "SERVER_NAME=${SERVER_NAME:-R2MIDI Server}" >> $GITHUB_ENV
+          echo "CLIENT_NAME=${CLIENT_NAME:-R2MIDI Client}" >> $GITHUB_ENV
+          echo "AUTHOR_NAME=${AUTHOR_NAME:-R2MIDI Team}" >> $GITHUB_ENV
+          echo "AUTHOR_EMAIL=${AUTHOR_EMAIL:-tiran@tirans.com}" >> $GITHUB_ENV
+
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Install system dependencies
+        run: |
+          echo "🍎 Installing macOS dependencies for unsigned build..."
+          # macOS typically doesn't need additional system dependencies for Python/Qt
+        shell: bash
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install briefcase
+          pip install pillow
+          pip install -r requirements.txt
+          if [ -f r2midi_client/requirements.txt ]; then
+            pip install -r r2midi_client/requirements.txt
+          fi
+        shell: bash
+
+      - name: Generate icon files
+        run: |
+          echo "Generating icon files..."
+          # Make the script executable
+          chmod +x scripts/generate_icons.py
+          # Run the script to generate icons (will place them in resources/ folder)
+          python scripts/generate_icons.py
+          # List the generated files
+          ls -la resources/r2midi.*
+        shell: bash
+
+      - name: Update pyproject.toml for unsigned build
+        run: |
+          # Use Python script to update pyproject.toml without codesign identity
+          python scripts/update_pyproject.py \
+            --version "${APP_VERSION}" \
+            --author "${AUTHOR_NAME}" \
+            --author-email "${AUTHOR_EMAIL}" \
+            --server-name "${SERVER_NAME}" \
+            --client-name "${CLIENT_NAME}" \
+            $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}")
+
+          # Show updated pyproject.toml for debugging
+          echo "Updated pyproject.toml for unsigned build:"
+          grep -A 2 "codesign_identity" pyproject.toml || echo "No codesign_identity found (expected for unsigned build)"
+        shell: bash
+
+      - name: Build with Briefcase
+        run: |
+          echo "🔨 Building unsigned macOS applications with Briefcase..."
+
+          # Create applications
+          echo "Creating R2MIDI Server..."
+          briefcase create macOS app -a server
+
+          echo "Creating R2MIDI Client..."
+          briefcase create macOS app -a r2midi-client
+
+          # Build applications
+          echo "Building R2MIDI Server..."
+          briefcase build macOS app -a server
+
+          echo "Building R2MIDI Client..."
+          briefcase build macOS app -a r2midi-client
+        shell: bash
+
+      - name: Package DMG with Briefcase (unsigned)
+        run: |
+          echo "📦 Packaging unsigned macOS applications as DMG..."
+
+          # Package without signing
+          echo "Packaging unsigned R2MIDI Server DMG..."
+          briefcase package macOS app -a server --no-sign || {
+            echo "❌ DMG packaging failed for server. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
+            exit 1
+          }
+
+          # Package without signing
+          echo "Packaging unsigned R2MIDI Client DMG..."
+          briefcase package macOS app -a r2midi-client --no-sign || {
+            echo "❌ DMG packaging failed for client. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
+            exit 1
+          }
+        shell: bash
+
+      - name: Package PKG with Briefcase (unsigned)
+        run: |
+          echo "📦 Packaging unsigned macOS applications as PKG..."
+
+          # Package as PKG installer without signing
+          echo "Packaging unsigned R2MIDI Server PKG..."
+          briefcase package macOS installer -a server --no-sign || {
+            echo "❌ PKG packaging failed for server. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
+            exit 1
+          }
+
+          # Package without signing
+          echo "Packaging unsigned R2MIDI Client PKG..."
+          briefcase package macOS installer -a r2midi-client --no-sign || {
+            echo "❌ PKG packaging failed for client. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
+            exit 1
+          }
+        shell: bash
+
+      - name: Prepare unsigned release artifacts
+        run: |
+          mkdir -p unsigned_release_files
+
+          echo "📁 Organizing unsigned macOS release files..."
+
+          # Find and copy DMG files
+          echo "Looking for DMG files in dist/..."
+          find dist -name "*.dmg" -print0 | while IFS= read -r -d '' dmg; do
+            echo "Found DMG: $dmg"
+            if [[ "$dmg" == *"Server"* ]] || [[ "$dmg" == *"server"* ]]; then
+              cp "$dmg" "unsigned_release_files/R2MIDI-Server-macos-unsigned.dmg"
+              echo "✅ Copied unsigned server DMG"
+            else
+              cp "$dmg" "unsigned_release_files/R2MIDI-Client-macos-unsigned.dmg"
+              echo "✅ Copied unsigned client DMG"
+            fi
+          done
+
+          # Find and copy PKG files
+          echo "Looking for PKG files in dist/..."
+          find dist -name "*.pkg" -print0 | while IFS= read -r -d '' pkg; do
+            echo "Found PKG: $pkg"
+            if [[ "$pkg" == *"Server"* ]] || [[ "$pkg" == *"server"* ]]; then
+              cp "$pkg" "unsigned_release_files/R2MIDI-Server-macos-unsigned.pkg"
+              echo "✅ Copied unsigned server PKG"
+            else
+              cp "$pkg" "unsigned_release_files/R2MIDI-Client-macos-unsigned.pkg"
+              echo "✅ Copied unsigned client PKG"
+            fi
+          done
+
+          # Fallback: check build directories if dist is empty
+          if [ ! -f "unsigned_release_files/R2MIDI-Server-macos-unsigned.dmg" ]; then
+            echo "⚠️ No DMG found in dist, checking build directories..."
+            find build -name "*.dmg" | head -2 | while read dmg; do
+              if [[ "$dmg" == *"server"* ]]; then
+                cp "$dmg" "unsigned_release_files/R2MIDI-Server-macos-unsigned.dmg"
+                echo "✅ Copied unsigned server DMG from build"
+              else
+                cp "$dmg" "unsigned_release_files/R2MIDI-Client-macos-unsigned.dmg"
+                echo "✅ Copied unsigned client DMG from build"
+              fi
+            done
+          fi
+
+          if [ ! -f "unsigned_release_files/R2MIDI-Server-macos-unsigned.pkg" ]; then
+            echo "⚠️ No PKG found in dist, checking build directories..."
+            find build -name "*.pkg" | head -2 | while read pkg; do
+              if [[ "$pkg" == *"server"* ]]; then
+                cp "$pkg" "unsigned_release_files/R2MIDI-Server-macos-unsigned.pkg"
+                echo "✅ Copied unsigned server PKG from build"
+              else
+                cp "$pkg" "unsigned_release_files/R2MIDI-Client-macos-unsigned.pkg"
+                echo "✅ Copied unsigned client PKG from build"
+              fi
+            done
+          fi
+
+          # Final verification
+          echo "📋 Final unsigned release artifacts:"
+          ls -la unsigned_release_files/ || echo "❌ No unsigned release files directory created"
+
+          # Double-check that we have at least DMG files
+          if [ ! -f "unsigned_release_files/R2MIDI-Server-macos-unsigned.dmg" ] && [ ! -f "unsigned_release_files/R2MIDI-Client-macos-unsigned.dmg" ]; then
+            echo "❌ ERROR: No unsigned DMG files found! Listing all dist contents:"
+            find dist -type f -name "*" | head -20
+            echo "Listing all build contents:"
+            find build -type f -name "*" | head -20
+            exit 1
+          fi
+        shell: bash
+
+      - name: Upload unsigned release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-release-macos
+          path: unsigned_release_files/*
+          retention-days: 30
 
   app-store-submission:
     needs: [check-build-success, build-signed-releases]
@@ -641,9 +868,9 @@ jobs:
           security delete-keychain app_store.keychain || true
 
   publish-production-release:
-    needs: [build-signed-releases, check-build-success]
+    needs: [build-signed-releases, build-unsigned-releases, check-build-success]
     runs-on: ubuntu-latest
-    if: always() && needs.check-build-success.outputs.should_release == 'true'
+    if: always()
 
     steps:
       - name: Checkout code
@@ -663,6 +890,12 @@ jobs:
           pattern: production-release-*
           path: combined_production_files
           merge-multiple: true
+
+      - name: Download macOS unsigned artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: unsigned-release-macos
+          path: combined_production_files
 
       - name: Download Windows and Linux artifacts from build workflow
         uses: actions/download-artifact@v4
@@ -712,15 +945,17 @@ jobs:
           body: |
             ## 🚀 R2MIDI v${{ steps.get_info.outputs.version }} - Production Release
 
-            **Official production release built and signed with Briefcase.**
+            ${{ needs.check-build-success.outputs.should_release == 'true' && '**Official production release built and signed with Briefcase.**' || '**Production release with unsigned macOS packages (code signing unavailable).**' }}
 
             ### 📦 Downloads
 
-            #### 🍎 macOS (Code Signed & Notarized)
-            - **R2MIDI-Server-macos-signed.dmg** - R2MIDI Server disk image (drag & drop install)
-            - **R2MIDI-Client-macos-signed.dmg** - R2MIDI Client disk image (drag & drop install)
-            - **R2MIDI-Server-macos-signed.pkg** - R2MIDI Server installer package (automated install)
-            - **R2MIDI-Client-macos-signed.pkg** - R2MIDI Client installer package (automated install)
+            ${{ needs.check-build-success.outputs.should_release == 'true' && '#### 🍎 macOS (Code Signed & Notarized)\n- **R2MIDI-Server-macos-signed.dmg** - R2MIDI Server disk image (drag & drop install)\n- **R2MIDI-Client-macos-signed.dmg** - R2MIDI Client disk image (drag & drop install)\n- **R2MIDI-Server-macos-signed.pkg** - R2MIDI Server installer package (automated install)\n- **R2MIDI-Client-macos-signed.pkg** - R2MIDI Client installer package (automated install)\n' || '' }}
+
+            #### 🍎 macOS ${{ needs.check-build-success.outputs.should_release == 'true' && '(Unsigned Fallback)' || '(Unsigned)' }}
+            - **R2MIDI-Server-macos-unsigned.pkg** - R2MIDI Server unsigned installer package
+            - **R2MIDI-Client-macos-unsigned.pkg** - R2MIDI Client unsigned installer package
+            - **R2MIDI-Server-macos-unsigned.dmg** - R2MIDI Server unsigned disk image
+            - **R2MIDI-Client-macos-unsigned.dmg** - R2MIDI Client unsigned disk image
 
             #### 🪟 Windows (Unsigned)
             - **R2MIDI-Server-windows-unsigned.zip** - R2MIDI Server package
@@ -735,17 +970,18 @@ jobs:
             ### 📋 Installation
 
             #### macOS ✅
-            **Option 1: DMG (Recommended for most users)**
-            1. Download the .dmg file
-            2. Double-click to mount
+            ${{ needs.check-build-success.outputs.should_release == 'true' && '**Option 1: Signed DMG (Recommended for most users)**\n1. Download the signed .dmg file\n2. Double-click to mount\n3. Drag the app to Applications folder\n4. First launch: right-click and select "Open"\n\n**Option 2: Signed PKG (For automated/scripted installation)**\n1. Download the signed .pkg file\n2. Double-click to run installer\n3. Follow installation wizard\n4. Apps will be installed to /Applications\n\n' || '' }}**Option ${{ needs.check-build-success.outputs.should_release == 'true' && '3' || '1' }}: Unsigned PKG ${{ needs.check-build-success.outputs.should_release == 'true' && '(If signed packages fail)' || '(Standard installation)' }}**
+            1. Download the unsigned .pkg file
+            2. Right-click and select "Open"
+            3. Click "Open" when prompted about unidentified developer
+            4. Follow installation wizard
+            5. Apps will be installed to /Applications
+
+            **Option ${{ needs.check-build-success.outputs.should_release == 'true' && '4' || '2' }}: Unsigned DMG (Alternative installation)**
+            1. Download the unsigned .dmg file
+            2. Right-click and select "Open"
             3. Drag the app to Applications folder
             4. First launch: right-click and select "Open"
-
-            **Option 2: PKG (For automated/scripted installation)**
-            1. Download the .pkg file
-            2. Double-click to run installer
-            3. Follow installation wizard
-            4. Apps will be installed to /Applications
 
             #### Windows ✅  
             1. Download the .zip file
@@ -760,11 +996,11 @@ jobs:
             ```
 
             ### ✨ Features
-            - 🔒 macOS applications are fully code signed and notarized
-            - 📦 Professional packages for all platforms (DMG + PKG for macOS)
+            ${{ needs.check-build-success.outputs.should_release == 'true' && '- 🔒 macOS applications are fully code signed and notarized\n' || '- 🔓 Unsigned macOS packages available when code signing is not possible\n' }}- 📦 Professional packages for all platforms (DMG + PKG for macOS)
             - 🏪 Automatic App Store submission (when configured)
             - 🚀 Built with Briefcase for consistent packaging
             - ⚡ Optimized workflow reuses Windows and Linux builds to reduce redundancy
+            - 🛡️ Fallback to unsigned packages if code signing fails
 
             ### 🏪 App Store Status
             ${{ needs.check-build-success.outputs.should_app_store == 'true' && '✅ **Submitted to Mac App Store** - Check App Store Connect for review status' || '⚠️ **App Store submission disabled** - Configure APP_STORE_CONNECT_API_KEY to enable' }}

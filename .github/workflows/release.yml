@@ -452,7 +452,7 @@ jobs:
   build-unsigned-releases:
     needs: check-build-success
     # This job runs regardless of whether signing certificates are available
-    runs-on: macos-13
+    runs-on: macos-14
 
     steps:
       - name: Checkout code

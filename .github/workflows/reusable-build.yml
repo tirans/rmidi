@@ -1,0 +1,177 @@
+name: Reusable Build Workflow
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
+      os:
+        required: true
+        type: string
+      python-version:
+        required: false
+        type: string
+        default: "3.12"
+      build-type:
+        required: true
+        type: string  # dev, staging, production
+      version-suffix:
+        required: false
+        type: string
+        default: ""
+      sign-builds:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      APPLE_CERTIFICATE_P12:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_ID_PASSWORD:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      WINDOWS_CERTIFICATE_P12:
+        required: false
+      WINDOWS_CERTIFICATE_PASSWORD:
+        required: false
+      APP_BUNDLE_ID_PREFIX:
+        required: false
+      APP_DISPLAY_NAME_SERVER:
+        required: false
+      APP_DISPLAY_NAME_CLIENT:
+        required: false
+      APP_AUTHOR_NAME:
+        required: false
+      APP_AUTHOR_EMAIL:
+        required: false
+    outputs:
+      artifact-name:
+        description: "Name of the uploaded artifact"
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+jobs:
+  build:
+    runs-on: ${{ inputs.os }}
+    outputs:
+      artifact-name: ${{ steps.upload.outputs.artifact-name }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fix submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule deinit -f server/midi-presets || true
+          rm -rf .git/modules/server/midi-presets || true
+          git rm -rf server/midi-presets || true
+          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+          git submodule init
+          git submodule update --init --recursive
+        shell: bash
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          
+          if [ -n "${{ inputs.version-suffix }}" ]; then
+            FULL_VERSION="${VERSION}${{ inputs.version-suffix }}"
+          else
+            FULL_VERSION="${VERSION}"
+          fi
+          
+          echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "APP_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install system dependencies
+        uses: ./.github/actions/install-system-deps
+        with:
+          platform: ${{ inputs.platform }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install briefcase pillow
+          pip install -r requirements.txt
+          if [ -f r2midi_client/requirements.txt ]; then 
+            pip install -r r2midi_client/requirements.txt
+          fi
+        shell: bash
+
+      - name: Generate icon files
+        run: |
+          chmod +x scripts/generate_icons.py
+          python scripts/generate_icons.py
+        shell: bash
+
+      - name: Setup code signing (if enabled)
+        if: inputs.sign-builds && inputs.platform == 'macOS'
+        uses: ./.github/actions/setup-macos-signing
+        with:
+          certificate-p12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          apple-id: ${{ secrets.APPLE_ID }}
+          apple-id-password: ${{ secrets.APPLE_ID_PASSWORD }}
+          apple-team-id: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Configure build metadata
+        uses: ./.github/actions/configure-build
+        with:
+          build-type: ${{ inputs.build-type }}
+          version: ${{ steps.version.outputs.version }}
+          platform: ${{ inputs.platform }}
+          bundle-prefix: ${{ secrets.APP_BUNDLE_ID_PREFIX }}
+          server-name: ${{ secrets.APP_DISPLAY_NAME_SERVER }}
+          client-name: ${{ secrets.APP_DISPLAY_NAME_CLIENT }}
+          author-name: ${{ secrets.APP_AUTHOR_NAME }}
+          author-email: ${{ secrets.APP_AUTHOR_EMAIL }}
+
+      - name: Build applications
+        uses: ./.github/actions/build-apps
+        with:
+          platform: ${{ inputs.platform }}
+          sign: ${{ inputs.sign-builds }}
+
+      - name: Package applications
+        uses: ./.github/actions/package-apps
+        with:
+          platform: ${{ inputs.platform }}
+          build-type: ${{ inputs.build-type }}
+          version: ${{ steps.version.outputs.version }}
+
+      - name: Upload artifacts
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.build-type }}-${{ inputs.platform }}-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 30
+          compression-level: 6
+
+      - name: Cleanup
+        if: always()
+        uses: ./.github/actions/cleanup-signing
+        with:
+          platform: ${{ inputs.platform }}

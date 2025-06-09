@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [ develop, feature/*, dev/*, test/* ]
+  pull_request:
+    branches: [ master, main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Quick tests for all pushes and PRs
+  test:
+    name: Test
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      python-version: "3.12"
+      coverage: true
+
+  # Development builds only on push or manual trigger
+  dev-builds:
+    name: Dev Build (${{ matrix.platform }})
+    needs: test
+    if: github.event_name != 'pull_request' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+          - platform: windows
+            os: windows-latest
+          - platform: macOS
+            os: macos-13
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      platform: ${{ matrix.platform }}
+      os: ${{ matrix.os }}
+      build-type: dev
+      version-suffix: "-dev.${{ github.run_number }}"
+      sign-builds: false
+
+  summary:
+    name: CI Summary
+    needs: [test, dev-builds]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# 🚧 CI Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.test.result }}" = "success" ]; then
+            echo "✅ **Tests:** Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Tests:** Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.dev-builds.result }}" = "success" ]; then
+            echo "✅ **Builds:** Completed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.dev-builds.result }}" = "skipped" ]; then
+            echo "⏭️ **Builds:** Skipped (PR test-only mode)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Builds:** Failed" >> $GITHUB_STEP_SUMMARY
+          fi

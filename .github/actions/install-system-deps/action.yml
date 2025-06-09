@@ -1,0 +1,42 @@
+name: Install System Dependencies
+description: Install platform-specific system dependencies
+
+inputs:
+  platform:
+    description: 'Target platform (linux, windows, macOS)'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Linux dependencies
+      if: inputs.platform == 'linux'
+      shell: bash
+      run: |
+        echo "🐧 Installing Linux dependencies..."
+        sudo apt-get update -qq
+        sudo apt-get install -y \
+          libasound2-dev libegl1 libjack-dev librtmidi-dev \
+          libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 \
+          libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+          libxcb-xinerama0 libxcb-xfixes0 libfontconfig1-dev \
+          libfreetype6-dev libx11-dev libx11-xcb-dev libxext-dev \
+          libxfixes-dev libxi-dev libxrender-dev libxcb1-dev \
+          libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev \
+          libxcb-shm0-dev libxcb-util0-dev libxcb-util-dev \
+          libxkbcommon-dev libxkbcommon-x11-dev libxcb-cursor0 \
+          libxcb-shape0
+
+    - name: Install Windows dependencies
+      if: inputs.platform == 'windows'
+      shell: pwsh
+      run: |
+        Write-Host "🪟 Installing Windows dependencies..."
+        # Windows typically doesn't need additional system dependencies for Python/Qt
+
+    - name: Install macOS dependencies
+      if: inputs.platform == 'macOS'
+      shell: bash
+      run: |
+        echo "🍎 Installing macOS dependencies..."
+        # macOS typically doesn't need additional system dependencies for Python/Qt

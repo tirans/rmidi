@@ -1,0 +1,187 @@
+name: App Store Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: 'Submit to App Store Connect'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  app-store-build:
+    name: Build for App Store
+    runs-on: macos-14
+    environment: app-store
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fix submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule deinit -f server/midi-presets || true
+          rm -rf .git/modules/server/midi-presets || true
+          git rm -rf server/midi-presets || true
+          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+          git submodule init
+          git submodule update --init --recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install briefcase pillow
+          pip install -r requirements.txt
+          if [ -f r2midi_client/requirements.txt ]; then
+            pip install -r r2midi_client/requirements.txt
+          fi
+
+      - name: Generate icons
+        run: |
+          chmod +x scripts/generate_icons.py
+          python scripts/generate_icons.py
+
+      - name: Setup App Store signing
+        env:
+          APPLE_APP_STORE_CERTIFICATE_P12: ${{ secrets.APPLE_APP_STORE_CERTIFICATE_P12 }}
+          APPLE_APP_STORE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_APP_STORE_CERTIFICATE_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          # Mask sensitive values
+          echo "::add-mask::$APPLE_APP_STORE_CERTIFICATE_PASSWORD"
+          echo "::add-mask::$APP_STORE_CONNECT_API_KEY"
+          echo "::add-mask::$APP_STORE_CONNECT_ISSUER_ID"
+          echo "::add-mask::$APP_STORE_CONNECT_KEY_ID"
+
+          # Import App Store certificate
+          echo "$APPLE_APP_STORE_CERTIFICATE_P12" | base64 --decode > cert.p12
+          
+          security create-keychain -p briefcase app_store.keychain
+          security default-keychain -s app_store.keychain
+          security unlock-keychain -p briefcase app_store.keychain
+          
+          security import cert.p12 -k app_store.keychain -P "$APPLE_APP_STORE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f cert.p12
+          
+          security set-key-partition-list -S apple-tool:,apple: -s -k briefcase app_store.keychain
+          
+          # Find signing identity
+          APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | \
+            grep "3rd Party Mac Developer Application" | head -1 | \
+            sed -n 's/.*"\([^"]*\)".*/\1/p')
+          
+          # Fallback to SHA-1 if name parsing fails
+          if [ -z "$APP_STORE_IDENTITY" ]; then
+            APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | \
+              grep "3rd Party Mac Developer Application" | head -1 | awk '{print $2}')
+          fi
+          
+          if [ -z "$APP_STORE_IDENTITY" ]; then
+            echo "❌ No App Store signing identity found"
+            echo "Available identities:"
+            security find-identity -v app_store.keychain
+            exit 1
+          fi
+          
+          echo "BRIEFCASE_APP_STORE_IDENTITY=$APP_STORE_IDENTITY" >> $GITHUB_ENV
+          
+          # Setup API key
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
+
+      - name: Update pyproject.toml for App Store
+        run: |
+          # Use Python script if available
+          if [ -f scripts/update_pyproject.py ]; then
+            python scripts/update_pyproject.py \
+              --app-store \
+              --version "${{ steps.version.outputs.version }}" \
+              --codesign-identity "$BRIEFCASE_APP_STORE_IDENTITY"
+          else
+            # Fallback to sed
+            sed -i.bak 's/app-sandbox = false/app-sandbox = true/g' pyproject.toml
+          fi
+
+      - name: Build applications
+        run: |
+          # Create and build
+          briefcase create macOS app -a server
+          briefcase build macOS app -a server
+          
+          briefcase create macOS app -a r2midi-client
+          briefcase build macOS app -a r2midi-client
+
+      - name: Package for App Store
+        if: github.event.inputs.submit == 'true'
+        run: |
+          echo "📦 Packaging and submitting to App Store Connect..."
+          
+          # Package with App Store submission
+          briefcase package macOS app -a server --app-store
+          briefcase package macOS app -a r2midi-client --app-store
+
+      - name: Package without submission
+        if: github.event.inputs.submit == 'false'
+        run: |
+          echo "📦 Packaging for App Store (no submission)..."
+          
+          # Package without submission
+          briefcase package macOS app -a server --app-store --no-upload
+          briefcase package macOS app -a r2midi-client --app-store --no-upload
+
+      - name: Upload App Store packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-packages-${{ steps.version.outputs.version }}
+          path: |
+            dist/*.pkg
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          echo "# 🏪 App Store Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Submitted:** ${{ github.event.inputs.submit }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ github.event.inputs.submit }}" = "true" ]; then
+            echo "✅ Applications submitted to App Store Connect" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
+            echo "1. Go to [App Store Connect](https://appstoreconnect.apple.com)" >> $GITHUB_STEP_SUMMARY
+            echo "2. Complete app metadata" >> $GITHUB_STEP_SUMMARY
+            echo "3. Submit for review" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "📦 App Store packages created (not submitted)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the packages from this workflow run to submit manually." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf ~/.appstoreconnect
+          security delete-keychain app_store.keychain || true

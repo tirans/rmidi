@@ -1,0 +1,93 @@
+name: Setup macOS Code Signing
+description: Configure macOS keychain and code signing certificates
+
+inputs:
+  certificate-p12:
+    description: 'Base64 encoded p12 certificate'
+    required: true
+  certificate-password:
+    description: 'Certificate password'
+    required: true
+  apple-id:
+    description: 'Apple ID for notarization'
+    required: true
+  apple-id-password:
+    description: 'Apple ID password'
+    required: true
+  apple-team-id:
+    description: 'Apple Team ID'
+    required: true
+
+outputs:
+  signing-identity:
+    description: 'Code signing identity'
+    value: ${{ steps.setup.outputs.signing-identity }}
+  keychain-path:
+    description: 'Path to temporary keychain'
+    value: ${{ steps.setup.outputs.keychain-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup signing
+      id: setup
+      shell: bash
+      run: |
+        # Mask sensitive values
+        echo "::add-mask::${{ inputs.certificate-password }}"
+        echo "::add-mask::${{ inputs.apple-id }}"
+        echo "::add-mask::${{ inputs.apple-id-password }}"
+        echo "::add-mask::${{ inputs.apple-team-id }}"
+
+        echo "🔐 Setting up macOS keychain and certificates..."
+
+        # Create temporary keychain
+        KEYCHAIN_PATH="$HOME/Library/Keychains/r2midi-temp.keychain-db"
+        KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+        
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed s/\"//g)
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+        # Import certificate
+        echo "${{ inputs.certificate-p12 }}" | base64 --decode > cert.p12
+        security import cert.p12 -k "$KEYCHAIN_PATH" -P "${{ inputs.certificate-password }}" \
+          -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+        rm -f cert.p12
+
+        # Set partition list
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+        # Find signing identity
+        SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
+          grep "Developer ID Application" | head -1 | \
+          sed -n 's/.*"\([^"]*\)".*/\1/p')
+        
+        if [ -z "$SIGNING_IDENTITY" ]; then
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
+            grep "Developer ID Application" | head -1 | awk '{print $2}')
+        fi
+
+        if [ -z "$SIGNING_IDENTITY" ]; then
+          echo "❌ No valid signing identity found"
+          exit 1
+        fi
+
+        # Setup notarization profile
+        echo "${{ inputs.apple-id-password }}" | xcrun notarytool store-credentials "r2midi-notary" \
+          --apple-id "${{ inputs.apple-id }}" \
+          --team-id "${{ inputs.apple-team-id }}" \
+          --password -
+
+        # Set outputs
+        echo "signing-identity=$SIGNING_IDENTITY" >> $GITHUB_OUTPUT
+        echo "keychain-path=$KEYCHAIN_PATH" >> $GITHUB_OUTPUT
+        
+        # Export to environment
+        echo "BRIEFCASE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
+        echo "BRIEFCASE_NOTARIZATION_PROFILE=r2midi-notary" >> $GITHUB_ENV
+        echo "R2MIDI_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+        echo "R2MIDI_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+        
+        echo "✅ Code signing configured"

@@ -1,0 +1,62 @@
+name: Build Applications
+description: Build applications using Briefcase
+
+inputs:
+  platform:
+    description: 'Target platform'
+    required: true
+  sign:
+    description: 'Whether to sign builds'
+    required: false
+    default: 'false'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create applications
+      shell: bash
+      run: |
+        echo "🔨 Creating applications for ${{ inputs.platform }}..."
+        
+        # Determine app type based on platform
+        if [ "${{ inputs.platform }}" = "linux" ]; then
+          APP_TYPE="system"
+        else
+          APP_TYPE="app"
+        fi
+        
+        # Create server
+        echo "Creating R2MIDI Server..."
+        briefcase create ${{ inputs.platform }} $APP_TYPE -a server
+        
+        # Create client
+        echo "Creating R2MIDI Client..."
+        briefcase create ${{ inputs.platform }} $APP_TYPE -a r2midi-client
+
+    - name: Build applications
+      shell: bash
+      run: |
+        echo "⚙️ Building applications for ${{ inputs.platform }}..."
+        
+        # Determine app type based on platform
+        if [ "${{ inputs.platform }}" = "linux" ]; then
+          APP_TYPE="system"
+        else
+          APP_TYPE="app"
+        fi
+        
+        # Build server
+        echo "Building R2MIDI Server..."
+        briefcase build ${{ inputs.platform }} $APP_TYPE -a server
+        
+        # Build client
+        echo "Building R2MIDI Client..."
+        briefcase build ${{ inputs.platform }} $APP_TYPE -a r2midi-client
+
+    - name: List build output
+      shell: bash
+      run: |
+        echo "📁 Build output:"
+        if [ -d "build" ]; then
+          find build -type f \( -name "*.app" -o -name "*.exe" -o -name "*.deb" \) | head -20
+        fi

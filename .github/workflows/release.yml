@@ -1,1008 +1,248 @@
-name: Production Release
+name: Release
+
 on:
-  workflow_run:
-    workflows: ["Build and Test"]
-    types: [completed]
-    branches: [master]
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      version-type:
+        description: 'Version increment type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
 
 permissions:
   contents: write
   id-token: write
 
 jobs:
-  check-build-success:
+  # Version management
+  version:
+    name: Version Management
     runs-on: ubuntu-latest
     outputs:
-      should_release: ${{ steps.check.outputs.should_release }}
-      should_app_store: ${{ steps.check.outputs.should_app_store }}
-      version: ${{ steps.get_version.outputs.version }}
-      build_status: ${{ steps.check_build_status.outputs.build_status }}
-
+      version: ${{ steps.version.outputs.new_version }}
+      changed: ${{ steps.version.outputs.changed }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check build status
-        id: check_build_status
+      - name: Configure Git
         run: |
-          if [ "${{ github.event.workflow_run.conclusion }}" == "success" ]; then
-            echo "build_status=success" >> $GITHUB_OUTPUT
-            echo "✅ Previous build was successful"
-          else
-            echo "build_status=failure" >> $GITHUB_OUTPUT
-            echo "❌ Previous build failed - will create a release anyway"
-          fi
+          git config --local user.name "GitHub Action"
+          git config --local user.email "action@github.com"
 
-      - name: Check if release needed
-        id: check
+      - name: Update version
+        id: version
         run: |
-          # Check if we have signing certificates (only macOS required now)
-          if [ -n "${{ secrets.APPLE_CERTIFICATE_P12 }}" ]; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "✅ macOS code signing certificates available - proceeding with signed release"
-          else
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No macOS signing certificates available - will build unsigned packages only"
+          # Get current version
+          CURRENT_VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Determine increment type
+          INCREMENT_TYPE="${{ github.event.inputs.version-type || 'patch' }}"
+          
+          if [ "$INCREMENT_TYPE" = "none" ]; then
+            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
           fi
-
-          # Check if we should submit to App Store
-          if [ -n "${{ secrets.APP_STORE_CONNECT_API_KEY }}" ] && [ -n "${{ secrets.APPLE_APP_STORE_CERTIFICATE_P12 }}" ]; then
-            echo "should_app_store=true" >> $GITHUB_OUTPUT
-            echo "🏪 App Store Connect API key and certificates available - will submit to App Store"
-          else
-            echo "should_app_store=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ App Store submission disabled (missing API key or certificates)"
+          
+          # Parse version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          
+          # Increment based on type
+          case "$INCREMENT_TYPE" in
+            major)
+              NEW_VERSION="$((MAJOR + 1)).0.0"
+              ;;
+            minor)
+              NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
+              ;;
+            patch)
+              NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+              ;;
+          esac
+          
+          echo "New version: $NEW_VERSION"
+          
+          # Update files
+          sed -i "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" server/version.py
+          sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" pyproject.toml
+          
+          # Update CHANGELOG if it exists
+          if [ -f "CHANGELOG.md" ]; then
+            TODAY=$(date +%Y-%m-%d)
+            sed -i "s/## \[Unreleased\]/## [$NEW_VERSION] - $TODAY\n\n### Changed\n- Version increment: $INCREMENT_TYPE\n\n## [Unreleased]/" CHANGELOG.md
+            git add CHANGELOG.md
           fi
+          
+          # Commit changes
+          git add server/version.py pyproject.toml
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+          git push
+          
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "changed=true" >> $GITHUB_OUTPUT
 
-      - name: Get version
-        id: get_version
+  # Run tests in parallel with multiple Python versions
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    needs: version
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      python-version: ${{ matrix.python-version }}
+      coverage: ${{ matrix.python-version == '3.12' }}
+
+  # Build Python package
+  python-package:
+    name: Build Python Package
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Fix submodules
         run: |
-          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule deinit -f server/midi-presets || true
+          rm -rf .git/modules/server/midi-presets || true
+          git rm -rf server/midi-presets || true
+          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+          git submodule init
+          git submodule update --init --recursive
 
-  build-signed-releases:
-    needs: check-build-success
-    if: needs.check-build-success.outputs.should_release == 'true'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+          python -m build
+
+      - name: Check package
+        run: |
+          python -m twine check dist/*
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+          retention-days: 30
+
+  # Build applications for all platforms
+  build-apps:
+    name: Build (${{ matrix.platform }})
+    needs: [version, test]
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-13]
         include:
-          - os: macos-13
-            platform: macOS
-            platform_name: macos
-            briefcase_platform: macOS
-    runs-on: ${{ matrix.os }}
-    environment: production
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Fix submodules
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule deinit -f server/midi-presets || true
-          rm -rf .git/modules/server/midi-presets || true
-          git rm -rf server/midi-presets || true
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
-          git submodule init
-          git submodule update --init --recursive
-        shell: bash
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Configure app metadata
-        env:
-          BUNDLE_PREFIX: ${{ secrets.APP_BUNDLE_ID_PREFIX }}
-          SERVER_NAME: ${{ secrets.APP_DISPLAY_NAME_SERVER }}
-          CLIENT_NAME: ${{ secrets.APP_DISPLAY_NAME_CLIENT }}
-          AUTHOR_NAME: ${{ secrets.APP_AUTHOR_NAME }}
-          AUTHOR_EMAIL: ${{ secrets.APP_AUTHOR_EMAIL }}
-        run: |
-          echo "BUNDLE_PREFIX=${BUNDLE_PREFIX:-com.r2midi}" >> $GITHUB_ENV
-          echo "SERVER_NAME=${SERVER_NAME:-R2MIDI Server}" >> $GITHUB_ENV
-          echo "CLIENT_NAME=${CLIENT_NAME:-R2MIDI Client}" >> $GITHUB_ENV
-          echo "AUTHOR_NAME=${AUTHOR_NAME:-R2MIDI Team}" >> $GITHUB_ENV
-          echo "AUTHOR_EMAIL=${AUTHOR_EMAIL:-tiran@tirans.com}" >> $GITHUB_ENV
-
-          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
-          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Setup macOS Keychain and Certificates
-        if: matrix.platform == 'macOS'
-        env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [ -z "$APPLE_CERTIFICATE_P12" ]; then
-            echo "❌ No macOS signing certificates provided"
-            exit 1
-          fi
-
-          # Mask sensitive values in logs
-          echo "::add-mask::$APPLE_CERTIFICATE_PASSWORD"
-          echo "::add-mask::$APPLE_ID"
-          echo "::add-mask::$APPLE_ID_PASSWORD" 
-          echo "::add-mask::$APPLE_TEAM_ID"
-
-          echo "🔐 Setting up macOS keychain and certificates..."
-
-          # Create temporary keychain
-          KEYCHAIN_PATH="$HOME/Library/Keychains/r2midi-signing.keychain-db"
-          KEYCHAIN_PASSWORD="temp_keychain_$(date +%s)"
-          
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed s/\"//g)
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          echo "📜 Installing Developer ID Application certificate..."
-          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > cert.p12
-          security import cert.p12 -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
-          rm cert.p12
-
-          # Set partition list to avoid permission prompts
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          echo "🔍 Available signing identities:"
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-
-          # Find signing identity with improved parsing
-          SIGNING_IDENTITY=""
-          
-          # Method 1: Look for Developer ID Application by name
-          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
-            grep "Developer ID Application" | head -1 | \
-            sed -n 's/.*"\([^"]*\)".*/\1/p')
-          
-          if [ -z "$SIGNING_IDENTITY" ]; then
-            # Method 2: Use SHA-1 hash as fallback
-            SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
-              grep "Developer ID Application" | head -1 | awk '{print $2}')
-          fi
-
-          if [ -z "$SIGNING_IDENTITY" ]; then
-            echo "❌ No valid signing identity found"
-            security find-identity -v "$KEYCHAIN_PATH"
-            exit 1
-          fi
-
-          echo "✅ Found signing identity: $SIGNING_IDENTITY"
-
-          # Store notarization credentials using notarytool
-          echo "🔐 Storing notarization credentials..."
-          echo "$APPLE_ID_PASSWORD" | xcrun notarytool store-credentials "r2midi-notary-profile" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password -
-
-          # Verify the profile was created
-          if xcrun notarytool history --keychain-profile "r2midi-notary-profile" > /dev/null 2>&1; then
-            echo "✅ Notarization profile 'r2midi-notary-profile' created successfully"
-          else
-            echo "❌ Failed to create notarization profile"
-            exit 1
-          fi
-
-          # Export environment variables for briefcase
-          echo "BRIEFCASE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
-          echo "BRIEFCASE_NOTARIZATION_PROFILE=r2midi-notary-profile" >> $GITHUB_ENV
-          echo "R2MIDI_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
-          echo "R2MIDI_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
-          
-          echo "✅ macOS keychain and certificates configured successfully"
-
-      - name: Install system dependencies
-        run: |
-          if [ "${{ matrix.platform }}" = "macOS" ]; then
-            echo "Installing macOS dependencies..."
-            # Install any required packages via Homebrew if needed
-            # brew install <package> || true
-          fi
-        shell: bash
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install briefcase
-          pip install pillow
-          pip install -r requirements.txt
-          if [ -f r2midi_client/requirements.txt ]; then
-            pip install -r r2midi_client/requirements.txt
-          fi
-        shell: bash
-
-      - name: Generate icon files
-        run: |
-          echo "Generating icon files..."
-          # Make the script executable
-          chmod +x scripts/generate_icons.py
-          # Run the script to generate icons (will place them in resources/ folder)
-          python scripts/generate_icons.py
-          # List the generated files
-          ls -la resources/r2midi.*
-        shell: bash
-
-      - name: Update pyproject.toml
-        run: |
-          # Use Python script to update all pyproject.toml settings
-          if [ "${{ matrix.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
-            # For macOS with signing identity, pass it as a separate argument to avoid quoting issues
-            python scripts/update_pyproject.py \
-              --version "${APP_VERSION}" \
-              --author "${AUTHOR_NAME}" \
-              --author-email "${AUTHOR_EMAIL}" \
-              --server-name "${SERVER_NAME}" \
-              --client-name "${CLIENT_NAME}" \
-              $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}") \
-              --codesign-identity "$BRIEFCASE_SIGNING_IDENTITY"
-          else
-            # For other platforms, don't include codesign identity
-            python scripts/update_pyproject.py \
-              --version "${APP_VERSION}" \
-              --author "${AUTHOR_NAME}" \
-              --author-email "${AUTHOR_EMAIL}" \
-              --server-name "${SERVER_NAME}" \
-              --client-name "${CLIENT_NAME}" \
-              $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}")
-          fi
-
-          # Show updated pyproject.toml for debugging
-          echo "Updated pyproject.toml:"
-          grep -A 2 "codesign_identity" pyproject.toml || echo "No codesign_identity found"
-        shell: bash
-
-      - name: Build with Briefcase
-        run: |
-          echo "🔨 Building ${{ matrix.platform }} applications with Briefcase..."
-
-          # Create applications
-          echo "Creating R2MIDI Server..."
-          briefcase create ${{ matrix.briefcase_platform }} app -a server
-
-          echo "Creating R2MIDI Client..."
-          briefcase create ${{ matrix.briefcase_platform }} app -a r2midi-client
-
-          # Build applications
-          echo "Building R2MIDI Server..."
-          briefcase build ${{ matrix.briefcase_platform }} app -a server
-
-          echo "Building R2MIDI Client..."
-          briefcase build ${{ matrix.briefcase_platform }} app -a r2midi-client
-        shell: bash
-
-      - name: Package DMG with Briefcase (with signing and notarization)
-        run: |
-          echo "📦 Packaging ${{ matrix.platform }} applications as DMG..."
-
-          if [ "${{ matrix.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
-            echo "🔐 Using signing identity: $BRIEFCASE_SIGNING_IDENTITY"
-            echo "🔐 Using notarization profile: $BRIEFCASE_NOTARIZATION_PROFILE"
-
-            # Package and notarize server DMG
-            echo "Packaging and notarizing R2MIDI Server DMG..."
-            briefcase package ${{ matrix.briefcase_platform }} app -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
-              echo "❌ DMG packaging failed for server"
-              echo "📋 Checking for briefcase logs..."
-              find . -name "briefcase*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \; 2>/dev/null || true
-              exit 1
-            }
-
-            # Package and notarize client DMG  
-            echo "Packaging and notarizing R2MIDI Client DMG..."
-            briefcase package ${{ matrix.briefcase_platform }} app -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
-              echo "❌ DMG packaging failed for client"
-              echo "📋 Checking for briefcase logs..."
-              find . -name "briefcase*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \; 2>/dev/null || true
-              exit 1
-            }
-            
-            echo "✅ DMG packaging completed successfully"
-          else
-            echo "⚠️ Skipping DMG packaging (not macOS or no signing identity)"
-          fi
-        shell: bash
-
-      - name: Package PKG with Briefcase (with signing and notarization)
-        run: |
-          echo "📦 Packaging ${{ matrix.platform }} applications as PKG..."
-
-          if [ "${{ matrix.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
-            echo "🔐 Using signing identity: $BRIEFCASE_SIGNING_IDENTITY"
-            echo "🔐 Using notarization profile: $BRIEFCASE_NOTARIZATION_PROFILE"
-
-            # Package and notarize server PKG
-            echo "Packaging and notarizing R2MIDI Server PKG..."
-            briefcase package ${{ matrix.briefcase_platform }} installer -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
-              echo "❌ PKG packaging failed for server"
-              echo "📋 Checking for briefcase logs..."
-              find . -name "briefcase*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \; 2>/dev/null || true
-              exit 1
-            }
-
-            # Package and notarize client PKG
-            echo "Packaging and notarizing R2MIDI Client PKG..."
-            briefcase package ${{ matrix.briefcase_platform }} installer -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" || {
-              echo "❌ PKG packaging failed for client"
-              echo "📋 Checking for briefcase logs..."
-              find . -name "briefcase*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \; 2>/dev/null || true
-              exit 1
-            }
-            
-            echo "✅ PKG packaging completed successfully"
-          else
-            echo "⚠️ Skipping PKG packaging (not macOS or no signing identity)"
-          fi
-        shell: bash
-
-      - name: Prepare release artifacts
-        run: |
-          mkdir -p release_files
-
-          if [ "${{ matrix.platform }}" = "macOS" ]; then
-            echo "📁 Organizing macOS release files..."
-
-            # Find and copy DMG files
-            echo "Looking for DMG files in dist/..."
-            find dist -name "*.dmg" -print0 | while IFS= read -r -d '' dmg; do
-              echo "Found DMG: $dmg"
-              if [[ "$dmg" == *"Server"* ]] || [[ "$dmg" == *"server"* ]]; then
-                cp "$dmg" "release_files/R2MIDI-Server-macos-signed.dmg"
-                echo "✅ Copied server DMG"
-              else
-                cp "$dmg" "release_files/R2MIDI-Client-macos-signed.dmg"
-                echo "✅ Copied client DMG"
-              fi
-            done
-
-            # Find and copy PKG files
-            echo "Looking for PKG files in dist/..."
-            find dist -name "*.pkg" -print0 | while IFS= read -r -d '' pkg; do
-              echo "Found PKG: $pkg"
-              if [[ "$pkg" == *"Server"* ]] || [[ "$pkg" == *"server"* ]]; then
-                cp "$pkg" "release_files/R2MIDI-Server-macos-signed.pkg"
-                echo "✅ Copied server PKG"
-              else
-                cp "$pkg" "release_files/R2MIDI-Client-macos-signed.pkg"
-                echo "✅ Copied client PKG"
-              fi
-            done
-
-            # Fallback: check build directories if dist is empty
-            if [ ! -f "release_files/R2MIDI-Server-macos-signed.dmg" ]; then
-              echo "⚠️ No DMG found in dist, checking build directories..."
-              find build -name "*.dmg" | head -2 | while read dmg; do
-                if [[ "$dmg" == *"server"* ]]; then
-                  cp "$dmg" "release_files/R2MIDI-Server-macos-signed.dmg"
-                  echo "✅ Copied server DMG from build"
-                else
-                  cp "$dmg" "release_files/R2MIDI-Client-macos-signed.dmg"
-                  echo "✅ Copied client DMG from build"
-                fi
-              done
-            fi
-
-            if [ ! -f "release_files/R2MIDI-Server-macos-signed.pkg" ]; then
-              echo "⚠️ No PKG found in dist, checking build directories..."
-              find build -name "*.pkg" | head -2 | while read pkg; do
-                if [[ "$pkg" == *"server"* ]]; then
-                  cp "$pkg" "release_files/R2MIDI-Server-macos-signed.pkg"
-                  echo "✅ Copied server PKG from build"
-                else
-                  cp "$pkg" "release_files/R2MIDI-Client-macos-signed.pkg"
-                  echo "✅ Copied client PKG from build"
-                fi
-              done
-            fi
-
-            # Final verification
-            echo "📋 Final release artifacts:"
-            ls -la release_files/ || echo "❌ No release files directory created"
-
-            # Double-check that we have at least DMG files
-            if [ ! -f "release_files/R2MIDI-Server-macos-signed.dmg" ] && [ ! -f "release_files/R2MIDI-Client-macos-signed.dmg" ]; then
-              echo "❌ ERROR: No DMG files found! Listing all dist contents:"
-              find dist -type f -name "*" | head -20
-              echo "Listing all build contents:"
-              find build -type f -name "*" | head -20
-              exit 1
-            fi
-          fi
-        shell: bash
-
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-release-${{ matrix.platform_name }}
-          path: release_files/*
-          retention-days: 30
-
-      - name: Cleanup Keychain (macOS)
-        if: always() && matrix.platform == 'macOS'
-        run: |
-          if [ -n "$R2MIDI_KEYCHAIN_PATH" ] && [ -f "$R2MIDI_KEYCHAIN_PATH" ]; then
-            echo "🧹 Cleaning up temporary keychain..."
-            security delete-keychain "$R2MIDI_KEYCHAIN_PATH" || true
-          fi
-          
-          # Clean up notarization profile
-          xcrun notarytool credentials list | grep "r2midi-notary-profile" && \
-            xcrun notarytool credentials delete "r2midi-notary-profile" || true
-            
-          echo "✅ Cleanup completed"
-
-  build-unsigned-releases:
-    needs: check-build-success
-    # This job runs regardless of whether signing certificates are available
-    runs-on: macos-14
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Fix submodules
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule deinit -f server/midi-presets || true
-          rm -rf .git/modules/server/midi-presets || true
-          git rm -rf server/midi-presets || true
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
-          git submodule init
-          git submodule update --init --recursive
-        shell: bash
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Configure app metadata
-        env:
-          BUNDLE_PREFIX: ${{ secrets.APP_BUNDLE_ID_PREFIX }}
-          SERVER_NAME: ${{ secrets.APP_DISPLAY_NAME_SERVER }}
-          CLIENT_NAME: ${{ secrets.APP_DISPLAY_NAME_CLIENT }}
-          AUTHOR_NAME: ${{ secrets.APP_AUTHOR_NAME }}
-          AUTHOR_EMAIL: ${{ secrets.APP_AUTHOR_EMAIL }}
-        run: |
-          echo "BUNDLE_PREFIX=${BUNDLE_PREFIX:-com.r2midi}" >> $GITHUB_ENV
-          echo "SERVER_NAME=${SERVER_NAME:-R2MIDI Server}" >> $GITHUB_ENV
-          echo "CLIENT_NAME=${CLIENT_NAME:-R2MIDI Client}" >> $GITHUB_ENV
-          echo "AUTHOR_NAME=${AUTHOR_NAME:-R2MIDI Team}" >> $GITHUB_ENV
-          echo "AUTHOR_EMAIL=${AUTHOR_EMAIL:-tiran@tirans.com}" >> $GITHUB_ENV
-
-          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
-          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Install system dependencies
-        run: |
-          echo "🍎 Installing macOS dependencies for unsigned build..."
-          # macOS typically doesn't need additional system dependencies for Python/Qt
-        shell: bash
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install briefcase
-          pip install pillow
-          pip install -r requirements.txt
-          if [ -f r2midi_client/requirements.txt ]; then
-            pip install -r r2midi_client/requirements.txt
-          fi
-        shell: bash
-
-      - name: Generate icon files
-        run: |
-          echo "Generating icon files..."
-          # Make the script executable
-          chmod +x scripts/generate_icons.py
-          # Run the script to generate icons (will place them in resources/ folder)
-          python scripts/generate_icons.py
-          # List the generated files
-          ls -la resources/r2midi.*
-        shell: bash
-
-      - name: Update pyproject.toml for unsigned build
-        run: |
-          # Use Python script to update pyproject.toml without codesign identity
-          python scripts/update_pyproject.py \
-            --version "${APP_VERSION}" \
-            --author "${AUTHOR_NAME}" \
-            --author-email "${AUTHOR_EMAIL}" \
-            --server-name "${SERVER_NAME}" \
-            --client-name "${CLIENT_NAME}" \
-            $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}")
-
-          # Show updated pyproject.toml for debugging
-          echo "Updated pyproject.toml for unsigned build:"
-          grep -A 2 "codesign_identity" pyproject.toml || echo "No codesign_identity found (expected for unsigned build)"
-        shell: bash
-
-      - name: Build with Briefcase
-        run: |
-          echo "🔨 Building unsigned macOS applications with Briefcase..."
-
-          # Create applications
-          echo "Creating R2MIDI Server..."
-          briefcase create macOS app -a server
-
-          echo "Creating R2MIDI Client..."
-          briefcase create macOS app -a r2midi-client
-
-          # Build applications
-          echo "Building R2MIDI Server..."
-          briefcase build macOS app -a server
-
-          echo "Building R2MIDI Client..."
-          briefcase build macOS app -a r2midi-client
-        shell: bash
-
-      - name: Package DMG with Briefcase (unsigned)
-        run: |
-          echo "📦 Packaging unsigned macOS applications as DMG..."
-
-          # Package without signing
-          echo "Packaging unsigned R2MIDI Server DMG..."
-          briefcase package macOS app -a server --no-sign || {
-            echo "❌ DMG packaging failed for server. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
-            exit 1
-          }
-
-          # Package without signing
-          echo "Packaging unsigned R2MIDI Client DMG..."
-          briefcase package macOS app -a r2midi-client --no-sign || {
-            echo "❌ DMG packaging failed for client. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
-            exit 1
-          }
-        shell: bash
-
-      - name: Package PKG with Briefcase (unsigned)
-        run: |
-          echo "📦 Packaging unsigned macOS applications as PKG..."
-
-          # Package as PKG installer without signing
-          echo "Packaging unsigned R2MIDI Server PKG..."
-          briefcase package macOS installer -a server --no-sign || {
-            echo "❌ PKG packaging failed for server. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
-            exit 1
-          }
-
-          # Package without signing
-          echo "Packaging unsigned R2MIDI Client PKG..."
-          briefcase package macOS installer -a r2midi-client --no-sign || {
-            echo "❌ PKG packaging failed for client. Check logs at $(ls -t /Users/runner/work/r2midi/r2midi/logs/briefcase*.log | head -n 1)"
-            exit 1
-          }
-        shell: bash
-
-      - name: Prepare unsigned release artifacts
-        run: |
-          mkdir -p unsigned_release_files
-
-          echo "📁 Organizing unsigned macOS release files..."
-
-          # Find and copy DMG files
-          echo "Looking for DMG files in dist/..."
-          find dist -name "*.dmg" -print0 | while IFS= read -r -d '' dmg; do
-            echo "Found DMG: $dmg"
-            if [[ "$dmg" == *"Server"* ]] || [[ "$dmg" == *"server"* ]]; then
-              cp "$dmg" "unsigned_release_files/R2MIDI-Server-macos-unsigned.dmg"
-              echo "✅ Copied unsigned server DMG"
-            else
-              cp "$dmg" "unsigned_release_files/R2MIDI-Client-macos-unsigned.dmg"
-              echo "✅ Copied unsigned client DMG"
-            fi
-          done
-
-          # Find and copy PKG files
-          echo "Looking for PKG files in dist/..."
-          find dist -name "*.pkg" -print0 | while IFS= read -r -d '' pkg; do
-            echo "Found PKG: $pkg"
-            if [[ "$pkg" == *"Server"* ]] || [[ "$pkg" == *"server"* ]]; then
-              cp "$pkg" "unsigned_release_files/R2MIDI-Server-macos-unsigned.pkg"
-              echo "✅ Copied unsigned server PKG"
-            else
-              cp "$pkg" "unsigned_release_files/R2MIDI-Client-macos-unsigned.pkg"
-              echo "✅ Copied unsigned client PKG"
-            fi
-          done
-
-          # Fallback: check build directories if dist is empty
-          if [ ! -f "unsigned_release_files/R2MIDI-Server-macos-unsigned.dmg" ]; then
-            echo "⚠️ No DMG found in dist, checking build directories..."
-            find build -name "*.dmg" | head -2 | while read dmg; do
-              if [[ "$dmg" == *"server"* ]]; then
-                cp "$dmg" "unsigned_release_files/R2MIDI-Server-macos-unsigned.dmg"
-                echo "✅ Copied unsigned server DMG from build"
-              else
-                cp "$dmg" "unsigned_release_files/R2MIDI-Client-macos-unsigned.dmg"
-                echo "✅ Copied unsigned client DMG from build"
-              fi
-            done
-          fi
-
-          if [ ! -f "unsigned_release_files/R2MIDI-Server-macos-unsigned.pkg" ]; then
-            echo "⚠️ No PKG found in dist, checking build directories..."
-            find build -name "*.pkg" | head -2 | while read pkg; do
-              if [[ "$pkg" == *"server"* ]]; then
-                cp "$pkg" "unsigned_release_files/R2MIDI-Server-macos-unsigned.pkg"
-                echo "✅ Copied unsigned server PKG from build"
-              else
-                cp "$pkg" "unsigned_release_files/R2MIDI-Client-macos-unsigned.pkg"
-                echo "✅ Copied unsigned client PKG from build"
-              fi
-            done
-          fi
-
-          # Final verification
-          echo "📋 Final unsigned release artifacts:"
-          ls -la unsigned_release_files/ || echo "❌ No unsigned release files directory created"
-
-          # Double-check that we have at least DMG files
-          if [ ! -f "unsigned_release_files/R2MIDI-Server-macos-unsigned.dmg" ] && [ ! -f "unsigned_release_files/R2MIDI-Client-macos-unsigned.dmg" ]; then
-            echo "❌ ERROR: No unsigned DMG files found! Listing all dist contents:"
-            find dist -type f -name "*" | head -20
-            echo "Listing all build contents:"
-            find build -type f -name "*" | head -20
-            exit 1
-          fi
-        shell: bash
-
-      - name: Upload unsigned release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: unsigned-release-macos
-          path: unsigned_release_files/*
-          retention-days: 30
-
-  app-store-submission:
-    needs: [check-build-success, build-signed-releases]
-    if: needs.check-build-success.outputs.should_app_store == 'true'
-    runs-on: macos-14
-    environment: app-store
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Fix submodules
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule deinit -f server/midi-presets || true
-          rm -rf .git/modules/server/midi-presets || true
-          git rm -rf server/midi-presets || true
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
-          git submodule init
-          git submodule update --init --recursive
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install briefcase
-          pip install pillow
-          pip install -r requirements.txt
-          if [ -f r2midi_client/requirements.txt ]; then
-            pip install -r r2midi_client/requirements.txt
-          fi
-
-      - name: Configure App Store metadata
-        env:
-          BUNDLE_PREFIX: ${{ secrets.APP_BUNDLE_ID_PREFIX }}
-          SERVER_NAME: ${{ secrets.APP_DISPLAY_NAME_SERVER }}
-          CLIENT_NAME: ${{ secrets.APP_DISPLAY_NAME_CLIENT }}
-          AUTHOR_NAME: ${{ secrets.APP_AUTHOR_NAME }}
-          AUTHOR_EMAIL: ${{ secrets.APP_AUTHOR_EMAIL }}
-        run: |
-          echo "BUNDLE_PREFIX=${BUNDLE_PREFIX:-com.r2midi}" >> $GITHUB_ENV
-          echo "SERVER_NAME=${SERVER_NAME:-R2MIDI Server}" >> $GITHUB_ENV
-          echo "CLIENT_NAME=${CLIENT_NAME:-R2MIDI Client}" >> $GITHUB_ENV
-          echo "AUTHOR_NAME=${AUTHOR_NAME:-R2MIDI Team}" >> $GITHUB_ENV
-          echo "AUTHOR_EMAIL=${AUTHOR_EMAIL:-tiran@tirans.com}" >> $GITHUB_ENV
-
-          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
-          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Generate icon files
-        run: |
-          echo "Generating icon files..."
-          # Make the script executable
-          chmod +x scripts/generate_icons.py
-          # Run the script to generate icons (will place them in resources/ folder)
-          python scripts/generate_icons.py
-          # List the generated files
-          ls -la resources/r2midi.*
-        shell: bash
-
-      - name: Import App Store certificates
-        env:
-          APPLE_APP_STORE_CERTIFICATE_P12: ${{ secrets.APPLE_APP_STORE_CERTIFICATE_P12 }}
-          APPLE_APP_STORE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_APP_STORE_CERTIFICATE_PASSWORD }}
-          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-        run: |
-          # Mask sensitive values
-          echo "::add-mask::$APPLE_APP_STORE_CERTIFICATE_PASSWORD"
-          echo "::add-mask::$APP_STORE_CONNECT_API_KEY"
-          echo "::add-mask::$APP_STORE_CONNECT_ISSUER_ID"
-          echo "::add-mask::$APP_STORE_CONNECT_KEY_ID"
-
-          # Import App Store certificate
-          echo "$APPLE_APP_STORE_CERTIFICATE_P12" | base64 --decode > app_store_cert.p12
-
-          security create-keychain -p briefcase app_store.keychain
-          security default-keychain -s app_store.keychain
-          security unlock-keychain -p briefcase app_store.keychain
-
-          security import app_store_cert.p12 -k app_store.keychain -P "$APPLE_APP_STORE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          rm -f app_store_cert.p12
-
-          security set-key-partition-list -S apple-tool:,apple: -s -k briefcase app_store.keychain
-
-          # Find the App Store signing identity with improved parsing
-          APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | grep "3rd Party Mac Developer Application" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p')
-
-          # Fallback to SHA-1 if name parsing fails
-          if [ -z "$APP_STORE_IDENTITY" ]; then
-            APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | grep "3rd Party Mac Developer Application" | head -1 | awk '{print $2}')
-          fi
-
-          if [ -z "$APP_STORE_IDENTITY" ]; then
-            echo "❌ No App Store signing identity found"
-            echo "Available identities:"
-            security find-identity -v app_store.keychain
-            exit 1
-          fi
-
-          echo "BRIEFCASE_APP_STORE_IDENTITY=$APP_STORE_IDENTITY" >> $GITHUB_ENV
-
-          # Setup App Store Connect API key
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
-          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
-
-          echo "BRIEFCASE_APP_STORE_CONNECT_KEY_ID=$APP_STORE_CONNECT_KEY_ID" >> $GITHUB_ENV
-          echo "BRIEFCASE_APP_STORE_CONNECT_ISSUER_ID=$APP_STORE_CONNECT_ISSUER_ID" >> $GITHUB_ENV
-
-      - name: Update pyproject.toml for App Store
-        run: |
-          # Use Python script to update all pyproject.toml settings for App Store
-          if [ -n "$BRIEFCASE_APP_STORE_IDENTITY" ]; then
-            # Pass codesign identity as a separate argument to avoid quoting issues
-            python scripts/update_pyproject.py \
-              --app-store \
-              --version "${APP_VERSION}" \
-              --author "${AUTHOR_NAME}" \
-              --author-email "${AUTHOR_EMAIL}" \
-              --server-name "${SERVER_NAME}" \
-              --client-name "${CLIENT_NAME}" \
-              $([ "${BUNDLE_PREFIX}" != "com.r2midi" ] && echo "--bundle-prefix ${BUNDLE_PREFIX}") \
-              --codesign-identity "$BRIEFCASE_APP_STORE_IDENTITY"
-          else
-            echo "❌ No App Store signing identity available"
-            exit 1
-          fi
-
-          # Show updated pyproject.toml for debugging
-          echo "Updated pyproject.toml for App Store:"
-          grep -A 2 "codesign_identity" pyproject.toml || echo "No codesign_identity found"
-
-      - name: Build and submit to App Store
-        run: |
-          if [ "${{ secrets.ENABLE_APP_STORE_SUBMISSION }}" != "true" ]; then
-            echo "🏪 App Store submission disabled (set ENABLE_APP_STORE_SUBMISSION=true to enable)"
-            exit 0
-          fi
-
-          echo "🏪 Building for App Store..."
-
-          # Create and build for App Store
-          briefcase create macOS app -a server
-          briefcase build macOS app -a server
-
-          briefcase create macOS app -a r2midi-client
-          briefcase build macOS app -a r2midi-client
-
-          # Package for App Store with upload
-          echo "📦 Packaging and uploading to App Store Connect..."
-
-          # Create a temporary file with credentials to avoid keychain
-          echo "Creating temporary credentials file for App Store submission..."
-          CREDENTIALS_FILE=$(mktemp)
-          echo "apple-id = \"${{ secrets.APPLE_ID }}\"" > "$CREDENTIALS_FILE"
-          echo "apple-id-password = \"${{ secrets.APPLE_ID_PASSWORD }}\"" >> "$CREDENTIALS_FILE"
-          echo "apple-team-id = \"${{ secrets.APPLE_TEAM_ID }}\"" >> "$CREDENTIALS_FILE"
-          echo "app-store-connect-key-id = \"$BRIEFCASE_APP_STORE_CONNECT_KEY_ID\"" >> "$CREDENTIALS_FILE"
-          echo "app-store-connect-issuer-id = \"$BRIEFCASE_APP_STORE_CONNECT_ISSUER_ID\"" >> "$CREDENTIALS_FILE"
-
-          # Package server for App Store with credentials file
-          briefcase package macOS app -a server \
-            --app-store \
-            --identity "$BRIEFCASE_APP_STORE_IDENTITY" \
-            --credential-file "$CREDENTIALS_FILE"
-
-          # Package client for App Store with credentials file
-          briefcase package macOS app -a r2midi-client \
-            --app-store \
-            --identity "$BRIEFCASE_APP_STORE_IDENTITY" \
-            --credential-file "$CREDENTIALS_FILE"
-
-          # Clean up credentials file
-          rm -f "$CREDENTIALS_FILE"
-
-          echo "🎉 Apps submitted to App Store Connect!"
-
-      - name: Cleanup App Store keychain
-        if: always()
-        run: |
-          rm -rf ~/.appstoreconnect
-          security delete-keychain app_store.keychain || true
-
-  publish-production-release:
-    needs: [build-signed-releases, build-unsigned-releases, check-build-success]
+          - platform: linux
+            os: ubuntu-latest
+          - platform: windows
+            os: windows-latest
+          - platform: macOS
+            os: macos-13
+            sign: true
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      platform: ${{ matrix.platform }}
+      os: ${{ matrix.os }}
+      build-type: production
+      version-suffix: ""
+      sign-builds: ${{ matrix.sign || false }}
+    secrets: inherit
+
+  # Publish to PyPI
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [version, python-package]
     runs-on: ubuntu-latest
-    if: always()
+    environment: pypi
+    
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: dist/
 
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+
+  # Create GitHub release
+  create-release:
+    name: Create Release
+    needs: [version, build-apps]
+    runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
 
-      - name: Get version
-        id: get_info
-        run: |
-          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Download macOS signed artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: production-release-*
-          path: combined_production_files
+          pattern: production-*
+          path: release_files
           merge-multiple: true
 
-      - name: Download macOS unsigned artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: unsigned-release-macos
-          path: combined_production_files
-
-      - name: Download Windows and Linux artifacts from build workflow
-        uses: actions/download-artifact@v4
-        with:
-          pattern: stable-builds-*
-          path: stable_builds_temp
-          merge-multiple: true
-
-      - name: Prepare Windows and Linux artifacts for release
-        run: |
-          # Get version from the previous step
-          VERSION="${{ steps.get_info.outputs.version }}"
-          echo "Using version: $VERSION"
-
-          mkdir -p combined_production_files
-
-          # Copy Windows artifacts
-          if [ -f "stable_builds_temp/R2MIDI-Server-windows-stable-v${VERSION}.zip" ]; then
-            cp "stable_builds_temp/R2MIDI-Server-windows-stable-v${VERSION}.zip" "combined_production_files/R2MIDI-Server-windows-unsigned.zip"
-          fi
-          if [ -f "stable_builds_temp/R2MIDI-Client-windows-stable-v${VERSION}.zip" ]; then
-            cp "stable_builds_temp/R2MIDI-Client-windows-stable-v${VERSION}.zip" "combined_production_files/R2MIDI-Client-windows-unsigned.zip"
-          fi
-
-          # Copy Linux artifacts
-          if [ -f "stable_builds_temp/R2MIDI-Server-linux-stable-v${VERSION}.deb" ]; then
-            cp "stable_builds_temp/R2MIDI-Server-linux-stable-v${VERSION}.deb" "combined_production_files/R2MIDI-Server-linux-unsigned.deb"
-          fi
-          if [ -f "stable_builds_temp/R2MIDI-Client-linux-stable-v${VERSION}.deb" ]; then
-            cp "stable_builds_temp/R2MIDI-Client-linux-stable-v${VERSION}.deb" "combined_production_files/R2MIDI-Client-linux-unsigned.deb"
-          fi
-
-          # List all files in stable_builds_temp to help with debugging
-          echo "Available stable build artifacts:"
-          ls -la stable_builds_temp/
-
-          echo "Combined release artifacts:"
-          ls -la combined_production_files/
-
-      - name: Create Production Release
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.get_info.outputs.version }}
-          name: R2MIDI v${{ steps.get_info.outputs.version }}
-          files: combined_production_files/*
+          tag_name: v${{ needs.version.outputs.version }}
+          name: R2MIDI v${{ needs.version.outputs.version }}
+          files: release_files/*
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            ## 🚀 R2MIDI v${{ steps.get_info.outputs.version }} - Production Release
-
-            ${{ needs.check-build-success.outputs.should_release == 'true' && '**Official production release built and signed with Briefcase.**' || '**Production release with unsigned macOS packages (code signing unavailable).**' }}
+            ## 🚀 R2MIDI v${{ needs.version.outputs.version }}
 
             ### 📦 Downloads
 
-            ${{ needs.check-build-success.outputs.should_release == 'true' && '#### 🍎 macOS (Code Signed & Notarized)\n- **R2MIDI-Server-macos-signed.dmg** - R2MIDI Server disk image (drag & drop install)\n- **R2MIDI-Client-macos-signed.dmg** - R2MIDI Client disk image (drag & drop install)\n- **R2MIDI-Server-macos-signed.pkg** - R2MIDI Server installer package (automated install)\n- **R2MIDI-Client-macos-signed.pkg** - R2MIDI Client installer package (automated install)\n' || '' }}
+            #### 🍎 macOS
+            - DMG installers (drag & drop)
+            - PKG installers (automated install)
 
-            #### 🍎 macOS ${{ needs.check-build-success.outputs.should_release == 'true' && '(Unsigned Fallback)' || '(Unsigned)' }}
-            - **R2MIDI-Server-macos-unsigned.pkg** - R2MIDI Server unsigned installer package
-            - **R2MIDI-Client-macos-unsigned.pkg** - R2MIDI Client unsigned installer package
-            - **R2MIDI-Server-macos-unsigned.dmg** - R2MIDI Server unsigned disk image
-            - **R2MIDI-Client-macos-unsigned.dmg** - R2MIDI Client unsigned disk image
+            #### 🪟 Windows
+            - ZIP packages
 
-            #### 🪟 Windows (Unsigned)
-            - **R2MIDI-Server-windows-unsigned.zip** - R2MIDI Server package
-            - **R2MIDI-Client-windows-unsigned.zip** - R2MIDI Client package
-
-            #### 🐧 Linux (Unsigned)
-            - **R2MIDI-Server-linux-unsigned.deb** - R2MIDI Server package
-            - **R2MIDI-Client-linux-unsigned.deb** - R2MIDI Client package
-
-            ${{ needs.check-build-success.outputs.should_app_store == 'true' && '#### 🏪 Mac App Store\n- **R2MIDI Server** and **R2MIDI Client** submitted to App Store\n- Check App Store Connect for review status\n' || '' }}
+            #### 🐧 Linux
+            - DEB packages
+            - TAR.GZ archives
 
             ### 📋 Installation
 
-            #### macOS ✅
-            ${{ needs.check-build-success.outputs.should_release == 'true' && '**Option 1: Signed DMG (Recommended for most users)**\n1. Download the signed .dmg file\n2. Double-click to mount\n3. Drag the app to Applications folder\n4. First launch: right-click and select "Open"\n\n**Option 2: Signed PKG (For automated/scripted installation)**\n1. Download the signed .pkg file\n2. Double-click to run installer\n3. Follow installation wizard\n4. Apps will be installed to /Applications\n\n' || '' }}**Option ${{ needs.check-build-success.outputs.should_release == 'true' && '3' || '1' }}: Unsigned PKG ${{ needs.check-build-success.outputs.should_release == 'true' && '(If signed packages fail)' || '(Standard installation)' }}**
-            1. Download the unsigned .pkg file
-            2. Right-click and select "Open"
-            3. Click "Open" when prompted about unidentified developer
-            4. Follow installation wizard
-            5. Apps will be installed to /Applications
+            See the [installation guide](https://github.com/tirans/r2midi/wiki/Installation) for detailed instructions.
 
-            **Option ${{ needs.check-build-success.outputs.should_release == 'true' && '4' || '2' }}: Unsigned DMG (Alternative installation)**
-            1. Download the unsigned .dmg file
-            2. Right-click and select "Open"
-            3. Drag the app to Applications folder
-            4. First launch: right-click and select "Open"
+            ### 🔄 Changes
 
-            #### Windows ✅  
-            1. Download the .zip file
-            2. Extract the contents to a folder
-            3. Run the executable (.exe) file
+            See [CHANGELOG.md](https://github.com/tirans/r2midi/blob/master/CHANGELOG.md) for details.
 
-            #### Linux ✅
-            ```bash
-            # Install the .deb package
-            sudo dpkg -i R2MIDI-*.deb
-            # Or double-click in file manager
-            ```
+            ### 📊 PyPI Package
 
-            ### ✨ Features
-            ${{ needs.check-build-success.outputs.should_release == 'true' && '- 🔒 macOS applications are fully code signed and notarized\n' || '- 🔓 Unsigned macOS packages available when code signing is not possible\n' }}- 📦 Professional packages for all platforms (DMG + PKG for macOS)
-            - 🏪 Automatic App Store submission (when configured)
-            - 🚀 Built with Briefcase for consistent packaging
-            - ⚡ Optimized workflow reuses Windows and Linux builds to reduce redundancy
-            - 🛡️ Fallback to unsigned packages if code signing fails
-
-            ### 🏪 App Store Status
-            ${{ needs.check-build-success.outputs.should_app_store == 'true' && '✅ **Submitted to Mac App Store** - Check App Store Connect for review status' || '⚠️ **App Store submission disabled** - Configure APP_STORE_CONNECT_API_KEY to enable' }}
-
-            For documentation and support, visit [GitHub](https://github.com/tirans/r2midi).
+            The Python package is available on PyPI: https://pypi.org/project/r2midi/

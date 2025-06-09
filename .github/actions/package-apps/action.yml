@@ -1,0 +1,127 @@
+name: Package Applications
+description: Package applications and prepare artifacts
+
+inputs:
+  platform:
+    description: 'Target platform'
+    required: true
+  build-type:
+    description: 'Build type (dev, staging, production)'
+    required: true
+  version:
+    description: 'Application version'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Package applications
+      shell: bash
+      run: |
+        echo "📦 Packaging ${{ inputs.platform }} applications..."
+        
+        # Determine app type
+        if [ "${{ inputs.platform }}" = "linux" ]; then
+          APP_TYPE="system"
+        else
+          APP_TYPE="app"
+        fi
+        
+        # Package based on platform and signing availability
+        if [ "${{ inputs.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
+          echo "📦 Packaging with code signing..."
+          briefcase package ${{ inputs.platform }} $APP_TYPE -a server
+          briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client
+          
+          # Also create DMG and PKG installers
+          briefcase package ${{ inputs.platform }} dmg -a server
+          briefcase package ${{ inputs.platform }} dmg -a r2midi-client
+          briefcase package ${{ inputs.platform }} pkg -a server
+          briefcase package ${{ inputs.platform }} pkg -a r2midi-client
+        elif [ "${{ inputs.platform }}" = "macOS" ]; then
+          echo "📦 Packaging without signing..."
+          briefcase package ${{ inputs.platform }} $APP_TYPE -a server --adhoc-sign
+          briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client --adhoc-sign
+        else
+          echo "📦 Packaging..."
+          briefcase package ${{ inputs.platform }} $APP_TYPE -a server
+          briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client
+        fi
+
+    - name: Prepare artifacts
+      shell: bash
+      run: |
+        mkdir -p artifacts
+        echo "📁 Preparing artifacts for ${{ inputs.platform }}..."
+        
+        # Platform-specific artifact preparation
+        case "${{ inputs.platform }}" in
+          macOS)
+            # Look for DMG files first
+            if [ -d "dist" ]; then
+              find dist -name "*.dmg" -exec cp {} artifacts/ \; 2>/dev/null || true
+              find dist -name "*.pkg" -exec cp {} artifacts/ \; 2>/dev/null || true
+            fi
+            
+            # Package app bundles as zip if no DMG found
+            if [ ! -f artifacts/*.dmg ]; then
+              for app in build/*/macOS/app/*.app; do
+                if [ -d "$app" ]; then
+                  app_name=$(basename "$app" .app)
+                  cd "$(dirname "$app")"
+                  zip -r "$GITHUB_WORKSPACE/artifacts/${app_name}-macos-${{ inputs.build-type }}-v${{ inputs.version }}.zip" "$(basename "$app")"
+                  cd "$GITHUB_WORKSPACE"
+                fi
+              done
+            fi
+            ;;
+          windows)
+            # Copy MSI installers if available
+            if [ -d "dist" ]; then
+              find dist -name "*.msi" -exec cp {} artifacts/ \; 2>/dev/null || true
+            fi
+            
+            # Package Windows builds as ZIP
+            for dir in build/*/windows/app; do
+              if [ -d "$dir" ]; then
+                app_name=$(basename "$(dirname "$(dirname "$dir")")")
+                cd "$dir"
+                zip -r "$GITHUB_WORKSPACE/artifacts/${app_name}-windows-${{ inputs.build-type }}-v${{ inputs.version }}.zip" . -x "*.log"
+                cd "$GITHUB_WORKSPACE"
+              fi
+            done
+            ;;
+          linux)
+            # Copy deb packages
+            if [ -d "dist" ]; then
+              find dist -name "*.deb" -exec cp {} artifacts/ \; 2>/dev/null || true
+            fi
+            
+            # Create tar.gz archives
+            for dir in build/*/linux/system; do
+              if [ -d "$dir" ]; then
+                app_name=$(basename "$(dirname "$(dirname "$dir")")")
+                tar -czf "artifacts/${app_name}-linux-${{ inputs.build-type }}-v${{ inputs.version }}.tar.gz" \
+                    -C "$dir" . --exclude="*.log"
+              fi
+            done
+            ;;
+        esac
+        
+        # Create build info file
+        cat > artifacts/BUILD_INFO.txt << EOF
+        R2MIDI Build Information
+        =======================
+        
+        Version: ${{ inputs.version }}
+        Platform: ${{ inputs.platform }}
+        Build Type: ${{ inputs.build-type }}
+        Built: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+        Commit: ${{ github.sha }}
+        Branch: ${{ github.ref_name }}
+        Workflow: ${{ github.workflow }}
+        Run: ${{ github.run_number }}
+        EOF
+        
+        echo "📦 Artifacts created:"
+        ls -la artifacts/ || echo "No artifacts found"

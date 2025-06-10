@@ -440,10 +440,41 @@ This will:
 
         return exports
 
-    def process_app_store_connect_api_key(self) -> dict:
-        """Process App Store Connect API key."""
+    def process_app_store_connect_api_key(self, config=None) -> dict:
+        """Process App Store Connect API key.
+
+        Args:
+            config: Optional configuration dictionary containing API key information
+
+        Returns:
+            Dictionary with API key and key ID
+        """
         self.print_step("Processing App Store Connect API Key")
 
+        # Check if config has API key information
+        if config and 'apple_developer' in config:
+            apple_dev = config['apple_developer']
+            key_id = apple_dev.get('app_store_connect_key_id')
+            api_key_path = apple_dev.get('app_store_connect_api_key_path')
+
+            if key_id and api_key_path and os.path.exists(api_key_path):
+                self.print_info(f"Using API key from config: {api_key_path}")
+                try:
+                    with open(api_key_path, 'rb') as f:
+                        api_key_data = f.read()
+
+                    encoded_key = base64.b64encode(api_key_data).decode('utf-8')
+                    self.print_success(f"Processed API key: {key_id}")
+
+                    return {
+                        'APP_STORE_CONNECT_API_KEY': encoded_key,
+                        'APP_STORE_CONNECT_KEY_ID': key_id
+                    }
+                except Exception as e:
+                    self.print_error(f"Failed to process API key from config: {e}")
+                    # Continue to try finding API key in the default location
+
+        # Fallback to finding API key in the default location
         api_dir = self.credentials_dir / "app_store_connect"
         p8_files = list(api_dir.glob("*.p8"))
 
@@ -651,7 +682,7 @@ This will:
         secrets.update(cert_secrets)
 
         # Process App Store Connect API key
-        api_secrets = self.process_app_store_connect_api_key()
+        api_secrets = self.process_app_store_connect_api_key(config)
         secrets.update(api_secrets)
 
         # Get GitHub token

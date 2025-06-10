@@ -17,6 +17,15 @@ inputs:
   apple-team-id:
     description: 'Apple Team ID'
     required: true
+  app-store-connect-key-id:
+    description: 'App Store Connect API Key ID'
+    required: false
+  app-store-connect-issuer-id:
+    description: 'App Store Connect API Issuer ID'
+    required: false
+  app-store-connect-api-key:
+    description: 'Base64 encoded App Store Connect API Key (.p8 file)'
+    required: false
 
 outputs:
   signing-identity:
@@ -38,13 +47,15 @@ runs:
         echo "::add-mask::${{ inputs.apple-id }}"
         echo "::add-mask::${{ inputs.apple-id-password }}"
         echo "::add-mask::${{ inputs.apple-team-id }}"
+        echo "::add-mask::${{ inputs.app-store-connect-key-id }}"
+        echo "::add-mask::${{ inputs.app-store-connect-issuer-id }}"
 
         echo "🔐 Setting up macOS keychain and certificates..."
 
         # Create temporary keychain
         KEYCHAIN_PATH="$HOME/Library/Keychains/r2midi-temp.keychain-db"
         KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-        
+
         security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
         security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
         security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed s/\"//g)
@@ -63,7 +74,7 @@ runs:
         SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
           grep "Developer ID Application" | head -1 | \
           sed -n 's/.*"\([^"]*\)".*/\1/p')
-        
+
         if [ -z "$SIGNING_IDENTITY" ]; then
           SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
             grep "Developer ID Application" | head -1 | awk '{print $2}')
@@ -75,19 +86,35 @@ runs:
         fi
 
         # Setup notarization profile
-        echo "${{ inputs.apple-id-password }}" | xcrun notarytool store-credentials "r2midi-notary" \
-          --apple-id "${{ inputs.apple-id }}" \
-          --team-id "${{ inputs.apple-team-id }}" \
-          --password -
+        if [[ -n "${{ inputs.app-store-connect-api-key }}" && -n "${{ inputs.app-store-connect-key-id }}" && -n "${{ inputs.app-store-connect-issuer-id }}" ]]; then
+          echo "Using App Store Connect API key for notarization..."
+          # Create temporary API key file
+          echo "${{ inputs.app-store-connect-api-key }}" | base64 --decode > api_key.p8
+
+          # Store credentials using API key
+          xcrun notarytool store-credentials "r2midi-notary" \
+            --key api_key.p8 \
+            --key-id "${{ inputs.app-store-connect-key-id }}" \
+            --issuer "${{ inputs.app-store-connect-issuer-id }}"
+
+          # Remove temporary API key file
+          rm -f api_key.p8
+        else
+          echo "Using Apple ID for notarization..."
+          echo "${{ inputs.apple-id-password }}" | xcrun notarytool store-credentials "r2midi-notary" \
+            --apple-id "${{ inputs.apple-id }}" \
+            --team-id "${{ inputs.apple-team-id }}" \
+            --password -
+        fi
 
         # Set outputs
         echo "signing-identity=$SIGNING_IDENTITY" >> $GITHUB_OUTPUT
         echo "keychain-path=$KEYCHAIN_PATH" >> $GITHUB_OUTPUT
-        
+
         # Export to environment
         echo "BRIEFCASE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
         echo "BRIEFCASE_NOTARIZATION_PROFILE=r2midi-notary" >> $GITHUB_ENV
         echo "R2MIDI_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
         echo "R2MIDI_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
-        
+
         echo "✅ Code signing configured"

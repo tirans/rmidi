@@ -446,6 +446,8 @@ Key security features:
 - ✅ Secure certificate and API key handling
 - ✅ Environment protection for production secrets
 
+For detailed information about required GitHub secrets for macOS signing and PyPI publishing, see the [GitHub Secrets Guide](docs/github_secrets_guide.md).
+
 For detailed security information, see [.github/SECURITY_AUDIT.md](.github/SECURITY_AUDIT.md).
 
 ## Contributing

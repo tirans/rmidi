@@ -4,10 +4,11 @@ R2MIDI Apple Store Setup - Two-Phase Automated Script
 ====================================================
 
 Phase 1: Setup Instructions and Local Folder Creation
-Phase 2: Automated Processing and GitHub Secrets Creation
+Phase 2: Automated Processing and GitHub Secrets Creation/Update
 
 This script separates manual setup from automated processing, keeping
-sensitive files local and automatically creating GitHub secrets via API.
+sensitive files local and automatically creating or updating GitHub secrets via API.
+If secrets already exist, they will be updated with new values.
 
 Requirements:
 - macOS (for certificate management)
@@ -52,7 +53,7 @@ class AppleStoreSetup:
     def __init__(self):
         self.repo_root = Path(__file__).parent.parent
         self.credentials_dir = self.repo_root / "apple_credentials"
-        self.github_repo = "tirans/r2midi"
+        self.github_repo = None
         self.secrets = {}
 
     def print_header(self, text: str):
@@ -479,8 +480,20 @@ This will:
             return {}
 
     def create_github_secrets(self, secrets: dict, github_token: str) -> bool:
-        """Create GitHub secrets via API."""
-        self.print_step("Creating GitHub Secrets via API")
+        """Create new GitHub secrets or update existing ones via the GitHub API.
+
+        This method checks if each secret already exists in the repository and either
+        creates a new secret or updates the existing one. It provides detailed feedback
+        about which secrets were created and which were updated.
+
+        Args:
+            secrets: Dictionary of secret names and values to create or update
+            github_token: GitHub personal access token with repo permissions
+
+        Returns:
+            bool: True if all secrets were successfully created or updated, False otherwise
+        """
+        self.print_step("Creating/Updating GitHub Secrets via API")
 
         headers = {
             'Authorization': f'token {github_token}',
@@ -517,10 +530,23 @@ This will:
             encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
             return base64.b64encode(encrypted).decode("utf-8")
 
-        # Create each secret
+        # Define secrets URL
         secrets_url = f"https://api.github.com/repos/{self.github_repo}/actions/secrets"
 
-        success_count = 0
+        # Check which secrets already exist
+        existing_secrets = {}
+        try:
+            response = requests.get(secrets_url, headers=headers)
+            if response.status_code == 200:
+                secrets_data = response.json()
+                for secret in secrets_data.get('secrets', []):
+                    existing_secrets[secret['name']] = True
+        except Exception as e:
+            self.print_warning(f"Could not retrieve existing secrets: {e}")
+            # Continue anyway, we'll determine if secrets exist based on response codes
+
+        created_count = 0
+        updated_count = 0
 
         for secret_name, secret_value in secrets.items():
             try:
@@ -531,26 +557,35 @@ This will:
                     'key_id': key_id
                 }
 
+                # Check if secret already exists before making the API call
+                secret_exists = secret_name in existing_secrets
+                operation = "Updating" if secret_exists else "Creating"
+                self.print_info(f"{operation} secret: {secret_name}...")
+
                 response = requests.put(
                     f"{secrets_url}/{secret_name}",
                     headers=headers,
                     json=secret_data
                 )
 
-                if response.status_code in [201, 204]:
-                    self.print_success(f"Created secret: {secret_name}")
-                    success_count += 1
+                if response.status_code == 201:
+                    self.print_success(f"Created new secret: {secret_name}")
+                    created_count += 1
+                elif response.status_code == 204:
+                    self.print_success(f"Updated existing secret: {secret_name}")
+                    updated_count += 1
                 else:
-                    self.print_error(f"Failed to create secret {secret_name}: {response.status_code}")
+                    self.print_error(f"Failed to {operation.lower()} secret {secret_name}: {response.status_code}")
 
             except Exception as e:
-                self.print_error(f"Error creating secret {secret_name}: {e}")
+                self.print_error(f"Error creating/updating secret {secret_name}: {e}")
 
+        success_count = created_count + updated_count
         if success_count == len(secrets):
-            self.print_success(f"All {success_count} secrets created successfully!")
+            self.print_success(f"All secrets processed successfully! Created: {created_count}, Updated: {updated_count}")
             return True
         else:
-            self.print_warning(f"Created {success_count}/{len(secrets)} secrets")
+            self.print_warning(f"Processed {success_count}/{len(secrets)} secrets. Created: {created_count}, Updated: {updated_count}")
             return False
 
     def cleanup_temp_files(self):
@@ -571,6 +606,9 @@ This will:
 
         # Load configuration
         config = self.load_config()
+
+        # Set GitHub repository from config
+        self.github_repo = config['github']['repository']
 
         # Verify all files are present
         if not self.verify_files(config):
@@ -620,13 +658,13 @@ This will:
         github_token = config['github']['personal_access_token']
 
         if github_token.startswith('github'):
-            # Create GitHub secrets
+            # Create or update GitHub secrets
             if self.create_github_secrets(secrets, github_token):
                 self.cleanup_temp_files()
 
                 self.print_header("Phase 2 Complete!")
 
-                print(f"\n{Colors.GREEN}✅ All GitHub secrets created successfully!{Colors.ENDC}")
+                print(f"\n{Colors.GREEN}✅ All GitHub secrets created or updated successfully!{Colors.ENDC}")
                 print(f"\n🚀 Next steps:")
                 print(f"1. Test the workflow: Push to master branch")
                 print(f"2. Check GitHub Actions: https://github.com/{self.github_repo}/actions")

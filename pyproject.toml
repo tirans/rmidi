@@ -72,8 +72,6 @@ sources = [
     "server",
 ]
 
-module_name = "server"
-
 test_sources = ["tests"]
 
 requires = [
@@ -101,8 +99,6 @@ icon = "resources/r2midi"
 sources = [
     "r2midi_client",
 ]
-
-module_name = "r2midi_client"
 
 test_sources = ["tests/unit/r2midi_client"]
 

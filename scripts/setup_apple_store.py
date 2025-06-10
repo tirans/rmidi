@@ -154,7 +154,10 @@ class AppleStoreSetup:
             "apple_developer": {
                 "apple_id": "your.apple.id@domain.com",
                 "team_id": "YOUR_TEAM_ID",
-                "app_specific_password": "your-app-specific-password"
+                "app_specific_password": "your-app-specific-password",
+                "app_store_connect_key_id": "YOUR_KEY_ID",
+                "app_store_connect_issuer_id": "YOUR_ISSUER_ID",
+                "app_store_connect_api_key_path": "/path/to/AuthKey_KEYID.p8"
             },
             "build_options": {
                 "enable_app_store_build": True,
@@ -336,6 +339,26 @@ This will:
             ("apple_developer", "team_id"),
             ("github", "personal_access_token")
         ]
+
+        # Check for App Store Connect API key fields
+        api_key_fields = [
+            ("apple_developer", "app_store_connect_key_id"),
+            ("apple_developer", "app_store_connect_issuer_id"),
+            ("apple_developer", "app_store_connect_api_key_path")
+        ]
+
+        missing_api_key_fields = []
+        for section, field in api_key_fields:
+            value = config.get(section, {}).get(field, "")
+            if not value or value.startswith(("your", "YOUR", "/path/to")):
+                missing_api_key_fields.append(f"{section}.{field}")
+
+        if missing_api_key_fields:
+            self.print_warning("App Store Connect API key fields not filled:")
+            for field in missing_api_key_fields:
+                self.print_warning(f"  - {field}")
+            self.print_warning("Apple ID authentication may fail with 401 error in CI/CD environments.")
+            self.print_warning("See docs/apple_auth_troubleshooting.md for instructions on setting up API key authentication.")
 
         for section, field in required_fields:
             value = config.get(section, {}).get(field, "")

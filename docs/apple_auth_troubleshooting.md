@@ -37,7 +37,7 @@ We've created a simple validation script to help you test your API key:
 ```
 
 This script will:
-1. Prompt for your Key ID, Issuer ID, and path to the .p8 file
+1. Read your Key ID, Issuer ID, and path to the .p8 file from `apple_credentials/config/app_config.json`
 2. Test if the API key is valid
 3. Provide detailed error messages and troubleshooting tips if there are issues
 

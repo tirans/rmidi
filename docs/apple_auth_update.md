@@ -41,8 +41,8 @@ To resolve this issue, you need to switch from Apple ID authentication to App St
    - Note the Key ID and Issuer ID
 
 2. **Validate Your API Key**:
-   - Run `./validate_api_key.sh` and follow the prompts
-   - This script will test if your API key is valid and working correctly
+   - Run `./validate_api_key.sh`
+   - This script will read your configuration from `apple_credentials/config/app_config.json` and test if your API key is valid and working correctly
 
 3. **Update Your Configuration**:
    - Update your `apple_credentials/config/app_config.json` file to include the API key information:

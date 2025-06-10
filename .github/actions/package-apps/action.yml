@@ -19,25 +19,25 @@ runs:
       shell: bash
       run: |
         echo "📦 Packaging ${{ inputs.platform }} applications..."
-        
+
         # Determine app type
         if [ "${{ inputs.platform }}" = "linux" ]; then
           APP_TYPE="system"
         else
           APP_TYPE="app"
         fi
-        
+
         # Package based on platform and signing availability
         if [ "${{ inputs.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
           echo "📦 Packaging with code signing..."
-          briefcase package ${{ inputs.platform }} $APP_TYPE -a server
-          briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client
-          
+          echo "3" | briefcase package ${{ inputs.platform }} $APP_TYPE -a server
+          echo "3" | briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client
+
           # Also create DMG and PKG installers
-          briefcase package ${{ inputs.platform }} dmg -a server
-          briefcase package ${{ inputs.platform }} dmg -a r2midi-client
-          briefcase package ${{ inputs.platform }} pkg -a server
-          briefcase package ${{ inputs.platform }} pkg -a r2midi-client
+          echo "3" | briefcase package ${{ inputs.platform }} dmg -a server
+          echo "3" | briefcase package ${{ inputs.platform }} dmg -a r2midi-client
+          echo "3" | briefcase package ${{ inputs.platform }} pkg -a server
+          echo "3" | briefcase package ${{ inputs.platform }} pkg -a r2midi-client
         elif [ "${{ inputs.platform }}" = "macOS" ]; then
           echo "📦 Packaging without signing..."
           briefcase package ${{ inputs.platform }} $APP_TYPE -a server --adhoc-sign
@@ -53,7 +53,7 @@ runs:
       run: |
         mkdir -p artifacts
         echo "📁 Preparing artifacts for ${{ inputs.platform }}..."
-        
+
         # Platform-specific artifact preparation
         case "${{ inputs.platform }}" in
           macOS)
@@ -62,7 +62,7 @@ runs:
               find dist -name "*.dmg" -exec cp {} artifacts/ \; 2>/dev/null || true
               find dist -name "*.pkg" -exec cp {} artifacts/ \; 2>/dev/null || true
             fi
-            
+
             # Package app bundles as zip if no DMG found
             if [ ! -f artifacts/*.dmg ]; then
               for app in build/*/macOS/app/*.app; do
@@ -80,7 +80,7 @@ runs:
             if [ -d "dist" ]; then
               find dist -name "*.msi" -exec cp {} artifacts/ \; 2>/dev/null || true
             fi
-            
+
             # Package Windows builds as ZIP
             for dir in build/*/windows/app; do
               if [ -d "$dir" ]; then
@@ -96,7 +96,7 @@ runs:
             if [ -d "dist" ]; then
               find dist -name "*.deb" -exec cp {} artifacts/ \; 2>/dev/null || true
             fi
-            
+
             # Create tar.gz archives
             for dir in build/*/linux/system; do
               if [ -d "$dir" ]; then
@@ -107,12 +107,12 @@ runs:
             done
             ;;
         esac
-        
+
         # Create build info file
         cat > artifacts/BUILD_INFO.txt << EOF
         R2MIDI Build Information
         =======================
-        
+
         Version: ${{ inputs.version }}
         Platform: ${{ inputs.platform }}
         Build Type: ${{ inputs.build-type }}
@@ -122,6 +122,6 @@ runs:
         Workflow: ${{ github.workflow }}
         Run: ${{ github.run_number }}
         EOF
-        
+
         echo "📦 Artifacts created:"
         ls -la artifacts/ || echo "No artifacts found"

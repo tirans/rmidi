@@ -35,6 +35,12 @@ on:
         required: false
       APPLE_TEAM_ID:
         required: false
+      APP_STORE_CONNECT_API_KEY:
+        required: false
+      APP_STORE_CONNECT_KEY_ID:
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: false
       WINDOWS_CERTIFICATE_P12:
         required: false
       WINDOWS_CERTIFICATE_PASSWORD:
@@ -59,7 +65,7 @@ jobs:
     runs-on: ${{ inputs.os }}
     outputs:
       artifact-name: ${{ steps.upload.outputs.artifact-name }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -86,13 +92,13 @@ jobs:
         id: version
         run: |
           VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
-          
+
           if [ -n "${{ inputs.version-suffix }}" ]; then
             FULL_VERSION="${VERSION}${{ inputs.version-suffix }}"
           else
             FULL_VERSION="${VERSION}"
           fi
-          
+
           echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "APP_VERSION=$FULL_VERSION" >> $GITHUB_ENV
         shell: bash
@@ -135,6 +141,9 @@ jobs:
           apple-id: ${{ secrets.APPLE_ID }}
           apple-id-password: ${{ secrets.APPLE_ID_PASSWORD }}
           apple-team-id: ${{ secrets.APPLE_TEAM_ID }}
+          app-store-connect-api-key: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          app-store-connect-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          app-store-connect-issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 
       - name: Configure build metadata
         uses: ./.github/actions/configure-build

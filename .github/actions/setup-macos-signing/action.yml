@@ -99,8 +99,28 @@ runs:
 
           # Remove temporary API key file
           rm -f api_key.p8
+
+          # Test the credentials to ensure they work
+          echo "Testing API key credentials..."
+          TEST_RESULT=$(xcrun notarytool info --apple-id doesnotexist@example.com --profile r2midi-notary 2>&1)
+
+          if [[ "$TEST_RESULT" == *"Unable to find the requested resource"* ]]; then
+            echo "✅ API key credentials are valid (expected resource not found error)"
+          elif [[ "$TEST_RESULT" == *"401"* ]] || [[ "$TEST_RESULT" == *"authentication"* ]]; then
+            echo "❌ API key authentication failed. Please check your API key credentials."
+            echo "Error details: $TEST_RESULT"
+            exit 1
+          else
+            echo "⚠️ Unexpected response from API: $TEST_RESULT"
+            echo "Continuing with the build process..."
+          fi
         else
-          echo "Using Apple ID for notarization..."
+          echo "⚠️ App Store Connect API key credentials not provided."
+          echo "Apple has restricted Apple ID authentication for notarization in CI/CD environments."
+          echo "It is strongly recommended to use App Store Connect API key authentication."
+          echo "See docs/apple_auth_troubleshooting.md for instructions."
+          echo ""
+          echo "Attempting to use Apple ID for notarization (may fail with 401 error)..."
           echo "${{ inputs.apple-id-password }}" | xcrun notarytool store-credentials "r2midi-notary" \
             --apple-id "${{ inputs.apple-id }}" \
             --team-id "${{ inputs.apple-team-id }}" \

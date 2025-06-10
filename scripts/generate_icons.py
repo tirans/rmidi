@@ -8,13 +8,36 @@ for different platforms (Windows .ico, macOS .icns, Linux .png).
 
 import os
 import sys
+import platform
 from pathlib import Path
 
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
-    print("❌ Pillow is required. Install with: pip install pillow")
+    print("X Pillow is required. Install with: pip install pillow")
     sys.exit(1)
+
+# Handle encoding issues on different platforms
+def safe_print(message, success=None):
+    """Print messages with platform-safe symbols."""
+    # Check if we're on Windows
+    is_windows = platform.system() == "Windows"
+
+    # Replace Unicode symbols with ASCII alternatives on Windows
+    if is_windows:
+        message = message.replace("✅", "√").replace("❌", "X").replace("⚠️", "!")
+
+    # Add success/failure/warning prefix if specified
+    if success is not None:
+        if success is True:
+            prefix = "√ " if is_windows else "✅ "
+        elif success is False:
+            prefix = "X " if is_windows else "❌ "
+        else:  # None or any other value is treated as a warning
+            prefix = "! " if is_windows else "⚠️ "
+        message = prefix + message
+
+    print(message)
 
 
 def create_base_icon(size=1024):
@@ -86,7 +109,7 @@ def generate_windows_ico(base_img, output_path):
 
     # Save as ICO
     images[0].save(output_path, format='ICO', sizes=[(s, s) for s in sizes])
-    print(f"✅ Created Windows icon: {output_path}")
+    safe_print(f"Created Windows icon: {output_path}", True)
 
 
 def generate_macos_icns(base_img, output_path):
@@ -123,12 +146,12 @@ def generate_macos_icns(base_img, output_path):
                 ['iconutil', '-c', 'icns', str(iconset_path), '-o', str(output_path)],
                 check=True
             )
-            print(f"✅ Created macOS icon: {output_path}")
+            safe_print(f"Created macOS icon: {output_path}", True)
         except subprocess.CalledProcessError:
-            print(f"⚠️  Failed to create macOS icon (iconutil not available)")
+            safe_print(f"Failed to create macOS icon (iconutil not available)", None)
             # Fallback: save as PNG
             base_img.save(output_path.with_suffix('.png'))
-            print(f"✅ Created PNG fallback: {output_path.with_suffix('.png')}")
+            safe_print(f"Created PNG fallback: {output_path.with_suffix('.png')}", True)
 
 
 def generate_linux_png(base_img, output_path):
@@ -139,11 +162,11 @@ def generate_linux_png(base_img, output_path):
         resized = base_img.resize((size, size), Image.Resampling.LANCZOS)
         size_path = output_path.parent / f"r2midi-{size}x{size}.png"
         resized.save(size_path)
-        print(f"✅ Created Linux icon: {size_path}")
+        safe_print(f"Created Linux icon: {size_path}", True)
 
     # Also save the full size
     base_img.save(output_path)
-    print(f"✅ Created Linux icon: {output_path}")
+    safe_print(f"Created Linux icon: {output_path}", True)
 
 
 def main():
@@ -152,7 +175,7 @@ def main():
     resources_dir = Path("resources")
     resources_dir.mkdir(exist_ok=True)
 
-    print("Generating R2MIDI icons...")
+    safe_print("Generating R2MIDI icons...")
 
     # Create base icon
     base_icon = create_base_icon(1024)
@@ -163,13 +186,13 @@ def main():
     if sys.platform == "darwin":
         generate_macos_icns(base_icon, resources_dir / "r2midi.icns")
     else:
-        print("⚠️  Skipping macOS .icns generation (not on macOS)")
+        safe_print("Skipping macOS .icns generation (not on macOS)", None)
         base_icon.save(resources_dir / "r2midi.png")
 
     generate_linux_png(base_icon, resources_dir / "r2midi.png")
 
-    print("\n✅ Icon generation complete!")
-    print(f"📁 Icons saved to: {resources_dir.absolute()}")
+    safe_print("\nIcon generation complete!", True)
+    safe_print(f"Icons saved to: {resources_dir.absolute()}")
 
 
 if __name__ == "__main__":

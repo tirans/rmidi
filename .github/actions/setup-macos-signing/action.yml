@@ -102,7 +102,7 @@ runs:
 
           # Test the credentials to ensure they work
           echo "Testing API key credentials..."
-          TEST_RESULT=$(xcrun notarytool history --profile r2midi-notary 2>&1)
+          TEST_RESULT=$(xcrun notarytool history --keychain-profile r2midi-notary 2>&1)
 
           if [[ "$TEST_RESULT" == *"No submissions found"* ]] || [[ "$TEST_RESULT" == *"[]"* ]]; then
             echo "✅ API key credentials are valid (no submissions found)"

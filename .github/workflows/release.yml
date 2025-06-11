@@ -173,33 +173,33 @@ jobs:
       sign-builds: ${{ matrix.sign || false }}
     secrets: inherit
 
-  # Publish to PyPI - TEMPORARILY DISABLED
-  # publish-pypi:
-  #   name: Publish to PyPI
-  #   needs: [version, python-package]
-  #   runs-on: ubuntu-latest
-  #   environment: pypi
-  #   # Using API token authentication for PyPI
-  #   # Note: We're not using OIDC trusted publishing to avoid configuration conflicts
-  #   # If you want to switch to trusted publishing in the future, follow the guide at:
-  #   # https://docs.pypi.org/trusted-publishers/using-a-publisher/
-  #   steps:
-  #     - name: Download package
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: python-package
-  #         path: dist/
-  #
-  #     - name: Publish to PyPI
-  #       uses: pypa/gh-action-pypi-publish@release/v1
-  #       with:
-  #         password: ${{ secrets.PYPI_API_TOKEN }}
-  #         verbose: true
+  # Publish to PyPI
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [version, python-package]
+    runs-on: ubuntu-latest
+    environment: pypi
+    # Using API token authentication for PyPI
+    # Note: We're not using OIDC trusted publishing to avoid configuration conflicts
+    # If you want to switch to trusted publishing in the future, follow the guide at:
+    # https://docs.pypi.org/trusted-publishers/using-a-publisher/
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          verbose: true
 
   # Create GitHub release
   create-release:
     name: Create Release
-    needs: [version, build-apps]
+    needs: [version, build-apps, publish-pypi]
     runs-on: ubuntu-latest
 
     steps:
@@ -248,4 +248,4 @@ jobs:
 
             ### 📊 PyPI Package
 
-            PyPI publishing is temporarily disabled. Please use the downloadable packages above.
+            The Python package is available on PyPI: https://pypi.org/project/r2midi/

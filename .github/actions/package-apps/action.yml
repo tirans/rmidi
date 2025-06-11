@@ -36,22 +36,27 @@ runs:
             echo "✅ Using notarization profile: $BRIEFCASE_NOTARIZATION_PROFILE"
 
             # Package with signing and notarization
-            # Use the signing identity directly to avoid interactive prompts
+            # Use the signing identity and notarization profile directly to avoid interactive prompts
             briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
+              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
             briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
-
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
+              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
 
             # Also create DMG and PKG installers
             briefcase package ${{ inputs.platform }} dmg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
+              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
             briefcase package ${{ inputs.platform }} dmg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
+              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
             briefcase package ${{ inputs.platform }} pkg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
+              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
             briefcase package ${{ inputs.platform }} pkg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
+              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
           else
             echo "⚠️  No notarization profile found, packaging without notarization..."
 

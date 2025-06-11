@@ -179,9 +179,10 @@ jobs:
     needs: [version, python-package]
     runs-on: ubuntu-latest
     environment: pypi
-    permissions:
-      id-token: write  # Required for OIDC trusted publishing
-
+    # Using API token authentication for PyPI
+    # Note: We're not using OIDC trusted publishing to avoid configuration conflicts
+    # If you want to switch to trusted publishing in the future, follow the guide at:
+    # https://docs.pypi.org/trusted-publishers/using-a-publisher/
     steps:
       - name: Download package
         uses: actions/download-artifact@v4

@@ -30,18 +30,18 @@ runs:
         # Package based on platform and signing availability
         if [ "${{ inputs.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
           echo "📦 Packaging with code signing..."
-          
+
           # Check if notarization profile is set
           if [ -n "$BRIEFCASE_NOTARIZATION_PROFILE" ]; then
             echo "✅ Using notarization profile: $BRIEFCASE_NOTARIZATION_PROFILE"
-            
+
             # Package with signing and notarization
             # Use the signing identity directly to avoid interactive prompts
             briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
               --identity "$BRIEFCASE_SIGNING_IDENTITY" 
             briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client \
               --identity "$BRIEFCASE_SIGNING_IDENTITY" 
-              
+
 
             # Also create DMG and PKG installers
             briefcase package ${{ inputs.platform }} dmg -a server \
@@ -54,7 +54,7 @@ runs:
               --identity "$BRIEFCASE_SIGNING_IDENTITY" 
           else
             echo "⚠️  No notarization profile found, packaging without notarization..."
-            
+
             # Package with signing only
             briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
               --identity "$BRIEFCASE_SIGNING_IDENTITY"
@@ -114,13 +114,12 @@ runs:
               find dist -name "*.msi" -exec cp {} artifacts/ \; 2>/dev/null || true
             fi
 
-            # Package Windows builds as ZIP
+            # Package Windows builds as ZIP using PowerShell's Compress-Archive
             for dir in build/*/windows/app; do
               if [ -d "$dir" ]; then
                 app_name=$(basename "$(dirname "$(dirname "$dir")")")
-                cd "$dir"
-                zip -r "$GITHUB_WORKSPACE/artifacts/${app_name}-windows-${{ inputs.build-type }}-v${{ inputs.version }}.zip" . -x "*.log"
-                cd "$GITHUB_WORKSPACE"
+                # Use PowerShell to create the ZIP file
+                powershell -Command "Compress-Archive -Path '$dir/*' -DestinationPath '$GITHUB_WORKSPACE/artifacts/${app_name}-windows-${{ inputs.build-type }}-v${{ inputs.version }}.zip' -Force"
               fi
             done
             ;;

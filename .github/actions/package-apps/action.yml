@@ -37,35 +37,30 @@ runs:
 
             # Package with signing and notarization
             # Use the signing identity directly to avoid interactive prompts
-            # For Developer ID Application certificates, we need to explicitly specify the notarization profile
+            # Notarization is handled automatically when using a Developer ID certificate
             # The notarization credentials are stored in the keychain by setup-macos-signing action
+            # Note: The --notarization-profile flag is not supported by Briefcase
 
             # Package the app bundles
             echo "📦 Packaging app bundles..."
             briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
+              --identity "$BRIEFCASE_SIGNING_IDENTITY"
             briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
+              --identity "$BRIEFCASE_SIGNING_IDENTITY"
 
             # Create DMG installers
             echo "📦 Creating DMG installers..."
             briefcase package ${{ inputs.platform }} dmg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
+              --identity "$BRIEFCASE_SIGNING_IDENTITY"
             briefcase package ${{ inputs.platform }} dmg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
+              --identity "$BRIEFCASE_SIGNING_IDENTITY"
 
             # Create PKG installers
             echo "📦 Creating PKG installers..."
             briefcase package ${{ inputs.platform }} pkg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
+              --identity "$BRIEFCASE_SIGNING_IDENTITY"
             briefcase package ${{ inputs.platform }} pkg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarization-profile "$BRIEFCASE_NOTARIZATION_PROFILE"
+              --identity "$BRIEFCASE_SIGNING_IDENTITY"
           else
             echo "⚠️  No notarization profile found, packaging without notarization..."
 

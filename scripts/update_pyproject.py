@@ -8,7 +8,44 @@ metadata, and platform-specific settings for Briefcase builds.
 
 import argparse
 import re
+import platform
+import sys
 from pathlib import Path
+
+
+def safe_print(message, success=None):
+    """Print messages with platform-safe symbols."""
+    # Check if we're on Windows
+    is_windows = platform.system() == "Windows"
+
+    # Replace Unicode symbols with ASCII alternatives on Windows
+    if is_windows:
+        message = message.replace("✅", "[OK]").replace("❌", "[ERROR]").replace("⚠️", "[WARN]")
+
+    # Add success/failure/warning prefix if specified
+    if success is not None:
+        if success is True:
+            prefix = "[OK] " if is_windows else "✅ "
+        elif success is False:
+            prefix = "[ERROR] " if is_windows else "❌ "
+        else:  # None or any other value is treated as a warning
+            prefix = "[WARN] " if is_windows else "⚠️ "
+        message = prefix + message
+
+    # Force UTF-8 encoding on Windows to handle any remaining Unicode
+    if is_windows:
+        try:
+            # Try to print with UTF-8 encoding without replacing sys.stdout
+            print(message)
+        except UnicodeEncodeError:
+            # Fallback: encode to ASCII with replacement
+            print(message.encode('ascii', 'replace').decode('ascii'))
+    else:
+        try:
+            print(message)
+        except UnicodeEncodeError:
+            # Fallback: encode to ASCII with replacement
+            print(message.encode('ascii', 'replace').decode('ascii'))
 
 
 def update_pyproject(
@@ -22,35 +59,35 @@ def update_pyproject(
     app_store=False
 ):
     """Update pyproject.toml with the provided configuration."""
-    
+
     # Read the current pyproject.toml
     pyproject_path = Path("pyproject.toml")
     if not pyproject_path.exists():
-        print("❌ pyproject.toml not found")
+        safe_print("pyproject.toml not found", False)
         return False
-    
+
     content = pyproject_path.read_text()
-    
+
     # Update version
     if version:
         content = re.sub(r'version = "[^"]*"', f'version = "{version}"', content)
-        print(f"✅ Updated version to: {version}")
-    
+        safe_print(f"Updated version to: {version}", True)
+
     # Update author
     if author:
         content = re.sub(r'author = "[^"]*"', f'author = "{author}"', content)
-        print(f"✅ Updated author to: {author}")
-    
+        safe_print(f"Updated author to: {author}", True)
+
     # Update author email
     if author_email:
         content = re.sub(r'author_email = "[^"]*"', f'author_email = "{author_email}"', content)
-        print(f"✅ Updated author_email to: {author_email}")
-    
+        safe_print(f"Updated author_email to: {author_email}", True)
+
     # Update bundle prefix
     if bundle_prefix:
         content = re.sub(r'bundle = "[^"]*"', f'bundle = "{bundle_prefix}"', content)
-        print(f"✅ Updated bundle to: {bundle_prefix}")
-    
+        safe_print(f"Updated bundle to: {bundle_prefix}", True)
+
     # Update formal names
     if server_name:
         # Update server formal name
@@ -59,8 +96,8 @@ def update_pyproject(
             f'formal_name = "{server_name}"',
             content
         )
-        print(f"✅ Updated server name to: {server_name}")
-    
+        safe_print(f"Updated server name to: {server_name}", True)
+
     if client_name:
         # Update client formal name  
         content = re.sub(
@@ -68,8 +105,8 @@ def update_pyproject(
             f'formal_name = "{client_name}"',
             content
         )
-        print(f"✅ Updated client name to: {client_name}")
-    
+        safe_print(f"Updated client name to: {client_name}", True)
+
     # Update code signing identity for macOS
     if codesign_identity:
         # Add or update codesign_identity in macOS sections
@@ -91,14 +128,14 @@ def update_pyproject(
                 f'\\1\ncodesign_identity = "{codesign_identity}"',
                 content
             )
-        print(f"✅ Updated codesign_identity")
-    
+        safe_print(f"Updated codesign_identity", True)
+
     # Update for App Store
     if app_store:
         # Enable app sandboxing
         content = re.sub(r'app-sandbox = false', 'app-sandbox = true', content)
-        print("✅ Enabled app sandboxing for App Store")
-        
+        safe_print("Enabled app sandboxing for App Store", True)
+
         # Update entitlements for App Store
         content = re.sub(
             r'com\.apple\.security\.network\.server</key>\s*<false/>',
@@ -110,17 +147,17 @@ def update_pyproject(
             'com.apple.security.network.client</key>\n    <true/>',
             content
         )
-    
+
     # Write the updated content
     pyproject_path.write_text(content)
-    print("✅ pyproject.toml updated successfully")
-    
+    safe_print("pyproject.toml updated successfully", True)
+
     return True
 
 
 def main():
     parser = argparse.ArgumentParser(description="Update pyproject.toml for builds")
-    
+
     parser.add_argument("--version", help="Application version")
     parser.add_argument("--author", help="Author name")
     parser.add_argument("--author-email", help="Author email")
@@ -129,9 +166,9 @@ def main():
     parser.add_argument("--bundle-prefix", help="Bundle ID prefix")
     parser.add_argument("--codesign-identity", help="macOS code signing identity")
     parser.add_argument("--app-store", action="store_true", help="Configure for App Store")
-    
+
     args = parser.parse_args()
-    
+
     # Update pyproject.toml
     success = update_pyproject(
         version=args.version,
@@ -143,7 +180,7 @@ def main():
         codesign_identity=args.codesign_identity,
         app_store=args.app_store
     )
-    
+
     return 0 if success else 1
 
 

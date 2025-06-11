@@ -72,12 +72,12 @@ runs:
 
         # Find signing identity
         SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
-          grep "Developer ID Application" | head -1 | \
+          grep "3rd Party Mac Developer Application" | head -1 | \
           sed -n 's/.*"\([^"]*\)".*/\1/p')
 
         if [ -z "$SIGNING_IDENTITY" ]; then
           SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
-            grep "Developer ID Application" | head -1 | awk '{print $2}')
+            grep "3rd Party Mac Developer Application" | head -1 | awk '{print $2}')
         fi
 
         if [ -z "$SIGNING_IDENTITY" ]; then

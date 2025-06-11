@@ -37,7 +37,7 @@ runs:
 
             # Package with signing and notarization
             # Use the signing identity directly to avoid interactive prompts
-            # Notarization is handled automatically when using a Developer ID certificate
+            # Notarization is handled automatically when using a 3rd Party Mac Developer Application certificate
             # The notarization credentials are stored in the keychain by setup-macos-signing action
 
             # Package the app bundles

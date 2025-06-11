@@ -179,6 +179,8 @@ jobs:
     needs: [version, python-package]
     runs-on: ubuntu-latest
     environment: pypi
+    permissions:
+      id-token: write  # Required for OIDC trusted publishing
 
     steps:
       - name: Download package

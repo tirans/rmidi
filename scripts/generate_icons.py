@@ -25,19 +25,33 @@ def safe_print(message, success=None):
 
     # Replace Unicode symbols with ASCII alternatives on Windows
     if is_windows:
-        message = message.replace("✅", "√").replace("❌", "X").replace("⚠️", "!")
+        message = message.replace("✅", "[OK]").replace("❌", "[ERROR]").replace("⚠️", "[WARN]")
 
     # Add success/failure/warning prefix if specified
     if success is not None:
         if success is True:
-            prefix = "√ " if is_windows else "✅ "
+            prefix = "[OK] " if is_windows else "✅ "
         elif success is False:
-            prefix = "X " if is_windows else "❌ "
+            prefix = "[ERROR] " if is_windows else "❌ "
         else:  # None or any other value is treated as a warning
-            prefix = "! " if is_windows else "⚠️ "
+            prefix = "[WARN] " if is_windows else "⚠️ "
         message = prefix + message
 
-    print(message)
+    # Force UTF-8 encoding on Windows to handle any remaining Unicode
+    if is_windows:
+        try:
+            # Try to set console to UTF-8 mode
+            import sys
+            import io
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        except:
+            pass
+    
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        # Fallback: encode to ASCII with replacement
+        print(message.encode('ascii', 'replace').decode('ascii'))
 
 
 def create_base_icon(size=1024):

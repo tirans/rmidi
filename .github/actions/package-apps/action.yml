@@ -38,25 +38,20 @@ runs:
             # Package with signing and notarization
             # Use the signing identity directly to avoid interactive prompts
             briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarize-app
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
             briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarize-app
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
+              
 
             # Also create DMG and PKG installers
             briefcase package ${{ inputs.platform }} dmg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarize-app
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
             briefcase package ${{ inputs.platform }} dmg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarize-app
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
             briefcase package ${{ inputs.platform }} pkg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarize-app
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
             briefcase package ${{ inputs.platform }} pkg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY" \
-              --notarize-app
+              --identity "$BRIEFCASE_SIGNING_IDENTITY" 
           else
             echo "⚠️  No notarization profile found, packaging without notarization..."
             

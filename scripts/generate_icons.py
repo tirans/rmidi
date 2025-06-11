@@ -40,18 +40,20 @@ def safe_print(message, success=None):
     # Force UTF-8 encoding on Windows to handle any remaining Unicode
     if is_windows:
         try:
-            # Try to set console to UTF-8 mode
+            # Try to print with UTF-8 encoding without replacing sys.stdout
             import sys
             import io
-            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-        except:
-            pass
-    
-    try:
-        print(message)
-    except UnicodeEncodeError:
-        # Fallback: encode to ASCII with replacement
-        print(message.encode('ascii', 'replace').decode('ascii'))
+            # Don't replace sys.stdout directly to avoid closing it
+            print(message)
+        except UnicodeEncodeError:
+            # Fallback: encode to ASCII with replacement
+            print(message.encode('ascii', 'replace').decode('ascii'))
+    else:
+        try:
+            print(message)
+        except UnicodeEncodeError:
+            # Fallback: encode to ASCII with replacement
+            print(message.encode('ascii', 'replace').decode('ascii'))
 
 
 def create_base_icon(size=1024):

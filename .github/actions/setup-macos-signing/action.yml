@@ -70,10 +70,22 @@ runs:
         # Set partition list
         security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-        # Find signing identity
+        # Find signing identity - try both Developer ID and 3rd Party Mac Developer
         SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
-          grep "3rd Party Mac Developer Application" | head -1 | \
+          grep "Developer ID Application" | head -1 | \
           sed -n 's/.*"\([^"]*\)".*/\1/p')
+
+        if [ -z "$SIGNING_IDENTITY" ]; then
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
+            grep "Developer ID Application" | head -1 | awk '{print $2}')
+        fi
+
+        # If Developer ID not found, try 3rd Party Mac Developer
+        if [ -z "$SIGNING_IDENTITY" ]; then
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
+            grep "3rd Party Mac Developer Application" | head -1 | \
+            sed -n 's/.*"\([^"]*\)".*/\1/p')
+        fi
 
         if [ -z "$SIGNING_IDENTITY" ]; then
           SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | \
@@ -116,16 +128,39 @@ runs:
           fi
         else
           echo "⚠️ App Store Connect API key credentials not provided."
-          echo "Apple has restricted Apple ID authentication for notarization in CI/CD environments."
-          echo "It is strongly recommended to use App Store Connect API key authentication."
-          echo "See docs/401_error_quick_fix.md for a quick solution."
-          echo "For detailed instructions, see docs/apple_auth_troubleshooting.md."
-          echo ""
-          echo "Attempting to use Apple ID for notarization (may fail with 401 error)..."
-          echo "${{ inputs.apple-id-password }}" | xcrun notarytool store-credentials "r2midi-notary" \
+          echo "Using Apple ID for notarization..."
+
+          # Create a temporary file for the password
+          TEMP_PWD_FILE=$(mktemp)
+          echo "${{ inputs.apple-id-password }}" > "$TEMP_PWD_FILE"
+
+          # Store credentials using Apple ID
+          xcrun notarytool store-credentials "r2midi-notary" \
             --apple-id "${{ inputs.apple-id }}" \
             --team-id "${{ inputs.apple-team-id }}" \
-            --password -
+            --password "$TEMP_PWD_FILE"
+
+          # Remove the temporary password file
+          rm -f "$TEMP_PWD_FILE"
+
+          # Test the credentials to ensure they work
+          echo "Testing Apple ID credentials..."
+          TEST_RESULT=$(xcrun notarytool history --keychain-profile r2midi-notary 2>&1)
+
+          if [[ "$TEST_RESULT" == *"No submissions found"* ]] || [[ "$TEST_RESULT" == *"[]"* ]]; then
+            echo "✅ Apple ID credentials are valid (no submissions found)"
+          elif [[ "$TEST_RESULT" == *"401"* ]] || [[ "$TEST_RESULT" == *"authentication"* ]]; then
+            echo "❌ Apple ID authentication failed. Please check your Apple ID credentials."
+            echo "Error details: $TEST_RESULT"
+            echo "Apple has restricted Apple ID authentication for notarization in CI/CD environments."
+            echo "It is strongly recommended to use App Store Connect API key authentication."
+            echo "See docs/401_error_quick_fix.md for a quick solution."
+            echo "For detailed instructions, see docs/apple_auth_troubleshooting.md."
+            exit 1
+          else
+            echo "⚠️ Unexpected response from API: $TEST_RESULT"
+            echo "Continuing with the build process..."
+          fi
         fi
 
         # Set outputs

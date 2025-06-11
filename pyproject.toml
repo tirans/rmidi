@@ -134,7 +134,8 @@ requires = [
 # macOS specific settings
 # The codesign_identity is set dynamically during the build process
 # The actual identity is provided by the GitHub Actions workflow
-codesign_identity = "3rd Party Mac Developer Application"
+# For notarization, we need to use "Developer ID Application" certificate
+codesign_identity = "Developer ID Application"
 entitlements_file = "entitlements.plist"
 packaging_format = "dmg,pkg"
 
@@ -151,7 +152,8 @@ requires = [
 # macOS specific settings
 # The codesign_identity is set dynamically during the build process
 # The actual identity is provided by the GitHub Actions workflow
-codesign_identity = "3rd Party Mac Developer Application"
+# For notarization, we need to use "Developer ID Application" certificate
+codesign_identity = "Developer ID Application"
 entitlements_file = "entitlements.plist"
 packaging_format = "dmg,pkg"
 

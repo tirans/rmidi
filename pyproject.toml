@@ -132,7 +132,9 @@ requires = [
 ]
 
 # macOS specific settings
-codesign_identity = "Developer ID Application: Your Name (TEAM_ID)"
+# The codesign_identity is set dynamically during the build process
+# The actual identity is provided by the GitHub Actions workflow
+codesign_identity = "Developer ID Application"
 entitlements_file = "entitlements.plist"
 packaging_format = "dmg,pkg"
 
@@ -147,7 +149,9 @@ requires = [
 ]
 
 # macOS specific settings
-codesign_identity = "Developer ID Application: Your Name (TEAM_ID)"
+# The codesign_identity is set dynamically during the build process
+# The actual identity is provided by the GitHub Actions workflow
+codesign_identity = "Developer ID Application"
 entitlements_file = "entitlements.plist"
 packaging_format = "dmg,pkg"
 

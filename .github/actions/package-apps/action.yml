@@ -15,6 +15,15 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up macOS signing and notarization
+      if: inputs.platform == 'macOS'
+      uses: some/setup-macos-signing-action@v1  # Replace with the actual action you're using
+      with:
+        signing-identity: ${{ secrets.SIGNING_IDENTITY }}
+        apple-id: ${{ secrets.NOTARIZATION_APPLE_ID }}
+        team-id: ${{ secrets.NOTARIZATION_TEAM_ID }}
+        app-specific-password: ${{ secrets.NOTARIZATION_PASSWORD }}
+
     - name: Package applications
       shell: bash
       run: |
@@ -29,57 +38,25 @@ runs:
 
         # Package based on platform and signing availability
         if [ "${{ inputs.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
-          echo "📦 Packaging with code signing..."
+          echo "📦 Packaging with code signing and notarization..."
 
-          # Check if notarization profile is set
-          if [ -n "$BRIEFCASE_NOTARIZATION_PROFILE" ]; then
-            echo "✅ Using notarization profile: $BRIEFCASE_NOTARIZATION_PROFILE"
+          # Package the app bundles
+          briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
+            --identity "$BRIEFCASE_SIGNING_IDENTITY"
+          briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client \
+            --identity "$BRIEFCASE_SIGNING_IDENTITY"
 
-            # Package with signing and notarization
-            # Use the signing identity directly to avoid interactive prompts
-            # Notarization is handled automatically when using a Developer ID certificate
-            # The notarization credentials are stored in the keychain by setup-macos-signing action
-            # Note: The --notarization-profile flag is not supported by Briefcase
+          # Create DMG installers
+          briefcase package ${{ inputs.platform }} dmg -a server \
+            --identity "$BRIEFCASE_SIGNING_IDENTITY"
+          briefcase package ${{ inputs.platform }} dmg -a r2midi-client \
+            --identity "$BRIEFCASE_SIGNING_IDENTITY"
 
-            # Package the app bundles
-            echo "📦 Packaging app bundles..."
-            briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-            briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-
-            # Create DMG installers
-            echo "📦 Creating DMG installers..."
-            briefcase package ${{ inputs.platform }} dmg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-            briefcase package ${{ inputs.platform }} dmg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-
-            # Create PKG installers
-            echo "📦 Creating PKG installers..."
-            briefcase package ${{ inputs.platform }} pkg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-            briefcase package ${{ inputs.platform }} pkg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-          else
-            echo "⚠️  No notarization profile found, packaging without notarization..."
-
-            # Package with signing only
-            briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-            briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-
-            # Also create DMG and PKG installers
-            briefcase package ${{ inputs.platform }} dmg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-            briefcase package ${{ inputs.platform }} dmg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-            briefcase package ${{ inputs.platform }} pkg -a server \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-            briefcase package ${{ inputs.platform }} pkg -a r2midi-client \
-              --identity "$BRIEFCASE_SIGNING_IDENTITY"
-          fi
+          # Create PKG installers
+          briefcase package ${{ inputs.platform }} pkg -a server \
+            --identity "$BRIEFCASE_SIGNING_IDENTITY"
+          briefcase package ${{ inputs.platform }} pkg -a r2midi-client \
+            --identity "$BRIEFCASE_SIGNING_IDENTITY"
         elif [ "${{ inputs.platform }}" = "macOS" ]; then
           echo "📦 Packaging without signing..."
           briefcase package ${{ inputs.platform }} $APP_TYPE -a server --adhoc-sign

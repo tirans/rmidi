@@ -103,9 +103,9 @@ runs:
 
         # Source the appropriate build script
         if [ "$BUILD_METHOD" = "briefcase" ]; then
-          source "$GITHUB_ACTION_PATH/../../scripts/build-briefcase.sh"
+          source "$GITHUB_WORKSPACE/.github/scripts/build-briefcase.sh"
         else
-          source "$GITHUB_ACTION_PATH/../../scripts/build-macos.sh"
+          source "$GITHUB_WORKSPACE/.github/scripts/build-macos.sh"
         fi
 
         # Execute the build

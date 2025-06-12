@@ -35,7 +35,7 @@ runs:
       shell: bash
       run: |
         echo "🔍 Validating build inputs..."
-        
+
         # Validate platform
         case "${{ inputs.platform }}" in
           linux|windows|macOS)
@@ -47,7 +47,7 @@ runs:
             exit 1
             ;;
         esac
-        
+
         # Validate build type
         case "${{ inputs.build-type }}" in
           dev|staging|production)
@@ -59,24 +59,24 @@ runs:
             exit 1
             ;;
         esac
-        
+
         echo "✅ Input validation complete"
 
     - name: Setup build environment
       shell: bash
       run: |
         echo "🔧 Setting up build environment for ${{ inputs.platform }}..."
-        
+
         # Create build directories
         mkdir -p build/{server,client,artifacts}
         mkdir -p dist/{server,client}
-        
+
         # Set environment variables
         echo "PLATFORM=${{ inputs.platform }}" >> $GITHUB_ENV
         echo "BUILD_TYPE=${{ inputs.build-type }}" >> $GITHUB_ENV
         echo "APP_VERSION=${{ inputs.version }}" >> $GITHUB_ENV
         echo "SHOULD_SIGN=${{ inputs.sign }}" >> $GITHUB_ENV
-        
+
         # Platform-specific setup
         case "${{ inputs.platform }}" in
           linux)
@@ -92,7 +92,7 @@ runs:
             echo "APP_FORMAT=app" >> $GITHUB_ENV
             ;;
         esac
-        
+
         echo "✅ Environment setup complete"
 
     - name: Build applications
@@ -100,17 +100,17 @@ runs:
       shell: bash
       run: |
         echo "🔨 Building applications using $BUILD_METHOD method..."
-        
+
         # Source the appropriate build script
         if [ "$BUILD_METHOD" = "briefcase" ]; then
-          source "$GITHUB_ACTION_PATH/../../../scripts/build-briefcase.sh"
+          source "$GITHUB_ACTION_PATH/../../scripts/build-briefcase.sh"
         else
-          source "$GITHUB_ACTION_PATH/../../../scripts/build-macos.sh"
+          source "$GITHUB_ACTION_PATH/../../scripts/build-macos.sh"
         fi
-        
+
         # Execute the build
         build_applications
-        
+
         # Set outputs
         if [ -n "$SERVER_APP_PATH" ]; then
           echo "server-app-path=$SERVER_APP_PATH" >> $GITHUB_OUTPUT
@@ -124,10 +124,10 @@ runs:
       shell: bash
       run: |
         echo "🔍 Verifying build results..."
-        
+
         # Check if builds were successful
         SUCCESS=true
-        
+
         if [ -n "${{ steps.build.outputs.server-app-path }}" ]; then
           if [ -e "${{ steps.build.outputs.server-app-path }}" ]; then
             echo "✅ Server application built successfully"
@@ -136,7 +136,7 @@ runs:
             SUCCESS=false
           fi
         fi
-        
+
         if [ -n "${{ steps.build.outputs.client-app-path }}" ]; then
           if [ -e "${{ steps.build.outputs.client-app-path }}" ]; then
             echo "✅ Client application built successfully"
@@ -145,12 +145,12 @@ runs:
             SUCCESS=false
           fi
         fi
-        
+
         if [ "$SUCCESS" = "false" ]; then
           echo "❌ Build verification failed"
           exit 1
         fi
-        
+
         echo "✅ Build verification complete"
 
     - name: Generate build summary
@@ -165,7 +165,7 @@ runs:
         echo "**Method:** $BUILD_METHOD" >> $GITHUB_STEP_SUMMARY
         echo "**Signing:** ${{ inputs.sign }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        
+
         if [ -n "${{ steps.build.outputs.server-app-path }}" ]; then
           echo "**Server App:** \`${{ steps.build.outputs.server-app-path }}\`" >> $GITHUB_STEP_SUMMARY
         fi

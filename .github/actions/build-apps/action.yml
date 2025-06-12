@@ -25,51 +25,51 @@ runs:
       shell: bash
       run: |
         echo "📦 Installing macOS native build dependencies..."
-        
+
         # Install required tools
         python -m pip install --upgrade pip
         pip install py2app setuptools wheel
-        
+
         # Install project dependencies
         pip install -r requirements.txt
         if [ -f r2midi_client/requirements.txt ]; then 
           pip install -r r2midi_client/requirements.txt
         fi
-        
+
         echo "✅ Dependencies installed"
 
     - name: Prepare build environment
       shell: bash
       run: |
         echo "🔧 Preparing native macOS build environment..."
-        
+
         # Create build directories
         mkdir -p build/server build/client dist
-        
+
         # Copy source files
         cp -r server/ build/server/
         cp -r r2midi_client/ build/client/
-        
+
         # Copy resources and ensure icon exists
         cp -r resources/ build/ 2>/dev/null || mkdir -p build/resources
         cp entitlements.plist build/ 2>/dev/null || true
-        
+
         # Ensure we have an icon file
         if [ ! -f "build/resources/r2midi.icns" ] && [ -f "r2midi.icns" ]; then
           cp r2midi.icns build/resources/r2midi.icns
         fi
-        
+
         echo "✅ Build environment ready"
 
     - name: Create py2app setup files
       shell: bash
       run: |
         echo "📝 Creating py2app setup files..."
-        
+
         VERSION="${{ env.APP_VERSION || '1.0.0' }}"
-        
+
         # Create setup.py for server
-        cat > build/server/setup.py << EOF
+        cat > build/server/setup.py << 'EOF'
 from setuptools import setup
 import sys
 import os
@@ -125,7 +125,7 @@ setup(
 EOF
 
         # Create setup.py for client
-        cat > build/client/setup.py << EOF
+        cat > build/client/setup.py << 'EOF'
 from setuptools import setup
 import sys
 import os
@@ -182,44 +182,44 @@ EOF
       shell: bash
       run: |
         echo "🔨 Building macOS applications with py2app..."
-        
+
         # Build server
         echo "Building R2MIDI Server..."
         cd build/server
         python setup.py py2app --dist-dir "../../dist/server"
         cd ../..
-        
+
         # Build client  
         echo "Building R2MIDI Client..."
         cd build/client
         python setup.py py2app --dist-dir "../../dist/client"
         cd ../..
-        
+
         # Find the built apps
         SERVER_APP=$(find dist/server -name "*.app" -type d | head -1)
         CLIENT_APP=$(find dist/client -name "*.app" -type d | head -1)
-        
+
         if [ -z "$SERVER_APP" ]; then
           echo "❌ Server app not built"
           echo "Contents of dist/server:"
           ls -la dist/server/ || true
           exit 1
         fi
-        
+
         if [ -z "$CLIENT_APP" ]; then
           echo "❌ Client app not built"
           echo "Contents of dist/client:"
           ls -la dist/client/ || true
           exit 1
         fi
-        
+
         # Set outputs with absolute paths
         SERVER_APP_ABS="$GITHUB_WORKSPACE/$SERVER_APP"
         CLIENT_APP_ABS="$GITHUB_WORKSPACE/$CLIENT_APP"
-        
+
         echo "server-app-path=$SERVER_APP_ABS" >> $GITHUB_OUTPUT
         echo "client-app-path=$CLIENT_APP_ABS" >> $GITHUB_OUTPUT
-        
+
         echo "✅ Applications built successfully"
         echo "📦 Server app: $SERVER_APP_ABS"
         echo "📦 Client app: $CLIENT_APP_ABS"
@@ -228,37 +228,37 @@ EOF
       shell: bash
       run: |
         echo "🔍 Verifying built applications..."
-        
+
         SERVER_APP="${{ steps.build-apps.outputs.server-app-path }}"
         CLIENT_APP="${{ steps.build-apps.outputs.client-app-path }}"
-        
+
         # Check app structure
         echo "Server app structure:"
         ls -la "$SERVER_APP/Contents/" || true
         echo "Server executable:"
         ls -la "$SERVER_APP/Contents/MacOS/" || true
-        
+
         echo "Client app structure:"
         ls -la "$CLIENT_APP/Contents/" || true
         echo "Client executable:"
         ls -la "$CLIENT_APP/Contents/MacOS/" || true
-        
+
         # Check that executables exist and are executable
         SERVER_EXEC=$(find "$SERVER_APP/Contents/MacOS" -type f -perm +111 | head -1)
         CLIENT_EXEC=$(find "$CLIENT_APP/Contents/MacOS" -type f -perm +111 | head -1)
-        
+
         if [ -n "$SERVER_EXEC" ]; then
           echo "✅ Server executable found: $SERVER_EXEC"
         else
           echo "❌ Server executable not found or not executable"
           exit 1
         fi
-        
+
         if [ -n "$CLIENT_EXEC" ]; then
           echo "✅ Client executable found: $CLIENT_EXEC"
         else
           echo "❌ Client executable not found or not executable"
           exit 1
         fi
-        
+
         echo "✅ Application verification complete"

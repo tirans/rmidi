@@ -1,0 +1,240 @@
+name: Build macOS Applications (Direct)
+description: Build macOS applications directly without Briefcase
+
+inputs:
+  version:
+    description: 'Application version'
+    required: true
+  sign:
+    description: 'Whether to sign builds'
+    required: false
+    default: 'false'
+
+outputs:
+  server-app-path:
+    description: 'Path to the server .app bundle'
+    value: ${{ steps.build-apps.outputs.server-app-path }}
+  client-app-path:
+    description: 'Path to the client .app bundle'
+    value: ${{ steps.build-apps.outputs.client-app-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install macOS build dependencies
+      shell: bash
+      run: |
+        echo "📦 Installing macOS build dependencies..."
+        
+        # Install required tools
+        python -m pip install --upgrade pip
+        pip install py2app setuptools wheel
+        
+        # Install project dependencies
+        pip install -r requirements.txt
+        if [ -f r2midi_client/requirements.txt ]; then 
+          pip install -r r2midi_client/requirements.txt
+        fi
+        
+        echo "✅ Dependencies installed"
+
+    - name: Prepare build environment
+      shell: bash
+      run: |
+        echo "🔧 Preparing build environment..."
+        
+        # Create build directories
+        mkdir -p build/server build/client
+        
+        # Copy source files
+        cp -r server/ build/server/
+        cp -r r2midi_client/ build/client/
+        
+        # Copy resources
+        cp -r resources/ build/ 2>/dev/null || true
+        cp entitlements.plist build/ 2>/dev/null || true
+        
+        echo "✅ Build environment ready"
+
+    - name: Create setup.py files
+      shell: bash
+      run: |
+        echo "📝 Creating setup.py files for py2app..."
+        
+        # Create setup.py for server
+        cat > build/server/setup.py << 'EOF'
+from setuptools import setup
+import sys
+import os
+
+# Add the current directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+APP = ['main.py']
+DATA_FILES = [
+    ('midi-presets', ['midi-presets']),
+]
+OPTIONS = {
+    'argv_emulation': False,
+    'plist': {
+        'CFBundleName': 'R2MIDI Server',
+        'CFBundleDisplayName': 'R2MIDI Server',
+        'CFBundleIdentifier': 'com.r2midi.server',
+        'CFBundleVersion': '${{ inputs.version }}',
+        'CFBundleShortVersionString': '${{ inputs.version }}',
+        'CFBundleSignature': 'R2MS',
+        'LSMinimumSystemVersion': '10.15',
+        'LSBackgroundOnly': False,
+        'NSHighResolutionCapable': True,
+        'NSRequiresAquaSystemAppearance': False,
+        'LSApplicationCategoryType': 'public.app-category.utilities',
+    },
+    'packages': [
+        'fastapi', 'uvicorn', 'pydantic', 'rtmidi', 'mido', 
+        'httpx', 'dotenv', 'git', 'psutil'
+    ],
+    'includes': [
+        'server.main', 'server.api', 'server.midi', 'server.presets',
+        'server.version', 'server.config'
+    ],
+    'excludes': ['tkinter', 'PyQt6'],
+    'resources': [],
+    'iconfile': '../../resources/r2midi.icns',
+}
+
+setup(
+    app=APP,
+    data_files=DATA_FILES,
+    options={'py2app': OPTIONS},
+    setup_requires=['py2app'],
+)
+EOF
+
+        # Create setup.py for client
+        cat > build/client/setup.py << 'EOF'
+from setuptools import setup
+import sys
+import os
+
+# Add the current directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+APP = ['main.py']
+DATA_FILES = []
+OPTIONS = {
+    'argv_emulation': False,
+    'plist': {
+        'CFBundleName': 'R2MIDI Client',
+        'CFBundleDisplayName': 'R2MIDI Client',
+        'CFBundleIdentifier': 'com.r2midi.client',
+        'CFBundleVersion': '${{ inputs.version }}',
+        'CFBundleShortVersionString': '${{ inputs.version }}',
+        'CFBundleSignature': 'R2MC',
+        'LSMinimumSystemVersion': '10.15',
+        'LSBackgroundOnly': False,
+        'NSHighResolutionCapable': True,
+        'NSRequiresAquaSystemAppearance': False,
+        'LSApplicationCategoryType': 'public.app-category.utilities',
+    },
+    'packages': [
+        'PyQt6', 'httpx', 'dotenv', 'pydantic', 'psutil'
+    ],
+    'includes': [
+        'r2midi_client.main', 'r2midi_client.ui', 'r2midi_client.api',
+        'r2midi_client.config'
+    ],
+    'excludes': ['tkinter'],
+    'resources': [],
+    'iconfile': '../../resources/r2midi.icns',
+}
+
+setup(
+    app=APP,
+    data_files=DATA_FILES,
+    options={'py2app': OPTIONS},
+    setup_requires=['py2app'],
+)
+EOF
+
+        echo "✅ Setup files created"
+
+    - name: Build applications
+      id: build-apps
+      shell: bash
+      run: |
+        echo "🔨 Building macOS applications..."
+        
+        # Build server
+        echo "Building R2MIDI Server..."
+        cd build/server
+        python setup.py py2app --dist-dir "../../dist/server"
+        cd ../..
+        
+        # Build client  
+        echo "Building R2MIDI Client..."
+        cd build/client
+        python setup.py py2app --dist-dir "../../dist/client"
+        cd ../..
+        
+        # Check if apps were created
+        SERVER_APP_PATH="dist/server/R2MIDI Server.app"
+        CLIENT_APP_PATH="dist/client/R2MIDI Client.app"
+        
+        if [ ! -d "$SERVER_APP_PATH" ]; then
+          echo "❌ Server app not found at: $SERVER_APP_PATH"
+          ls -la dist/server/
+          exit 1
+        fi
+        
+        if [ ! -d "$CLIENT_APP_PATH" ]; then
+          echo "❌ Client app not found at: $CLIENT_APP_PATH"
+          ls -la dist/client/
+          exit 1
+        fi
+        
+        # Set outputs
+        echo "server-app-path=$SERVER_APP_PATH" >> $GITHUB_OUTPUT
+        echo "client-app-path=$CLIENT_APP_PATH" >> $GITHUB_OUTPUT
+        
+        echo "✅ Applications built successfully"
+        echo "📦 Server app: $SERVER_APP_PATH"
+        echo "📦 Client app: $CLIENT_APP_PATH"
+
+    - name: Verify applications
+      shell: bash
+      run: |
+        echo "🔍 Verifying built applications..."
+        
+        SERVER_APP="${{ steps.build-apps.outputs.server-app-path }}"
+        CLIENT_APP="${{ steps.build-apps.outputs.client-app-path }}"
+        
+        # Check app structure
+        echo "Server app structure:"
+        ls -la "$SERVER_APP/Contents/"
+        echo "Server MacOS directory:"
+        ls -la "$SERVER_APP/Contents/MacOS/"
+        
+        echo "Client app structure:"
+        ls -la "$CLIENT_APP/Contents/"
+        echo "Client MacOS directory:"
+        ls -la "$CLIENT_APP/Contents/MacOS/"
+        
+        # Check executables
+        SERVER_EXEC="$SERVER_APP/Contents/MacOS/R2MIDI Server"
+        CLIENT_EXEC="$CLIENT_APP/Contents/MacOS/R2MIDI Client"
+        
+        if [ -x "$SERVER_EXEC" ]; then
+          echo "✅ Server executable is valid"
+        else
+          echo "❌ Server executable not found or not executable"
+          exit 1
+        fi
+        
+        if [ -x "$CLIENT_EXEC" ]; then
+          echo "✅ Client executable is valid"
+        else
+          echo "❌ Client executable not found or not executable"
+          exit 1
+        fi
+        
+        echo "✅ Application verification complete"

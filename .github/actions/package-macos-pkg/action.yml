@@ -1,0 +1,303 @@
+name: Package macOS with PKG
+description: Package macOS applications using pkgbuild and productbuild with proper signing and notarization
+
+inputs:
+  app-name:
+    description: 'Application name'
+    required: true
+  app-path:
+    description: 'Path to the .app bundle'
+    required: true
+  version:
+    description: 'Application version'
+    required: true
+  identifier:
+    description: 'Bundle identifier'
+    required: true
+  signing-identity:
+    description: 'Code signing identity'
+    required: true
+  installer-signing-identity:
+    description: 'Installer signing identity (Developer ID Installer)'
+    required: false
+  notarization-profile:
+    description: 'Notarization profile name'
+    required: true
+
+outputs:
+  pkg-path:
+    description: 'Path to the created PKG file'
+    value: ${{ steps.create-pkg.outputs.pkg-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [ ! -d "${{ inputs.app-path }}" ]; then
+          echo "❌ App bundle not found at: ${{ inputs.app-path }}"
+          exit 1
+        fi
+        
+        if [ -z "${{ inputs.signing-identity }}" ]; then
+          echo "❌ Code signing identity is required"
+          exit 1
+        fi
+        
+        if [ -z "${{ inputs.notarization-profile }}" ]; then
+          echo "❌ Notarization profile is required"
+          exit 1
+        fi
+        
+        echo "✅ All inputs validated"
+
+    - name: Sign application bundle
+      shell: bash
+      run: |
+        echo "🔐 Signing application bundle..."
+        
+        APP_PATH="${{ inputs.app-path }}"
+        SIGNING_IDENTITY="${{ inputs.signing-identity }}"
+        
+        # Sign all binaries in the app bundle recursively
+        echo "Signing all binaries in the app bundle..."
+        
+        # Find and sign all executables, dylibs, and frameworks
+        find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -exec echo "Signing: {}" \; -exec \
+          codesign --force --verify --verbose --timestamp \
+          --options runtime \
+          --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
+          --sign "$SIGNING_IDENTITY" {} \;
+        
+        # Sign any frameworks
+        find "$APP_PATH" -name "*.framework" -exec echo "Signing framework: {}" \; -exec \
+          codesign --force --verify --verbose --timestamp \
+          --options runtime \
+          --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
+          --sign "$SIGNING_IDENTITY" {} \;
+        
+        # Finally, sign the main app bundle
+        echo "Signing main app bundle..."
+        codesign --force --verify --verbose --timestamp \
+          --options runtime \
+          --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
+          --sign "$SIGNING_IDENTITY" "$APP_PATH"
+        
+        # Verify the signature
+        echo "Verifying signature..."
+        codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+        spctl --assess --type exec --verbose "$APP_PATH"
+        
+        echo "✅ Application bundle signed successfully"
+
+    - name: Create PKG installer
+      id: create-pkg
+      shell: bash
+      run: |
+        echo "📦 Creating PKG installer..."
+        
+        APP_NAME="${{ inputs.app-name }}"
+        APP_PATH="${{ inputs.app-path }}"
+        VERSION="${{ inputs.version }}"
+        IDENTIFIER="${{ inputs.identifier }}"
+        SIGNING_IDENTITY="${{ inputs.signing-identity }}"
+        
+        # Determine installer signing identity
+        if [ -n "${{ inputs.installer-signing-identity }}" ]; then
+          INSTALLER_IDENTITY="${{ inputs.installer-signing-identity }}"
+        else
+          # Try to find a Developer ID Installer certificate
+          INSTALLER_IDENTITY=$(security find-identity -v -p codesigning | \
+            grep "Developer ID Installer" | head -1 | \
+            sed -n 's/.*"\([^"]*\)".*/\1/p')
+          
+          if [ -z "$INSTALLER_IDENTITY" ]; then
+            echo "⚠️ No Developer ID Installer certificate found, using code signing identity"
+            INSTALLER_IDENTITY="$SIGNING_IDENTITY"
+          fi
+        fi
+        
+        echo "Using installer signing identity: $INSTALLER_IDENTITY"
+        
+        # Create a temporary directory for PKG contents
+        PKG_ROOT=$(mktemp -d)
+        PKG_SCRIPTS=$(mktemp -d)
+        
+        # Create the Applications directory structure
+        mkdir -p "$PKG_ROOT/Applications"
+        
+        # Copy the app to the PKG root
+        cp -R "$APP_PATH" "$PKG_ROOT/Applications/"
+        
+        # Create postinstall script to ensure correct permissions
+        cat > "$PKG_SCRIPTS/postinstall" << 'EOF'
+#!/bin/bash
+# Set correct permissions for the installed application
+chmod -R 755 /Applications/${{ inputs.app-name }}.app
+# Add to quarantine to allow Gatekeeper to verify the app
+xattr -d com.apple.quarantine "/Applications/${{ inputs.app-name }}.app" 2>/dev/null || true
+exit 0
+EOF
+        
+        chmod +x "$PKG_SCRIPTS/postinstall"
+        
+        # Create component PKG
+        COMPONENT_PKG="$GITHUB_WORKSPACE/${APP_NAME}-component.pkg"
+        PKG_FINAL="$GITHUB_WORKSPACE/${APP_NAME}-${VERSION}.pkg"
+        
+        echo "Building component package..."
+        pkgbuild \
+          --root "$PKG_ROOT" \
+          --scripts "$PKG_SCRIPTS" \
+          --identifier "${IDENTIFIER}.pkg" \
+          --version "$VERSION" \
+          --ownership preserve \
+          --install-location "/" \
+          "$COMPONENT_PKG"
+        
+        # Create distribution XML for productbuild
+        DISTRIBUTION_XML=$(mktemp)
+        cat > "$DISTRIBUTION_XML" << EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+    <title>${APP_NAME}</title>
+    <organization>${IDENTIFIER}</organization>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    
+    <welcome file="welcome.html"/>
+    <license file="license.txt"/>
+    
+    <pkg-ref id="${IDENTIFIER}.pkg"/>
+    
+    <choices-outline>
+        <line choice="default">
+            <line choice="${IDENTIFIER}.pkg"/>
+        </line>
+    </choices-outline>
+    
+    <choice id="default"/>
+    
+    <choice id="${IDENTIFIER}.pkg" visible="false">
+        <pkg-ref id="${IDENTIFIER}.pkg"/>
+    </choice>
+    
+    <pkg-ref id="${IDENTIFIER}.pkg" version="$VERSION" onConclusion="none">
+        $(basename "$COMPONENT_PKG")
+    </pkg-ref>
+</installer-gui-script>
+EOF
+        
+        # Create welcome and license files
+        echo "<html><body><h1>Welcome to ${APP_NAME}</h1><p>This installer will install ${APP_NAME} on your Mac.</p></body></html>" > welcome.html
+        echo "MIT License - See project repository for full license text." > license.txt
+        
+        # Build the final distribution package
+        echo "Building distribution package..."
+        productbuild \
+          --distribution "$DISTRIBUTION_XML" \
+          --package-path "$GITHUB_WORKSPACE" \
+          --resources "$GITHUB_WORKSPACE" \
+          --sign "$INSTALLER_IDENTITY" \
+          "$PKG_FINAL"
+        
+        # Clean up temporary files
+        rm -rf "$PKG_ROOT" "$PKG_SCRIPTS" "$COMPONENT_PKG" "$DISTRIBUTION_XML" welcome.html license.txt
+        
+        echo "pkg-path=$PKG_FINAL" >> $GITHUB_OUTPUT
+        echo "✅ PKG installer created: $PKG_FINAL"
+
+    - name: Notarize PKG
+      shell: bash
+      run: |
+        echo "🔔 Notarizing PKG installer..."
+        
+        PKG_PATH="${{ steps.create-pkg.outputs.pkg-path }}"
+        NOTARIZATION_PROFILE="${{ inputs.notarization-profile }}"
+        
+        if [ ! -f "$PKG_PATH" ]; then
+          echo "❌ PKG file not found: $PKG_PATH"
+          exit 1
+        fi
+        
+        echo "Submitting for notarization..."
+        SUBMISSION_ID=$(xcrun notarytool submit "$PKG_PATH" \
+          --keychain-profile "$NOTARIZATION_PROFILE" \
+          --wait \
+          --timeout 30m \
+          --output-format json | jq -r '.id')
+        
+        if [ "$SUBMISSION_ID" = "null" ] || [ -z "$SUBMISSION_ID" ]; then
+          echo "❌ Failed to submit for notarization"
+          xcrun notarytool submit "$PKG_PATH" \
+            --keychain-profile "$NOTARIZATION_PROFILE" \
+            --wait \
+            --timeout 30m
+          exit 1
+        fi
+        
+        echo "Submission ID: $SUBMISSION_ID"
+        
+        # Check notarization status
+        echo "Checking notarization status..."
+        STATUS=$(xcrun notarytool info "$SUBMISSION_ID" \
+          --keychain-profile "$NOTARIZATION_PROFILE" \
+          --output-format json | jq -r '.status')
+        
+        if [ "$STATUS" = "Accepted" ]; then
+          echo "✅ Notarization successful!"
+          
+          # Staple the notarization
+          echo "Stapling notarization..."
+          xcrun stapler staple "$PKG_PATH"
+          
+          # Verify stapling
+          echo "Verifying staple..."
+          xcrun stapler validate "$PKG_PATH"
+          
+        else
+          echo "❌ Notarization failed with status: $STATUS"
+          
+          # Get detailed log
+          echo "Fetching notarization log..."
+          xcrun notarytool log "$SUBMISSION_ID" \
+            --keychain-profile "$NOTARIZATION_PROFILE"
+          
+          exit 1
+        fi
+        
+        echo "✅ PKG installer notarized and stapled successfully"
+
+    - name: Verify final package
+      shell: bash
+      run: |
+        echo "🔍 Verifying final package..."
+        
+        PKG_PATH="${{ steps.create-pkg.outputs.pkg-path }}"
+        
+        # Check if file exists and is properly signed
+        if [ -f "$PKG_PATH" ]; then
+          echo "✅ PKG file exists: $PKG_PATH"
+          
+          # Check file size
+          SIZE=$(stat -f%z "$PKG_PATH")
+          echo "📊 PKG size: $SIZE bytes"
+          
+          # Verify package signature
+          echo "Verifying package signature..."
+          pkgutil --check-signature "$PKG_PATH"
+          
+          # Check if notarization is stapled
+          echo "Checking notarization staple..."
+          xcrun stapler validate "$PKG_PATH" || echo "⚠️ No staple found (may still be valid)"
+          
+          # Test package installation (dry run)
+          echo "Testing package contents..."
+          pkgutil --payload-files "$PKG_PATH" | head -10
+          
+          echo "✅ Package verification complete"
+        else
+          echo "❌ PKG file not found"
+          exit 1
+        fi

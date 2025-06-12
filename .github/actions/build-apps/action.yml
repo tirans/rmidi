@@ -1,5 +1,5 @@
-name: Build Applications
-description: Build applications using Briefcase
+name: Build Applications (Updated)
+description: Build applications using direct macOS build or Briefcase
 
 inputs:
   platform:
@@ -10,10 +10,27 @@ inputs:
     required: false
     default: 'false'
 
+outputs:
+  server-app-path:
+    description: 'Path to the server .app bundle (macOS only)'
+    value: ${{ steps.macos-build.outputs.server-app-path }}
+  client-app-path:
+    description: 'Path to the client .app bundle (macOS only)'
+    value: ${{ steps.macos-build.outputs.client-app-path }}
+
 runs:
   using: "composite"
   steps:
-    - name: Create applications
+    - name: Build macOS applications (Direct)
+      id: macos-build
+      if: inputs.platform == 'macOS'
+      uses: ./.github/actions/build-macos-direct
+      with:
+        version: ${{ env.APP_VERSION }}
+        sign: ${{ inputs.sign }}
+
+    - name: Create applications (Other platforms)
+      if: inputs.platform != 'macOS'
       shell: bash
       run: |
         echo "🔨 Creating applications for ${{ inputs.platform }}..."
@@ -33,7 +50,8 @@ runs:
         echo "Creating R2MIDI Client..."
         briefcase create ${{ inputs.platform }} $APP_TYPE -a r2midi-client
 
-    - name: Build applications
+    - name: Build applications (Other platforms)
+      if: inputs.platform != 'macOS'
       shell: bash
       run: |
         echo "⚙️ Building applications for ${{ inputs.platform }}..."
@@ -57,6 +75,12 @@ runs:
       shell: bash
       run: |
         echo "📁 Build output:"
-        if [ -d "build" ]; then
-          find build -type f \( -name "*.app" -o -name "*.exe" -o -name "*.deb" \) | head -20
+        if [ "${{ inputs.platform }}" = "macOS" ]; then
+          echo "macOS apps built with direct method:"
+          echo "Server: ${{ steps.macos-build.outputs.server-app-path }}"
+          echo "Client: ${{ steps.macos-build.outputs.client-app-path }}"
+        else
+          if [ -d "build" ]; then
+            find build -type f \( -name "*.app" -o -name "*.exe" -o -name "*.deb" \) | head -20
+          fi
         fi

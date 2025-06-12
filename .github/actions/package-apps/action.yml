@@ -1,5 +1,5 @@
-name: Package Applications
-description: Package applications and prepare artifacts
+name: Package Applications (Updated)
+description: Package applications with PKG support for macOS
 
 inputs:
   platform:
@@ -11,19 +11,16 @@ inputs:
   version:
     description: 'Application version'
     required: true
+  server-app-path:
+    description: 'Path to server app (macOS only)'
+    required: false
+  client-app-path:
+    description: 'Path to client app (macOS only)'
+    required: false
 
 runs:
   using: "composite"
   steps:
-    - name: Set up macOS signing and notarization
-      if: inputs.platform == 'macOS'
-      uses: some/setup-macos-signing-action@v1  # Replace with the actual action you're using
-      with:
-        signing-identity: ${{ secrets.SIGNING_IDENTITY }}
-        apple-id: ${{ secrets.NOTARIZATION_APPLE_ID }}
-        team-id: ${{ secrets.NOTARIZATION_TEAM_ID }}
-        app-specific-password: ${{ secrets.NOTARIZATION_PASSWORD }}
-
     - name: Package applications
       shell: bash
       run: |
@@ -37,35 +34,207 @@ runs:
         fi
 
         # Package based on platform and signing availability
-        if [ "${{ inputs.platform }}" = "macOS" ] && [ -n "$BRIEFCASE_SIGNING_IDENTITY" ]; then
-          echo "📦 Packaging with code signing and notarization..."
+        if [ "${{ inputs.platform }}" = "macOS" ]; then
+          echo "📦 Packaging macOS applications..."
+          
+          # Create DMG files for all macOS builds
+          SERVER_APP="${{ inputs.server-app-path }}"
+          CLIENT_APP="${{ inputs.client-app-path }}"
 
-          # Package the app bundles
-          briefcase package ${{ inputs.platform }} $APP_TYPE -a server \
-            --identity "$BRIEFCASE_SIGNING_IDENTITY"
-          briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client \
-            --identity "$BRIEFCASE_SIGNING_IDENTITY"
+          if [ -d "$SERVER_APP" ]; then
+            echo "Creating DMG for server..."
+            hdiutil create -volname "R2MIDI Server" -srcfolder "$SERVER_APP" -ov -format UDZO \
+              "R2MIDI_Server-${{ inputs.version }}.dmg"
+          fi
 
-          # Create DMG installers
-          briefcase package ${{ inputs.platform }} dmg -a server \
-            --identity "$BRIEFCASE_SIGNING_IDENTITY"
-          briefcase package ${{ inputs.platform }} dmg -a r2midi-client \
-            --identity "$BRIEFCASE_SIGNING_IDENTITY"
+          if [ -d "$CLIENT_APP" ]; then
+            echo "Creating DMG for client..."
+            hdiutil create -volname "R2MIDI Client" -srcfolder "$CLIENT_APP" -ov -format UDZO \
+              "R2MIDI_Client-${{ inputs.version }}.dmg"
+          fi
 
-          # Create PKG installers
-          briefcase package ${{ inputs.platform }} pkg -a server \
-            --identity "$BRIEFCASE_SIGNING_IDENTITY"
-          briefcase package ${{ inputs.platform }} pkg -a r2midi-client \
-            --identity "$BRIEFCASE_SIGNING_IDENTITY"
-        elif [ "${{ inputs.platform }}" = "macOS" ]; then
-          echo "📦 Packaging without signing..."
-          briefcase package ${{ inputs.platform }} $APP_TYPE -a server --adhoc-sign
-          briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client --adhoc-sign
         else
-          echo "📦 Packaging..."
+          echo "📦 Using Briefcase packaging for ${{ inputs.platform }}..."
           briefcase package ${{ inputs.platform }} $APP_TYPE -a server
           briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client
         fi
+
+    - name: Create PKG installers (macOS signed builds)
+      if: inputs.platform == 'macOS' && env.BRIEFCASE_SIGNING_IDENTITY != ''
+      shell: bash
+      run: |
+        echo "📦 Creating PKG installers for macOS..."
+        
+        SERVER_APP="${{ inputs.server-app-path }}"
+        CLIENT_APP="${{ inputs.client-app-path }}"
+        VERSION="${{ inputs.version }}"
+        SIGNING_IDENTITY="$BRIEFCASE_SIGNING_IDENTITY"
+        NOTARIZATION_PROFILE="$BRIEFCASE_NOTARIZATION_PROFILE"
+        
+        # Function to create PKG for an app
+        create_pkg() {
+          local APP_PATH="$1"
+          local APP_NAME="$2"
+          local IDENTIFIER="$3"
+          
+          if [ ! -d "$APP_PATH" ]; then
+            echo "❌ App bundle not found at: $APP_PATH"
+            return 1
+          fi
+          
+          echo "🔐 Signing $APP_NAME..."
+          
+          # Sign all binaries in the app bundle recursively
+          find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -exec \
+            codesign --force --verify --verbose --timestamp \
+            --options runtime \
+            --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
+            --sign "$SIGNING_IDENTITY" {} \; 2>/dev/null || true
+          
+          # Sign any frameworks
+          find "$APP_PATH" -name "*.framework" -exec \
+            codesign --force --verify --verbose --timestamp \
+            --options runtime \
+            --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
+            --sign "$SIGNING_IDENTITY" {} \; 2>/dev/null || true
+          
+          # Sign the main app bundle
+          codesign --force --verify --verbose --timestamp \
+            --options runtime \
+            --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
+            --sign "$SIGNING_IDENTITY" "$APP_PATH"
+          
+          # Verify the signature
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          
+          echo "📦 Creating PKG for $APP_NAME..."
+          
+          # Find installer signing identity
+          INSTALLER_IDENTITY=$(security find-identity -v -p codesigning | \
+            grep "Developer ID Installer" | head -1 | \
+            sed -n 's/.*"\([^"]*\)".*/\1/p')
+          
+          if [ -z "$INSTALLER_IDENTITY" ]; then
+            echo "⚠️ No Developer ID Installer certificate found, using code signing identity"
+            INSTALLER_IDENTITY="$SIGNING_IDENTITY"
+          fi
+          
+          # Create temporary directories
+          PKG_ROOT=$(mktemp -d)
+          PKG_SCRIPTS=$(mktemp -d)
+          
+          # Create the Applications directory structure
+          mkdir -p "$PKG_ROOT/Applications"
+          cp -R "$APP_PATH" "$PKG_ROOT/Applications/"
+          
+          # Create postinstall script
+          cat > "$PKG_SCRIPTS/postinstall" << EOF
+#!/bin/bash
+chmod -R 755 "/Applications/$APP_NAME.app"
+xattr -d com.apple.quarantine "/Applications/$APP_NAME.app" 2>/dev/null || true
+exit 0
+EOF
+          chmod +x "$PKG_SCRIPTS/postinstall"
+          
+          # Create component PKG
+          COMPONENT_PKG="${APP_NAME// /_}-component.pkg"
+          PKG_FINAL="${APP_NAME// /_}-${VERSION}.pkg"
+          
+          pkgbuild \
+            --root "$PKG_ROOT" \
+            --scripts "$PKG_SCRIPTS" \
+            --identifier "${IDENTIFIER}.pkg" \
+            --version "$VERSION" \
+            --ownership preserve \
+            --install-location "/" \
+            "$COMPONENT_PKG"
+          
+          # Create distribution XML
+          DISTRIBUTION_XML="${APP_NAME// /_}-distribution.xml"
+          cat > "$DISTRIBUTION_XML" << EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+    <title>$APP_NAME</title>
+    <organization>$IDENTIFIER</organization>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    
+    <pkg-ref id="${IDENTIFIER}.pkg"/>
+    
+    <choices-outline>
+        <line choice="default">
+            <line choice="${IDENTIFIER}.pkg"/>
+        </line>
+    </choices-outline>
+    
+    <choice id="default"/>
+    <choice id="${IDENTIFIER}.pkg" visible="false">
+        <pkg-ref id="${IDENTIFIER}.pkg"/>
+    </choice>
+    
+    <pkg-ref id="${IDENTIFIER}.pkg" version="$VERSION" onConclusion="none">
+        $COMPONENT_PKG
+    </pkg-ref>
+</installer-gui-script>
+EOF
+          
+          # Build the final distribution package
+          productbuild \
+            --distribution "$DISTRIBUTION_XML" \
+            --package-path "." \
+            --sign "$INSTALLER_IDENTITY" \
+            "$PKG_FINAL"
+          
+          # Notarize if profile is available
+          if [ -n "$NOTARIZATION_PROFILE" ]; then
+            echo "🔔 Notarizing $PKG_FINAL..."
+            
+            SUBMISSION_ID=$(xcrun notarytool submit "$PKG_FINAL" \
+              --keychain-profile "$NOTARIZATION_PROFILE" \
+              --wait \
+              --timeout 30m \
+              --output-format json 2>/dev/null | jq -r '.id' 2>/dev/null || echo "")
+            
+            if [ -n "$SUBMISSION_ID" ] && [ "$SUBMISSION_ID" != "null" ]; then
+              echo "Submission ID: $SUBMISSION_ID"
+              
+              # Check status
+              STATUS=$(xcrun notarytool info "$SUBMISSION_ID" \
+                --keychain-profile "$NOTARIZATION_PROFILE" \
+                --output-format json 2>/dev/null | jq -r '.status' 2>/dev/null || echo "Unknown")
+              
+              if [ "$STATUS" = "Accepted" ]; then
+                echo "✅ Notarization successful!"
+                xcrun stapler staple "$PKG_FINAL"
+                xcrun stapler validate "$PKG_FINAL"
+              else
+                echo "⚠️ Notarization failed or incomplete, but continuing..."
+              fi
+            else
+              echo "⚠️ Could not submit for notarization, but continuing..."
+            fi
+          fi
+          
+          # Verify final package
+          if [ -f "$PKG_FINAL" ]; then
+            echo "✅ PKG created: $PKG_FINAL"
+            pkgutil --check-signature "$PKG_FINAL" || echo "⚠️ Signature check failed"
+          fi
+          
+          # Cleanup
+          rm -rf "$PKG_ROOT" "$PKG_SCRIPTS" "$COMPONENT_PKG" "$DISTRIBUTION_XML"
+        }
+        
+        # Create PKGs for both apps
+        if [ -d "$SERVER_APP" ]; then
+          create_pkg "$SERVER_APP" "R2MIDI Server" "com.r2midi.server"
+        fi
+        
+        if [ -d "$CLIENT_APP" ]; then
+          create_pkg "$CLIENT_APP" "R2MIDI Client" "com.r2midi.client"
+        fi
+        
+        echo "✅ PKG creation complete"
 
     - name: Prepare artifacts
       shell: bash
@@ -76,15 +245,21 @@ runs:
         # Platform-specific artifact preparation
         case "${{ inputs.platform }}" in
           macOS)
-            # Look for DMG files first
+            # Look for PKG files first (from our new packaging)
+            find . -name "*.pkg" -maxdepth 1 -exec cp {} artifacts/ \; 2>/dev/null || true
+            
+            # Look for DMG files
+            find . -name "*.dmg" -maxdepth 1 -exec cp {} artifacts/ \; 2>/dev/null || true
+            
+            # If we used Briefcase, look in dist directory
             if [ -d "dist" ]; then
               find dist -name "*.dmg" -exec cp {} artifacts/ \; 2>/dev/null || true
               find dist -name "*.pkg" -exec cp {} artifacts/ \; 2>/dev/null || true
             fi
 
-            # Package app bundles as zip if no DMG found
-            if [ ! -f artifacts/*.dmg ]; then
-              for app in build/*/macOS/app/*.app; do
+            # Package app bundles as zip if no installers found
+            if [ ! -f artifacts/*.pkg ] && [ ! -f artifacts/*.dmg ]; then
+              for app in dist/*/*.app; do
                 if [ -d "$app" ]; then
                   app_name=$(basename "$app" .app)
                   cd "$(dirname "$app")"

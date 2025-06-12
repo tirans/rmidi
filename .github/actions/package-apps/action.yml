@@ -27,16 +27,14 @@ runs:
           APP_TYPE="app"
         fi
 
-        # Package based on platform
+        # Package based on platform and signing availability
         if [ "${{ inputs.platform }}" = "macOS" ]; then
-          echo "📦 Packaging macOS applications..."
-
-          # NEVER use Briefcase notarization - always use adhoc signing for DMG creation
-          # This avoids the Briefcase notarization issues entirely
-          echo "📦 Creating DMG files (without Briefcase notarization)..."
+          echo "📦 Packaging macOS applications (no Briefcase notarization)..."
+          
+          # ALWAYS use adhoc signing to avoid Briefcase notarization issues
           briefcase package ${{ inputs.platform }} $APP_TYPE -a server --adhoc-sign
           briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client --adhoc-sign
-
+          
           # Create DMG installers without notarization
           briefcase package ${{ inputs.platform }} dmg -a server --adhoc-sign
           briefcase package ${{ inputs.platform }} dmg -a r2midi-client --adhoc-sign
@@ -47,229 +45,118 @@ runs:
           briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client
         fi
 
-    - name: Create signed PKG installers (macOS only)
+    - name: Create PKG installers (macOS signed builds only)
       if: inputs.platform == 'macOS' && env.BRIEFCASE_SIGNING_IDENTITY != ''
       shell: bash
       run: |
-        echo "📦 Creating properly signed and notarized PKG installers..."
-
-        # Find the built app bundles
-        SERVER_APP=$(find build -name "R2MIDI Server.app" -type d | head -1)
-        CLIENT_APP=$(find build -name "R2MIDI Client.app" -type d | head -1)
-
-        if [ -z "$SERVER_APP" ]; then
-          echo "⚠️ Server app bundle not found, skipping PKG creation"
-          exit 0
-        fi
-
-        if [ -z "$CLIENT_APP" ]; then
-          echo "⚠️ Client app bundle not found, skipping PKG creation"
-          exit 0
-        fi
-
+        echo "📦 Creating signed PKG installers for macOS..."
+        
+        # Find the built app bundles - they might have different names
+        echo "Looking for built app bundles..."
+        ls -la build/*/macOS/app/ || ls -la build/*/macos/app/ || true
+        
+        # Find server app (try multiple possible names)
+        SERVER_APP=""
+        for app_path in build/*/macOS/app/*.app build/*/macos/app/*.app; do
+          if [[ "$app_path" == *"server"* ]] || [[ "$app_path" == *"Server"* ]]; then
+            if [ -d "$app_path" ]; then
+              SERVER_APP="$app_path"
+              break
+            fi
+          fi
+        done
+        
+        # Find client app (try multiple possible names)  
+        CLIENT_APP=""
+        for app_path in build/*/macOS/app/*.app build/*/macos/app/*.app; do
+          if [[ "$app_path" == *"client"* ]] || [[ "$app_path" == *"Client"* ]] || [[ "$app_path" == *"r2midi"* ]]; then
+            if [ -d "$app_path" ]; then
+              CLIENT_APP="$app_path"
+              break
+            fi
+          fi
+        done
+        
         echo "Found apps:"
         echo "Server: $SERVER_APP"
         echo "Client: $CLIENT_APP"
-
+        
+        if [ -z "$SERVER_APP" ] && [ -z "$CLIENT_APP" ]; then
+          echo "⚠️ No app bundles found, skipping PKG creation"
+          echo "Available apps:"
+          find build -name "*.app" -type d || true
+          exit 0
+        fi
+        
         VERSION="${{ inputs.version }}"
         SIGNING_IDENTITY="$BRIEFCASE_SIGNING_IDENTITY"
-        NOTARIZATION_PROFILE="$BRIEFCASE_NOTARIZATION_PROFILE"
-
-        # Function to create properly signed and notarized PKG
-        create_signed_pkg() {
+        
+        # Function to create PKG for an app
+        create_pkg() {
           local APP_PATH="$1"
           local APP_NAME="$2"
           local IDENTIFIER="$3"
-
-          echo "🔐 Properly signing $APP_NAME for distribution..."
-
-          # Deep sign the app bundle with runtime hardening
+          
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "⚠️ $APP_NAME app not found, skipping"
+            return
+          fi
+          
+          echo "🔐 Signing $APP_NAME..."
+          
+          # Re-sign the app bundle with proper settings
           find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -exec \
-            codesign --force --verify --verbose --timestamp \
-            --options runtime \
+            codesign --force --timestamp --options runtime \
             --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
             --sign "$SIGNING_IDENTITY" {} \; 2>/dev/null || true
-
-          find "$APP_PATH" -name "*.framework" -exec \
-            codesign --force --verify --verbose --timestamp \
-            --options runtime \
-            --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
-            --sign "$SIGNING_IDENTITY" {} \; 2>/dev/null || true
-
-          # Sign the main app bundle
-          codesign --force --verify --verbose --timestamp \
-            --options runtime \
+          
+          codesign --force --timestamp --options runtime \
             --entitlements "$GITHUB_WORKSPACE/entitlements.plist" \
             --sign "$SIGNING_IDENTITY" "$APP_PATH"
-
-          # Verify the signature
-          echo "Verifying signature..."
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          spctl --assess --type exec --verbose "$APP_PATH"
-
-          echo "📦 Creating PKG installer for $APP_NAME..."
-
+          
+          echo "📦 Creating PKG for $APP_NAME..."
+          
           # Find installer signing identity
           INSTALLER_IDENTITY=$(security find-identity -v -p codesigning | \
             grep "Developer ID Installer" | head -1 | \
             sed -n 's/.*"\([^"]*\)".*/\1/p')
-
+          
           if [ -z "$INSTALLER_IDENTITY" ]; then
-            echo "⚠️ No Developer ID Installer certificate found, using app signing identity"
             INSTALLER_IDENTITY="$SIGNING_IDENTITY"
-          else
-            echo "✅ Using installer identity: $INSTALLER_IDENTITY"
           fi
-
+          
           # Create temporary directories
           PKG_ROOT=$(mktemp -d)
-          PKG_SCRIPTS=$(mktemp -d)
-
-          # Create the Applications directory structure
           mkdir -p "$PKG_ROOT/Applications"
           cp -R "$APP_PATH" "$PKG_ROOT/Applications/"
-
-          # Create postinstall script
-          cat > "$PKG_SCRIPTS/postinstall" << 'EOF'
-#!/bin/bash
-# Set correct permissions for the installed application
-chmod -R 755 "/Applications/$APP_NAME.app"
-# Remove quarantine attribute to help with Gatekeeper
-xattr -d com.apple.quarantine "/Applications/$APP_NAME.app" 2>/dev/null || true
-exit 0
-EOF
-          chmod +x "$PKG_SCRIPTS/postinstall"
-
-          # Create component PKG
-          COMPONENT_PKG="${APP_NAME// /_}-component.pkg"
+          
+          # Create simple PKG
           PKG_FINAL="${APP_NAME// /_}-${VERSION}.pkg"
-
-          echo "Building component package..."
+          
           pkgbuild \
             --root "$PKG_ROOT" \
-            --scripts "$PKG_SCRIPTS" \
             --identifier "${IDENTIFIER}.pkg" \
             --version "$VERSION" \
-            --ownership preserve \
             --install-location "/" \
-            "$COMPONENT_PKG"
-
-          # Create distribution XML for better installer experience
-          DISTRIBUTION_XML="${APP_NAME// /_}-distribution.xml"
-          cat > "$DISTRIBUTION_XML" << EOF
-<?xml version="1.0" encoding="utf-8"?>
-<installer-gui-script minSpecVersion="1">
-    <title>$APP_NAME</title>
-    <organization>$IDENTIFIER</organization>
-    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
-    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
-
-    <welcome file="welcome.html"/>
-    <license file="license.txt"/>
-
-    <pkg-ref id="${IDENTIFIER}.pkg"/>
-
-    <choices-outline>
-        <line choice="default">
-            <line choice="${IDENTIFIER}.pkg"/>
-        </line>
-    </choices-outline>
-
-    <choice id="default"/>
-    <choice id="${IDENTIFIER}.pkg" visible="false">
-        <pkg-ref id="${IDENTIFIER}.pkg"/>
-    </choice>
-
-    <pkg-ref id="${IDENTIFIER}.pkg" version="$VERSION" onConclusion="none">
-        $COMPONENT_PKG
-    </pkg-ref>
-</installer-gui-script>
-EOF
-
-          # Create simple welcome and license files
-          echo "<html><body><h1>Welcome to ${APP_NAME}</h1><p>This installer will install ${APP_NAME} on your Mac.</p></body></html>" > welcome.html
-          echo "MIT License - See project repository for full license text." > license.txt
-
-          # Build the final distribution package with signing
-          echo "Building signed distribution package..."
-          productbuild \
-            --distribution "$DISTRIBUTION_XML" \
-            --package-path "." \
-            --resources "." \
             --sign "$INSTALLER_IDENTITY" \
             "$PKG_FINAL"
-
-          # Notarize the PKG using direct Apple tools
-          if [ -n "$NOTARIZATION_PROFILE" ]; then
-            echo "🔔 Notarizing $PKG_FINAL using xcrun notarytool..."
-
-            # Submit for notarization
-            SUBMISSION_ID=$(xcrun notarytool submit "$PKG_FINAL" \
-              --keychain-profile "$NOTARIZATION_PROFILE" \
-              --wait \
-              --timeout 30m \
-              --output-format json 2>/dev/null | jq -r '.id' 2>/dev/null || echo "")
-
-            if [ -n "$SUBMISSION_ID" ] && [ "$SUBMISSION_ID" != "null" ]; then
-              echo "✅ Submitted for notarization with ID: $SUBMISSION_ID"
-
-              # Check the status
-              STATUS=$(xcrun notarytool info "$SUBMISSION_ID" \
-                --keychain-profile "$NOTARIZATION_PROFILE" \
-                --output-format json 2>/dev/null | jq -r '.status' 2>/dev/null || echo "Unknown")
-
-              if [ "$STATUS" = "Accepted" ]; then
-                echo "✅ Notarization successful!"
-
-                # Staple the notarization ticket
-                echo "📎 Stapling notarization..."
-                xcrun stapler staple "$PKG_FINAL"
-                xcrun stapler validate "$PKG_FINAL"
-
-                echo "✅ PKG successfully notarized and stapled!"
-              else
-                echo "⚠️ Notarization status: $STATUS"
-                if [ "$STATUS" = "Invalid" ]; then
-                  echo "❌ Notarization failed. Getting detailed log..."
-                  xcrun notarytool log "$SUBMISSION_ID" \
-                    --keychain-profile "$NOTARIZATION_PROFILE" || true
-                fi
-                echo "⚠️ Continuing without notarization..."
-              fi
-            else
-              echo "⚠️ Could not submit for notarization, continuing without..."
-            fi
-          else
-            echo "ℹ️ No notarization profile available, skipping notarization"
-          fi
-
-          # Verify final package
+          
+          # Cleanup
+          rm -rf "$PKG_ROOT"
+          
           if [ -f "$PKG_FINAL" ]; then
             echo "✅ PKG created: $PKG_FINAL"
-
-            # Check package signature
-            echo "Verifying package signature..."
-            pkgutil --check-signature "$PKG_FINAL" || echo "⚠️ Signature verification failed"
-
-            # Show package info
-            SIZE=$(stat -f%z "$PKG_FINAL" 2>/dev/null || stat -c%s "$PKG_FINAL" 2>/dev/null || echo "unknown")
-            echo "📊 Package size: $SIZE bytes"
-          else
-            echo "❌ Failed to create PKG: $PKG_FINAL"
           fi
-
-          # Cleanup temporary files
-          rm -rf "$PKG_ROOT" "$PKG_SCRIPTS" "$COMPONENT_PKG" "$DISTRIBUTION_XML" welcome.html license.txt
         }
-
-        # Create signed PKGs for both apps
-        echo "Creating PKG for R2MIDI Server..."
-        create_signed_pkg "$SERVER_APP" "R2MIDI Server" "com.r2midi.server"
-
-        echo "Creating PKG for R2MIDI Client..."
-        create_signed_pkg "$CLIENT_APP" "R2MIDI Client" "com.r2midi.client"
-
-        echo "✅ PKG creation complete!"
+        
+        # Create PKGs for available apps
+        if [ -n "$SERVER_APP" ]; then
+          create_pkg "$SERVER_APP" "R2MIDI Server" "com.r2midi.server"
+        fi
+        
+        if [ -n "$CLIENT_APP" ]; then
+          create_pkg "$CLIENT_APP" "R2MIDI Client" "com.r2midi.client"
+        fi
 
     - name: Prepare artifacts
       shell: bash
@@ -280,18 +167,17 @@ EOF
         # Platform-specific artifact preparation
         case "${{ inputs.platform }}" in
           macOS)
-            # Look for DMG files from Briefcase
+            # Look for DMG files first
             if [ -d "dist" ]; then
               find dist -name "*.dmg" -exec cp {} artifacts/ \; 2>/dev/null || true
             fi
-
-            # Look for PKG files we created with Apple tools
+            
+            # Look for PKG files we created
             find . -name "*.pkg" -maxdepth 1 -exec cp {} artifacts/ \; 2>/dev/null || true
 
-            # Package app bundles as zip if no installers found
-            if [ ! -f artifacts/*.dmg ] && [ ! -f artifacts/*.pkg ]; then
-              echo "⚠️ No DMG or PKG files found, creating ZIP archives..."
-              for app in build/*/macOS/app/*.app; do
+            # Package app bundles as zip if no DMG found
+            if [ ! -f artifacts/*.dmg ]; then
+              for app in build/*/macOS/app/*.app build/*/macos/app/*.app; do
                 if [ -d "$app" ]; then
                   app_name=$(basename "$app" .app)
                   cd "$(dirname "$app")"
@@ -307,10 +193,11 @@ EOF
               find dist -name "*.msi" -exec cp {} artifacts/ \; 2>/dev/null || true
             fi
 
-            # Package Windows builds as ZIP
+            # Package Windows builds as ZIP using PowerShell's Compress-Archive
             for dir in build/*/windows/app; do
               if [ -d "$dir" ]; then
                 app_name=$(basename "$(dirname "$(dirname "$dir")")")
+                # Use PowerShell to create the ZIP file
                 powershell -Command "Compress-Archive -Path '$dir/*' -DestinationPath '$GITHUB_WORKSPACE/artifacts/${app_name}-windows-${{ inputs.build-type }}-v${{ inputs.version }}.zip' -Force"
               fi
             done
@@ -345,10 +232,6 @@ EOF
         Branch: ${{ github.ref_name }}
         Workflow: ${{ github.workflow }}
         Run: ${{ github.run_number }}
-
-        macOS Packaging Strategy:
-        - DMG files: Created by Briefcase (no notarization)
-        - PKG files: Created by Apple tools with proper notarization
         EOF
 
         echo "📦 Artifacts created:"

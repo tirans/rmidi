@@ -17,7 +17,7 @@ jobs:
     name: Build for App Store
     runs-on: macos-14
     environment: app-store
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,13 +27,36 @@ jobs:
 
       - name: Fix submodules
         run: |
+          echo "🔧 Setting up Git submodules..."
+
+          # Configure Git for safety
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # Clean up any problematic submodule state
+          echo "🗑️ Removing existing submodule configuration..."
           git submodule deinit -f server/midi-presets || true
           rm -rf .git/modules/server/midi-presets || true
           git rm -rf server/midi-presets || true
+
+          # Add submodule fresh
+          echo "➕ Re-adding the submodule..."
           git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+
+          # Initialize submodule
+          echo "🔄 Initializing submodule..."
           git submodule init
-          git submodule update --init --recursive
+
+          # Explicitly checkout main branch of submodule instead of specific commit
+          echo "🌿 Checking out main branch of submodule..."
+          mkdir -p server/midi-presets
+          cd server/midi-presets || { echo "❌ Failed to enter submodule directory"; exit 1; }
+          git init
+          git remote add origin https://github.com/tirans/midi-presets.git
+          git fetch origin
+          git checkout -b main origin/main || git checkout main
+          cd ../..
+
+          echo "✅ Submodules setup complete"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -76,36 +99,36 @@ jobs:
 
           # Import App Store certificate
           echo "$APPLE_APP_STORE_CERTIFICATE_P12" | base64 --decode > cert.p12
-          
+
           security create-keychain -p briefcase app_store.keychain
           security default-keychain -s app_store.keychain
           security unlock-keychain -p briefcase app_store.keychain
-          
+
           security import cert.p12 -k app_store.keychain -P "$APPLE_APP_STORE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           rm -f cert.p12
-          
+
           security set-key-partition-list -S apple-tool:,apple: -s -k briefcase app_store.keychain
-          
+
           # Find signing identity
           APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | \
             grep "3rd Party Mac Developer Application" | head -1 | \
             sed -n 's/.*"\([^"]*\)".*/\1/p')
-          
+
           # Fallback to SHA-1 if name parsing fails
           if [ -z "$APP_STORE_IDENTITY" ]; then
             APP_STORE_IDENTITY=$(security find-identity -v -p codesigning app_store.keychain | \
               grep "3rd Party Mac Developer Application" | head -1 | awk '{print $2}')
           fi
-          
+
           if [ -z "$APP_STORE_IDENTITY" ]; then
             echo "❌ No App Store signing identity found"
             echo "Available identities:"
             security find-identity -v app_store.keychain
             exit 1
           fi
-          
+
           echo "BRIEFCASE_APP_STORE_IDENTITY=$APP_STORE_IDENTITY" >> $GITHUB_ENV
-          
+
           # Setup API key
           mkdir -p ~/.appstoreconnect/private_keys
           echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
@@ -129,7 +152,7 @@ jobs:
           # Create and build
           briefcase create macOS app -a server
           briefcase build macOS app -a server
-          
+
           briefcase create macOS app -a r2midi-client
           briefcase build macOS app -a r2midi-client
 
@@ -137,7 +160,7 @@ jobs:
         if: github.event.inputs.submit == 'true'
         run: |
           echo "📦 Packaging and submitting to App Store Connect..."
-          
+
           # Package with App Store submission
           briefcase package macOS app -a server --app-store
           briefcase package macOS app -a r2midi-client --app-store
@@ -146,7 +169,7 @@ jobs:
         if: github.event.inputs.submit == 'false'
         run: |
           echo "📦 Packaging for App Store (no submission)..."
-          
+
           # Package without submission
           briefcase package macOS app -a server --app-store --no-upload
           briefcase package macOS app -a r2midi-client --app-store --no-upload
@@ -166,7 +189,7 @@ jobs:
           echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Submitted:** ${{ github.event.inputs.submit }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ "${{ github.event.inputs.submit }}" = "true" ]; then
             echo "✅ Applications submitted to App Store Connect" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY

@@ -35,13 +35,36 @@ jobs:
 
       - name: Fix submodules
         run: |
+          echo "🔧 Setting up Git submodules..."
+
+          # Configure Git for safety
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # Clean up any problematic submodule state
+          echo "🗑️ Removing existing submodule configuration..."
           git submodule deinit -f server/midi-presets || true
           rm -rf .git/modules/server/midi-presets || true
           git rm -rf server/midi-presets || true
+
+          # Add submodule fresh
+          echo "➕ Re-adding the submodule..."
           git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+
+          # Initialize submodule
+          echo "🔄 Initializing submodule..."
           git submodule init
-          git submodule update --init --recursive
+
+          # Explicitly checkout main branch of submodule instead of specific commit
+          echo "🌿 Checking out main branch of submodule..."
+          mkdir -p server/midi-presets
+          cd server/midi-presets || { echo "❌ Failed to enter submodule directory"; exit 1; }
+          git init
+          git remote add origin https://github.com/tirans/midi-presets.git
+          git fetch origin
+          git checkout -b main origin/main || git checkout main
+          cd ../..
+
+          echo "✅ Submodules setup complete"
 
       - name: Set up Python
         uses: actions/setup-python@v5

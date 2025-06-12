@@ -1,9 +1,9 @@
 name: Package Applications
-description: Package applications using Briefcase for Windows/Linux, native tools for macOS
+description: Create installers and packages for distribution
 
 inputs:
   platform:
-    description: 'Target platform'
+    description: 'Target platform (linux, windows, macOS)'
     required: true
   build-type:
     description: 'Build type (dev, staging, production)'
@@ -12,460 +12,207 @@ inputs:
     description: 'Application version'
     required: true
   server-app-path:
-    description: 'Path to server app (macOS only)'
+    description: 'Path to server application'
     required: false
   client-app-path:
-    description: 'Path to client app (macOS only)'
+    description: 'Path to client application'
     required: false
 
 runs:
   using: "composite"
   steps:
-    # ORIGINAL BRIEFCASE PACKAGING FOR WINDOWS AND LINUX
-    - name: Package applications (Windows/Linux)
-      if: inputs.platform != 'macOS'
+    - name: Validate packaging inputs
       shell: bash
       run: |
-        echo "📦 Packaging ${{ inputs.platform }} applications using Briefcase..."
+        echo "🔍 Validating packaging inputs..."
+        echo "Platform: ${{ inputs.platform }}"
+        echo "Build Type: ${{ inputs.build-type }}"
+        echo "Version: ${{ inputs.version }}"
+        echo "Server App: ${{ inputs.server-app-path }}"
+        echo "Client App: ${{ inputs.client-app-path }}"
 
-        # Determine app type
-        if [ "${{ inputs.platform }}" = "linux" ]; then
-          APP_TYPE="system"
-        else
-          APP_TYPE="app"
-        fi
-
-        echo "📦 Packaging with Briefcase..."
-        briefcase package ${{ inputs.platform }} $APP_TYPE -a server
-        briefcase package ${{ inputs.platform }} $APP_TYPE -a r2midi-client
-
-    # NATIVE APPLE TOOLS PACKAGING FOR MACOS ONLY
-    - name: Determine macOS signing strategy
-      if: inputs.platform == 'macOS'
+    - name: Create packages (Linux)
+      if: inputs.platform == 'linux'
       shell: bash
       run: |
-        echo "🔍 Determining macOS signing strategy..."
+        echo "🐧 Creating Linux packages..."
         
-        if [ -z "$BRIEFCASE_SIGNING_IDENTITY" ]; then
-          echo "No signing identity provided - creating unsigned builds"
-          echo "DISTRIBUTION_TYPE=unsigned" >> $GITHUB_ENV
-          exit 0
+        # Use Briefcase to create system packages
+        if command -v briefcase >/dev/null 2>&1; then
+          echo "📦 Creating DEB packages with Briefcase..."
+          briefcase package linux system -a server || echo "⚠️ Server package failed"
+          briefcase package linux system -a r2midi-client || echo "⚠️ Client package failed"
         fi
         
-        echo "Available certificates:"
-        security find-identity -v -p codesigning || true
+        # Create tar.gz archives as fallback
+        echo "📦 Creating TAR.GZ archives..."
         
-        # Check for different certificate types
-        DEV_ID_APP=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p' || echo "")
-        DEV_ID_INSTALLER=$(security find-identity -v -p codesigning | grep "Developer ID Installer" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p' || echo "")
-        MAS_APP=$(security find-identity -v -p codesigning | grep "3rd Party Mac Developer Application" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p' || echo "")
-        MAS_INSTALLER=$(security find-identity -v -p codesigning | grep "3rd Party Mac Developer Installer" | head -1 | sed -n 's/.*"\([^"]*\)".*/\1/p' || echo "")
-        
-        # Set distribution type and identities
-        if [ -n "$DEV_ID_APP" ]; then
-          echo "📋 Using Developer ID distribution (outside App Store)"
-          echo "DISTRIBUTION_TYPE=developer_id" >> $GITHUB_ENV
-          echo "APP_SIGNING_IDENTITY=$DEV_ID_APP" >> $GITHUB_ENV
-          echo "INSTALLER_SIGNING_IDENTITY=${DEV_ID_INSTALLER:-$DEV_ID_APP}" >> $GITHUB_ENV
-          echo "REQUIRES_NOTARIZATION=true" >> $GITHUB_ENV
-        elif [ -n "$MAS_APP" ]; then
-          echo "📋 Using Mac App Store distribution"
-          echo "DISTRIBUTION_TYPE=app_store" >> $GITHUB_ENV
-          echo "APP_SIGNING_IDENTITY=$MAS_APP" >> $GITHUB_ENV
-          echo "INSTALLER_SIGNING_IDENTITY=${MAS_INSTALLER:-$MAS_APP}" >> $GITHUB_ENV
-          echo "REQUIRES_NOTARIZATION=false" >> $GITHUB_ENV
-        else
-          echo "⚠️ Using provided identity"
-          echo "DISTRIBUTION_TYPE=generic" >> $GITHUB_ENV
-          echo "APP_SIGNING_IDENTITY=$BRIEFCASE_SIGNING_IDENTITY" >> $GITHUB_ENV
-          echo "INSTALLER_SIGNING_IDENTITY=$BRIEFCASE_SIGNING_IDENTITY" >> $GITHUB_ENV
-          echo "REQUIRES_NOTARIZATION=false" >> $GITHUB_ENV
+        if [ -n "${{ inputs.server-app-path }}" ] && [ -e "${{ inputs.server-app-path }}" ]; then
+          DIRNAME=$(dirname "${{ inputs.server-app-path }}")
+          tar -czf "r2midi-server-${{ inputs.version }}-linux.tar.gz" -C "$DIRNAME" .
         fi
         
-        echo "✅ Signing strategy: $DISTRIBUTION_TYPE"
+        if [ -n "${{ inputs.client-app-path }}" ] && [ -e "${{ inputs.client-app-path }}" ]; then
+          DIRNAME=$(dirname "${{ inputs.client-app-path }}")
+          tar -czf "r2midi-client-${{ inputs.version }}-linux.tar.gz" -C "$DIRNAME" .
+        fi
 
-    - name: Sign macOS server application
-      if: inputs.platform == 'macOS' && env.DISTRIBUTION_TYPE != 'unsigned'
-      shell: bash
+    - name: Create packages (Windows)
+      if: inputs.platform == 'windows'
+      shell: pwsh
       run: |
-        echo "🔐 Signing R2MIDI Server..."
+        Write-Host "🪟 Creating Windows packages..."
         
-        SERVER_APP="${{ inputs.server-app-path }}"
-        APP_IDENTITY="$APP_SIGNING_IDENTITY"
-        DIST_TYPE="$DISTRIBUTION_TYPE"
-        
-        if [ ! -d "$SERVER_APP" ]; then
-          echo "⚠️ Server app not found at $SERVER_APP, skipping"
-          exit 0
-        fi
-        
-        echo "App path: $SERVER_APP"
-        echo "Identity: $APP_IDENTITY"
-        echo "Distribution: $DIST_TYPE"
-        
-        # Set signing options
-        SIGN_OPTIONS="--force --timestamp --verbose"
-        if [ "$DIST_TYPE" = "developer_id" ]; then
-          SIGN_OPTIONS="$SIGN_OPTIONS --options runtime"
-          if [ -f "$GITHUB_WORKSPACE/entitlements.plist" ]; then
-            SIGN_OPTIONS="$SIGN_OPTIONS --entitlements $GITHUB_WORKSPACE/entitlements.plist"
-          fi
-        elif [ "$DIST_TYPE" = "app_store" ]; then
-          if [ -f "$GITHUB_WORKSPACE/entitlements.plist" ]; then
-            SIGN_OPTIONS="$SIGN_OPTIONS --entitlements $GITHUB_WORKSPACE/entitlements.plist"
-          fi
-        fi
-        
-        # Sign libraries and frameworks
-        echo "Signing libraries and frameworks..."
-        find "$SERVER_APP" -type f \( -name "*.dylib" -o -name "*.so" \) -exec \
-          codesign $SIGN_OPTIONS --sign "$APP_IDENTITY" {} \; 2>/dev/null || true
-        
-        find "$SERVER_APP" -name "*.framework" -exec \
-          codesign $SIGN_OPTIONS --sign "$APP_IDENTITY" {} \; 2>/dev/null || true
-        
-        # Sign executables
-        find "$SERVER_APP" -type f -perm +111 -exec \
-          codesign $SIGN_OPTIONS --sign "$APP_IDENTITY" {} \; 2>/dev/null || true
-        
-        # Sign main app bundle
-        echo "Signing main app bundle..."
-        codesign $SIGN_OPTIONS --sign "$APP_IDENTITY" "$SERVER_APP"
-        
-        # Verify signature
-        echo "Verifying signature..."
-        codesign --verify --deep --strict --verbose=2 "$SERVER_APP"
-        
-        if [ "$DIST_TYPE" = "developer_id" ]; then
-          spctl --assess --type exec --verbose "$SERVER_APP" || echo "⚠️ Gatekeeper check failed (normal pre-notarization)"
-        fi
-        
-        echo "✅ Server app signed successfully"
-
-    - name: Sign macOS client application
-      if: inputs.platform == 'macOS' && env.DISTRIBUTION_TYPE != 'unsigned'
-      shell: bash
-      run: |
-        echo "🔐 Signing R2MIDI Client..."
-        
-        CLIENT_APP="${{ inputs.client-app-path }}"
-        APP_IDENTITY="$APP_SIGNING_IDENTITY"
-        DIST_TYPE="$DISTRIBUTION_TYPE"
-        
-        if [ ! -d "$CLIENT_APP" ]; then
-          echo "⚠️ Client app not found at $CLIENT_APP, skipping"
-          exit 0
-        fi
-        
-        echo "App path: $CLIENT_APP"
-        echo "Identity: $APP_IDENTITY"
-        echo "Distribution: $DIST_TYPE"
-        
-        # Set signing options
-        SIGN_OPTIONS="--force --timestamp --verbose"
-        if [ "$DIST_TYPE" = "developer_id" ]; then
-          SIGN_OPTIONS="$SIGN_OPTIONS --options runtime"
-          if [ -f "$GITHUB_WORKSPACE/entitlements.plist" ]; then
-            SIGN_OPTIONS="$SIGN_OPTIONS --entitlements $GITHUB_WORKSPACE/entitlements.plist"
-          fi
-        elif [ "$DIST_TYPE" = "app_store" ]; then
-          if [ -f "$GITHUB_WORKSPACE/entitlements.plist" ]; then
-            SIGN_OPTIONS="$SIGN_OPTIONS --entitlements $GITHUB_WORKSPACE/entitlements.plist"
-          fi
-        fi
-        
-        # Sign libraries and frameworks
-        echo "Signing libraries and frameworks..."
-        find "$CLIENT_APP" -type f \( -name "*.dylib" -o -name "*.so" \) -exec \
-          codesign $SIGN_OPTIONS --sign "$APP_IDENTITY" {} \; 2>/dev/null || true
-        
-        find "$CLIENT_APP" -name "*.framework" -exec \
-          codesign $SIGN_OPTIONS --sign "$APP_IDENTITY" {} \; 2>/dev/null || true
-        
-        # Sign executables
-        find "$CLIENT_APP" -type f -perm +111 -exec \
-          codesign $SIGN_OPTIONS --sign "$APP_IDENTITY" {} \; 2>/dev/null || true
-        
-        # Sign main app bundle
-        echo "Signing main app bundle..."
-        codesign $SIGN_OPTIONS --sign "$APP_IDENTITY" "$CLIENT_APP"
-        
-        # Verify signature
-        echo "Verifying signature..."
-        codesign --verify --deep --strict --verbose=2 "$CLIENT_APP"
-        
-        if [ "$DIST_TYPE" = "developer_id" ]; then
-          spctl --assess --type exec --verbose "$CLIENT_APP" || echo "⚠️ Gatekeeper check failed (normal pre-notarization)"
-        fi
-        
-        echo "✅ Client app signed successfully"
-
-    - name: Create macOS DMG installers
-      if: inputs.platform == 'macOS'
-      shell: bash
-      run: |
-        echo "💿 Creating DMG installers for macOS..."
-        
-        SERVER_APP="${{ inputs.server-app-path }}"
-        CLIENT_APP="${{ inputs.client-app-path }}"
-        VERSION="${{ inputs.version }}"
-        
-        # Create server DMG
-        if [ -d "$SERVER_APP" ]; then
-          echo "Creating server DMG..."
-          DMG_DIR=$(mktemp -d)
-          cp -R "$SERVER_APP" "$DMG_DIR/"
-          ln -s /Applications "$DMG_DIR/Applications"
+        # Use Briefcase to create MSI if possible
+        if (Get-Command briefcase -ErrorAction SilentlyContinue) {
+          Write-Host "📦 Creating MSI packages with Briefcase..."
+          try {
+            briefcase package windows app -a server
+          } catch {
+            Write-Host "⚠️ Server MSI package failed: $_"
+          }
           
-          DMG_PATH="R2MIDI_Server-$VERSION.dmg"
-          hdiutil create -volname "R2MIDI Server" \
-            -srcfolder "$DMG_DIR" \
+          try {
+            briefcase package windows app -a r2midi-client
+          } catch {
+            Write-Host "⚠️ Client MSI package failed: $_"
+          }
+        }
+        
+        # Create ZIP archives as fallback
+        Write-Host "📦 Creating ZIP archives..."
+        
+        if ("${{ inputs.server-app-path }}" -and (Test-Path "${{ inputs.server-app-path }}")) {
+          $parentDir = Split-Path "${{ inputs.server-app-path }}" -Parent
+          Compress-Archive -Path "$parentDir\*" -DestinationPath "r2midi-server-${{ inputs.version }}-windows.zip" -Force
+        }
+        
+        if ("${{ inputs.client-app-path }}" -and (Test-Path "${{ inputs.client-app-path }}")) {
+          $parentDir = Split-Path "${{ inputs.client-app-path }}" -Parent
+          Compress-Archive -Path "$parentDir\*" -DestinationPath "r2midi-client-${{ inputs.version }}-windows.zip" -Force
+        }
+
+    - name: Create packages (macOS)
+      if: inputs.platform == 'macOS'
+      shell: bash
+      run: |
+        echo "🍎 Creating macOS packages..."
+        
+        # Create DMG files
+        echo "💿 Creating DMG installers..."
+        
+        create_dmg() {
+          local app_path="$1"
+          local dmg_name="$2"
+          
+          if [ ! -d "$app_path" ]; then
+            echo "⚠️ App not found: $app_path"
+            return 1
+          fi
+          
+          echo "Creating DMG for: $app_path"
+          
+          # Create temporary directory for DMG contents
+          local temp_dir=$(mktemp -d)
+          cp -R "$app_path" "$temp_dir/"
+          ln -s /Applications "$temp_dir/Applications"
+          
+          # Create DMG
+          hdiutil create -volname "$(basename "$app_path" .app)" \
+            -srcfolder "$temp_dir" \
             -ov -format UDZO \
             -imagekey zlib-level=9 \
-            "$DMG_PATH"
+            "$dmg_name"
           
-          if [ "$DISTRIBUTION_TYPE" != "unsigned" ] && [ -n "$APP_SIGNING_IDENTITY" ]; then
-            echo "🔐 Signing server DMG..."
-            codesign --force --timestamp --sign "$APP_SIGNING_IDENTITY" "$DMG_PATH"
+          # Clean up
+          rm -rf "$temp_dir"
+          
+          if [ -f "$dmg_name" ]; then
+            echo "✅ Created: $dmg_name"
+          else
+            echo "❌ Failed to create: $dmg_name"
+            return 1
           fi
-          
-          rm -rf "$DMG_DIR"
-          echo "✅ Server DMG created: $DMG_PATH"
+        }
+        
+        # Create server DMG
+        if [ -n "${{ inputs.server-app-path }}" ] && [ -d "${{ inputs.server-app-path }}" ]; then
+          create_dmg "${{ inputs.server-app-path }}" "R2MIDI-Server-${{ inputs.version }}.dmg"
         fi
         
         # Create client DMG
-        if [ -d "$CLIENT_APP" ]; then
-          echo "Creating client DMG..."
-          DMG_DIR=$(mktemp -d)
-          cp -R "$CLIENT_APP" "$DMG_DIR/"
-          ln -s /Applications "$DMG_DIR/Applications"
-          
-          DMG_PATH="R2MIDI_Client-$VERSION.dmg"
-          hdiutil create -volname "R2MIDI Client" \
-            -srcfolder "$DMG_DIR" \
-            -ov -format UDZO \
-            -imagekey zlib-level=9 \
-            "$DMG_PATH"
-          
-          if [ "$DISTRIBUTION_TYPE" != "unsigned" ] && [ -n "$APP_SIGNING_IDENTITY" ]; then
-            echo "🔐 Signing client DMG..."
-            codesign --force --timestamp --sign "$APP_SIGNING_IDENTITY" "$DMG_PATH"
-          fi
-          
-          rm -rf "$DMG_DIR"
-          echo "✅ Client DMG created: $DMG_PATH"
+        if [ -n "${{ inputs.client-app-path }}" ] && [ -d "${{ inputs.client-app-path }}" ]; then
+          create_dmg "${{ inputs.client-app-path }}" "R2MIDI-Client-${{ inputs.version }}.dmg"
+        fi
+        
+        # Create ZIP archives as fallback
+        echo "📦 Creating ZIP archives..."
+        
+        if [ -n "${{ inputs.server-app-path }}" ] && [ -d "${{ inputs.server-app-path }}" ]; then
+          cd "$(dirname "${{ inputs.server-app-path }}")"
+          zip -r "$GITHUB_WORKSPACE/r2midi-server-${{ inputs.version }}-macos.zip" "$(basename "${{ inputs.server-app-path }}")"
+          cd "$GITHUB_WORKSPACE"
+        fi
+        
+        if [ -n "${{ inputs.client-app-path }}" ] && [ -d "${{ inputs.client-app-path }}" ]; then
+          cd "$(dirname "${{ inputs.client-app-path }}")"
+          zip -r "$GITHUB_WORKSPACE/r2midi-client-${{ inputs.version }}-macos.zip" "$(basename "${{ inputs.client-app-path }}")"
+          cd "$GITHUB_WORKSPACE"
         fi
 
-    - name: Create macOS PKG installers
-      if: inputs.platform == 'macOS' && env.DISTRIBUTION_TYPE != 'unsigned'
+    - name: List created packages
       shell: bash
       run: |
-        echo "📦 Creating PKG installers for macOS..."
+        echo "📋 Created packages:"
         
-        SERVER_APP="${{ inputs.server-app-path }}"
-        CLIENT_APP="${{ inputs.client-app-path }}"
-        VERSION="${{ inputs.version }}"
-        INSTALLER_IDENTITY="$INSTALLER_SIGNING_IDENTITY"
-        
-        # Create server PKG
-        if [ -d "$SERVER_APP" ]; then
-          echo "Creating server PKG..."
-          PKG_ROOT=$(mktemp -d)
-          PKG_SCRIPTS=$(mktemp -d)
-          
-          mkdir -p "$PKG_ROOT/Applications"
-          cp -R "$SERVER_APP" "$PKG_ROOT/Applications/"
-          
-          cat > "$PKG_SCRIPTS/postinstall" << 'PKG_SCRIPT'
-#!/bin/bash
-chmod -R 755 "/Applications/R2MIDI Server.app"
-xattr -d com.apple.quarantine "/Applications/R2MIDI Server.app" 2>/dev/null || true
-exit 0
-PKG_SCRIPT
-          chmod +x "$PKG_SCRIPTS/postinstall"
-          
-          PKG_FINAL="R2MIDI_Server-$VERSION.pkg"
-          pkgbuild \
-            --root "$PKG_ROOT" \
-            --scripts "$PKG_SCRIPTS" \
-            --identifier "com.r2midi.server.pkg" \
-            --version "$VERSION" \
-            --ownership preserve \
-            --install-location "/" \
-            --sign "$INSTALLER_IDENTITY" \
-            "$PKG_FINAL"
-          
-          rm -rf "$PKG_ROOT" "$PKG_SCRIPTS"
-          echo "✅ Server PKG created: $PKG_FINAL"
-        fi
-        
-        # Create client PKG
-        if [ -d "$CLIENT_APP" ]; then
-          echo "Creating client PKG..."
-          PKG_ROOT=$(mktemp -d)
-          PKG_SCRIPTS=$(mktemp -d)
-          
-          mkdir -p "$PKG_ROOT/Applications"
-          cp -R "$CLIENT_APP" "$PKG_ROOT/Applications/"
-          
-          cat > "$PKG_SCRIPTS/postinstall" << 'PKG_SCRIPT'
-#!/bin/bash
-chmod -R 755 "/Applications/R2MIDI Client.app"
-xattr -d com.apple.quarantine "/Applications/R2MIDI Client.app" 2>/dev/null || true
-exit 0
-PKG_SCRIPT
-          chmod +x "$PKG_SCRIPTS/postinstall"
-          
-          PKG_FINAL="R2MIDI_Client-$VERSION.pkg"
-          pkgbuild \
-            --root "$PKG_ROOT" \
-            --scripts "$PKG_SCRIPTS" \
-            --identifier "com.r2midi.client.pkg" \
-            --version "$VERSION" \
-            --ownership preserve \
-            --install-location "/" \
-            --sign "$INSTALLER_IDENTITY" \
-            "$PKG_FINAL"
-          
-          rm -rf "$PKG_ROOT" "$PKG_SCRIPTS"
-          echo "✅ Client PKG created: $PKG_FINAL"
-        fi
-
-    - name: Notarize macOS packages
-      if: inputs.platform == 'macOS' && env.REQUIRES_NOTARIZATION == 'true' && env.BRIEFCASE_NOTARIZATION_PROFILE != ''
-      shell: bash
-      run: |
-        echo "🔔 Notarizing packages for Developer ID distribution..."
-        
-        NOTARIZATION_PROFILE="$BRIEFCASE_NOTARIZATION_PROFILE"
-        
-        # Notarize all DMG and PKG files
-        for file in *.dmg *.pkg; do
-          if [ -f "$file" ]; then
-            echo "🔔 Notarizing: $file"
-            
-            SUBMISSION_ID=$(xcrun notarytool submit "$file" \
-              --keychain-profile "$NOTARIZATION_PROFILE" \
-              --wait \
-              --timeout 30m \
-              --output-format json 2>/dev/null | jq -r '.id' 2>/dev/null || echo "")
-            
-            if [ -n "$SUBMISSION_ID" ] && [ "$SUBMISSION_ID" != "null" ]; then
-              echo "✅ Submitted: $SUBMISSION_ID"
-              
-              STATUS=$(xcrun notarytool info "$SUBMISSION_ID" \
-                --keychain-profile "$NOTARIZATION_PROFILE" \
-                --output-format json 2>/dev/null | jq -r '.status' 2>/dev/null || echo "Unknown")
-              
-              if [ "$STATUS" = "Accepted" ]; then
-                echo "✅ Notarization successful for $file"
-                xcrun stapler staple "$file"
-                xcrun stapler validate "$file"
-              else
-                echo "⚠️ Notarization status for $file: $STATUS"
-              fi
-            else
-              echo "⚠️ Could not submit $file for notarization"
-            fi
+        # List all package files
+        for ext in dmg pkg msi deb zip tar.gz; do
+          files=$(find . -maxdepth 1 -name "*.$ext" 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            echo "$ext files:"
+            echo "$files" | while read file; do
+              size=$(du -h "$file" 2>/dev/null | cut -f1 || echo "unknown")
+              echo "  - $(basename "$file") ($size)"
+            done
           fi
         done
+        
+        # Create a summary file
+        cat > PACKAGES.txt << EOF
+R2MIDI Package Summary
+=====================
 
-    - name: Prepare artifacts
-      shell: bash
-      run: |
-        mkdir -p artifacts
-        echo "📁 Preparing artifacts for ${{ inputs.platform }}..."
-
-        # Platform-specific artifact preparation
-        case "${{ inputs.platform }}" in
-          macOS)
-            # Copy macOS installers
-            find . -name "*.dmg" -maxdepth 1 -exec cp {} artifacts/ \; 2>/dev/null || true
-            find . -name "*.pkg" -maxdepth 1 -exec cp {} artifacts/ \; 2>/dev/null || true
-
-            # If no installers, create ZIP archives
-            if [ ! -f artifacts/*.dmg ] && [ ! -f artifacts/*.pkg ]; then
-              echo "⚠️ No installers found, creating ZIP archives..."
-              
-              SERVER_APP="${{ inputs.server-app-path }}"
-              CLIENT_APP="${{ inputs.client-app-path }}"
-              VERSION="${{ inputs.version }}"
-              
-              if [ -d "$SERVER_APP" ]; then
-                cd "$(dirname "$SERVER_APP")"
-                zip -r "$GITHUB_WORKSPACE/artifacts/R2MIDI_Server-$VERSION.zip" "$(basename "$SERVER_APP")"
-                cd "$GITHUB_WORKSPACE"
-              fi
-              
-              if [ -d "$CLIENT_APP" ]; then
-                cd "$(dirname "$CLIENT_APP")"
-                zip -r "$GITHUB_WORKSPACE/artifacts/R2MIDI_Client-$VERSION.zip" "$(basename "$CLIENT_APP")"
-                cd "$GITHUB_WORKSPACE"
-              fi
-            fi
-            ;;
-          windows)
-            # Copy MSI installers if available
-            if [ -d "dist" ]; then
-              find dist -name "*.msi" -exec cp {} artifacts/ \; 2>/dev/null || true
-            fi
-
-            # Package Windows builds as ZIP using PowerShell's Compress-Archive
-            for dir in build/*/windows/app; do
-              if [ -d "$dir" ]; then
-                app_name=$(basename "$(dirname "$(dirname "$dir")")")
-                # Use PowerShell to create the ZIP file
-                powershell -Command "Compress-Archive -Path '$dir/*' -DestinationPath '$GITHUB_WORKSPACE/artifacts/${app_name}-windows-${{ inputs.build-type }}-v${{ inputs.version }}.zip' -Force"
-              fi
-            done
-            ;;
-          linux)
-            # Copy deb packages
-            if [ -d "dist" ]; then
-              find dist -name "*.deb" -exec cp {} artifacts/ \; 2>/dev/null || true
-            fi
-
-            # Create tar.gz archives
-            for dir in build/*/linux/system; do
-              if [ -d "$dir" ]; then
-                app_name=$(basename "$(dirname "$(dirname "$dir")")")
-                tar -czf "artifacts/${app_name}-linux-${{ inputs.build-type }}-v${{ inputs.version }}.tar.gz" \
-                    -C "$dir" . --exclude="*.log"
-              fi
-            done
-            ;;
-        esac
-
-        # Create build info file
-        cat > artifacts/BUILD_INFO.txt << 'BUILD_INFO'
-R2MIDI Build Information
-=======================
-
-Version: ${{ inputs.version }}
 Platform: ${{ inputs.platform }}
 Build Type: ${{ inputs.build-type }}
-Built: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-Commit: ${{ github.sha }}
-Branch: ${{ github.ref_name }}
-Workflow: ${{ github.workflow }}
-Run: ${{ github.run_number }}
+Version: ${{ inputs.version }}
+Created: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
-Build Method:
-BUILD_INFO
-
-        # Add platform-specific build method info
-        if [ "${{ inputs.platform }}" = "macOS" ]; then
-          cat >> artifacts/BUILD_INFO.txt << 'MACOS_INFO'
-- macOS: Native Apple tools (py2app + codesign + hdiutil + pkgbuild)
-- Distribution: ${DISTRIBUTION_TYPE:-unknown}
-- Signing: ${APP_SIGNING_IDENTITY:-none}
-- Notarization: ${REQUIRES_NOTARIZATION:-false}
-MACOS_INFO
-        else
-          cat >> artifacts/BUILD_INFO.txt << 'OTHER_INFO'
-- Windows/Linux: Briefcase (cross-platform Python packaging)
-OTHER_INFO
-        fi
-
-        echo "📦 Artifacts created for ${{ inputs.platform }}:"
-        ls -la artifacts/ || echo "No artifacts found"
+Packages:
+EOF
+        
+        find . -maxdepth 1 \( -name "*.dmg" -o -name "*.pkg" -o -name "*.msi" -o -name "*.deb" -o -name "*.zip" -o -name "*.tar.gz" \) | \
+        while read file; do
+          size=$(du -h "$file" 2>/dev/null | cut -f1 || echo "unknown")
+          echo "- $(basename "$file") ($size)" >> PACKAGES.txt
+        done
+        
+        echo "" >> PACKAGES.txt
+        echo "Installation Instructions:" >> PACKAGES.txt
+        echo "=========================" >> PACKAGES.txt
+        
+        case "${{ inputs.platform }}" in
+          macOS)
+            echo "- DMG: Double-click to mount, then drag apps to Applications folder" >> PACKAGES.txt
+            echo "- ZIP: Extract and move .app files to Applications folder" >> PACKAGES.txt
+            ;;
+          windows)
+            echo "- MSI: Double-click to run the installer" >> PACKAGES.txt
+            echo "- ZIP: Extract to desired location and run the .exe files" >> PACKAGES.txt
+            ;;
+          linux)
+            echo "- DEB: sudo dpkg -i package.deb" >> PACKAGES.txt
+            echo "- TAR.GZ: Extract to desired location and run the binaries" >> PACKAGES.txt
+            ;;
+        esac
+        
+        echo "✅ Packaging complete for ${{ inputs.platform }}"

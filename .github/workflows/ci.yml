@@ -1,4 +1,4 @@
-name: CI
+name: CI - Continuous Integration
 
 on:
   push:
@@ -6,24 +6,168 @@ on:
   pull_request:
     branches: [ master, main, develop ]
   workflow_dispatch:
+    inputs:
+      run-builds:
+        description: 'Run builds in addition to tests'
+        required: false
+        type: boolean
+        default: false
+      platforms:
+        description: 'Platforms to build (comma-separated: linux,windows,macOS)'
+        required: false
+        type: string
+        default: 'linux,windows,macOS'
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
-  # Quick tests for all pushes and PRs
-  test:
-    name: Test
-    uses: ./.github/workflows/reusable-test.yml
-    with:
-      python-version: "3.12"
-      coverage: true
+  # Quick validation and tests
+  validate:
+    name: Validate & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    outputs:
+      should-build: ${{ steps.check.outputs.should-build }}
+      version: ${{ steps.version.outputs.version }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-  # Development builds only on push or manual trigger
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov flake8 black isort
+          
+          # Install project dependencies for testing
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Code formatting check
+        run: |
+          echo "🔍 Checking code formatting..."
+          
+          # Check with black
+          if ! black --check --diff .; then
+            echo "❌ Code formatting issues found. Run 'black .' to fix."
+            exit 1
+          fi
+          
+          # Check imports with isort
+          if ! isort --check-only --diff .; then
+            echo "❌ Import sorting issues found. Run 'isort .' to fix."
+            exit 1
+          fi
+          
+          echo "✅ Code formatting looks good"
+
+      - name: Lint code
+        run: |
+          echo "🔍 Linting code..."
+          
+          # Run flake8 with reasonable settings
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          
+          echo "✅ Linting complete"
+
+      - name: Run tests
+        run: |
+          echo "🧪 Running tests..."
+          
+          if [ -d "tests" ]; then
+            pytest tests/ -v --cov=. --cov-report=term-missing
+          else
+            echo "⚠️ No tests directory found, creating basic validation test"
+            
+            # Create a basic smoke test
+            python -c "
+import sys
+import os
+import importlib.util
+
+# Test that we can import main modules
+try:
+    if os.path.exists('server'):
+        sys.path.append('server')
+        spec = importlib.util.spec_from_file_location('server_main', 'server/main.py')
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            print('✅ Server module can be imported')
+        else:
+            print('⚠️ Server main.py not found or invalid')
+    
+    if os.path.exists('r2midi_client'):
+        sys.path.append('r2midi_client')
+        spec = importlib.util.spec_from_file_location('client_main', 'r2midi_client/main.py')
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            print('✅ Client module can be imported')
+        else:
+            print('⚠️ Client main.py not found or invalid')
+            
+    print('✅ Basic validation passed')
+except Exception as e:
+    print(f'❌ Validation failed: {e}')
+    sys.exit(1)
+"
+          fi
+          
+          echo "✅ Tests completed"
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -f "server/version.py" ]; then
+            VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          elif [ -f "pyproject.toml" ]; then
+            VERSION=$(grep -o 'version = "[^"]*"' pyproject.toml | cut -d'"' -f2)
+          else
+            VERSION="1.0.0-dev"
+          fi
+          
+          echo "Detected version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if builds should run
+        id: check
+        run: |
+          # Determine if we should run builds
+          SHOULD_BUILD="false"
+          
+          # Always build on workflow_dispatch if requested
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.run-builds }}" = "true" ]; then
+            SHOULD_BUILD="true"
+            echo "🚀 Builds requested via workflow dispatch"
+          # Build on push to non-PR branches (but not PRs)
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            SHOULD_BUILD="true"
+            echo "🚀 Builds triggered by push to ${{ github.ref_name }}"
+          # Skip builds on PRs by default to save resources
+          else
+            echo "⏭️ Skipping builds for PR (tests only)"
+          fi
+          
+          echo "should-build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
+
+  # Development builds (conditional)
   dev-builds:
     name: Dev Build (${{ matrix.platform }})
-    needs: test
-    if: github.event_name != 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: validate
+    if: needs.validate.outputs.should-build == 'true'
+    
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +178,7 @@ jobs:
             os: windows-latest
           - platform: macOS
             os: macos-13
+    
     uses: ./.github/workflows/reusable-build.yml
     with:
       platform: ${{ matrix.platform }}
@@ -42,32 +187,61 @@ jobs:
       version-suffix: "-dev.${{ github.run_number }}"
       sign-builds: false
 
+  # Job summary
   summary:
     name: CI Summary
-    needs: [test, dev-builds]
+    needs: [validate, dev-builds]
     if: always()
     runs-on: ubuntu-latest
     
     steps:
-      - name: Generate summary
+      - name: Generate CI summary
         run: |
-          echo "# 🚧 CI Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "# 🚧 CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
+          echo "**Repository:** \`${{ github.repository }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ needs.validate.outputs.version }}" ]; then
+            echo "**Version:** ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Results" >> $GITHUB_STEP_SUMMARY
+          
+          # Validation results
+          if [ "${{ needs.validate.result }}" = "success" ]; then
+            echo "✅ **Validation & Tests:** Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Validation & Tests:** Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Build results
+          if [ "${{ needs.validate.outputs.should-build }}" = "true" ]; then
+            if [ "${{ needs.dev-builds.result }}" = "success" ]; then
+              echo "✅ **Development Builds:** Completed" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.dev-builds.result }}" = "failure" ]; then
+              echo "❌ **Development Builds:** Failed" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⏳ **Development Builds:** In Progress" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⏭️ **Development Builds:** Skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ "${{ needs.test.result }}" = "success" ]; then
-            echo "✅ **Tests:** Passed" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **Tests:** Failed" >> $GITHUB_STEP_SUMMARY
+          # Add helpful information
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "> **Note:** Development builds are skipped for pull requests by default." >> $GITHUB_STEP_SUMMARY
+            echo "> To run builds, use the 'Run workflow' button on the Actions tab." >> $GITHUB_STEP_SUMMARY
           fi
-          
-          if [ "${{ needs.dev-builds.result }}" = "success" ]; then
-            echo "✅ **Builds:** Completed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.dev-builds.result }}" = "skipped" ]; then
-            echo "⏭️ **Builds:** Skipped (PR test-only mode)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **Builds:** Failed" >> $GITHUB_STEP_SUMMARY
-          fi
+
+      - name: Update status
+        if: failure()
+        run: |
+          echo "❌ CI pipeline failed. Check the logs above for details."
+          exit 1

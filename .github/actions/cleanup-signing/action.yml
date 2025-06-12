@@ -1,5 +1,5 @@
-name: Cleanup Signing
-description: Clean up temporary signing resources
+name: Cleanup Signing Resources
+description: Clean up temporary keychains and signing resources
 
 inputs:
   platform:
@@ -9,24 +9,47 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Cleanup macOS keychain
+    - name: Cleanup macOS signing resources
       if: inputs.platform == 'macOS'
       shell: bash
       run: |
-        if [ -n "$R2MIDI_KEYCHAIN_PATH" ] && [ -f "$R2MIDI_KEYCHAIN_PATH" ]; then
-          echo "🧹 Cleaning up temporary keychain..."
-          security delete-keychain "$R2MIDI_KEYCHAIN_PATH" || true
+        echo "🧹 Cleaning up macOS signing resources..."
+        
+        # Remove temporary keychain if it exists
+        if [ -n "${KEYCHAIN_NAME:-}" ]; then
+          echo "🔑 Removing temporary keychain: $KEYCHAIN_NAME"
+          security delete-keychain "$KEYCHAIN_NAME" 2>/dev/null || echo "Keychain already removed"
         fi
         
-        # Clean up notarization profile
-        xcrun notarytool credentials list | grep "r2midi-notary" && \
-          xcrun notarytool credentials delete "r2midi-notary" || true
+        # Remove any temporary certificate files
+        rm -f certificate.p12 2>/dev/null || true
+        rm -f *.cer 2>/dev/null || true
+        rm -f *.p12 2>/dev/null || true
         
-        echo "✅ Cleanup completed"
+        # Clean up notarization profiles if they exist
+        if [ -n "${BRIEFCASE_NOTARIZATION_PROFILE:-}" ]; then
+          echo "🔔 Cleaning up notarization profile"
+          # Note: xcrun notarytool doesn't have a direct delete command
+          # The profiles are stored in keychain and will be cleaned up with system
+        fi
+        
+        echo "✅ macOS signing cleanup complete"
 
-    - name: Cleanup Windows certificates
-      if: inputs.platform == 'windows'
-      shell: pwsh
+    - name: Cleanup general build resources
+      shell: bash
       run: |
-        Write-Host "🧹 Cleaning up Windows certificates..."
-        # Add Windows certificate cleanup if needed
+        echo "🧹 Cleaning up general build resources..."
+        
+        # Remove temporary build files
+        rm -rf build/temp* 2>/dev/null || true
+        rm -rf dist/temp* 2>/dev/null || true
+        rm -rf .briefcase-build-* 2>/dev/null || true
+        
+        # Remove any leftover package files in root
+        find . -maxdepth 1 -name "*.log" -delete 2>/dev/null || true
+        
+        # Clean up Python cache
+        find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+        find . -type f -name "*.pyc" -delete 2>/dev/null || true
+        
+        echo "✅ General cleanup complete"

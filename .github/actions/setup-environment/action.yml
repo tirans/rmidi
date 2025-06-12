@@ -1,0 +1,300 @@
+name: Setup Build Environment
+description: Setup platform-specific build environment with dependencies and tools
+
+inputs:
+  platform:
+    description: 'Target platform (linux, windows, macOS)'
+    required: true
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.12'
+  build-type:
+    description: 'Build type (dev, staging, production)'
+    required: false
+    default: 'dev'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate platform
+      shell: bash
+      run: |
+        case "${{ inputs.platform }}" in
+          linux|windows|macOS)
+            echo "✅ Valid platform: ${{ inputs.platform }}"
+            ;;
+          *)
+            echo "❌ Invalid platform: ${{ inputs.platform }}"
+            echo "Valid platforms: linux, windows, macOS"
+            exit 1
+            ;;
+        esac
+
+    - name: Install system dependencies (Linux)
+      if: inputs.platform == 'linux'
+      shell: bash
+      run: |
+        echo "🐧 Installing Linux system dependencies..."
+        
+        # Retry mechanism for apt operations
+        retry_apt() {
+          local max_attempts=3
+          local delay=10
+          
+          for attempt in $(seq 1 $max_attempts); do
+            echo "🔄 Apt attempt $attempt/$max_attempts"
+            if sudo apt-get "$@"; then
+              return 0
+            else
+              if [ $attempt -lt $max_attempts ]; then
+                echo "⏳ Waiting ${delay}s before retry..."
+                sleep $delay
+              fi
+            fi
+          done
+          
+          echo "❌ Apt operation failed after $max_attempts attempts"
+          return 1
+        }
+        
+        # Update package lists
+        retry_apt update -qq
+        
+        # Install core dependencies
+        retry_apt install -y \
+          build-essential \
+          libasound2-dev \
+          libegl1 \
+          libjack-dev \
+          librtmidi-dev \
+          libxkbcommon-x11-0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render-util0 \
+          libxcb-xinerama0 \
+          libxcb-xfixes0 \
+          libfontconfig1-dev \
+          libfreetype6-dev \
+          libx11-dev \
+          libx11-xcb-dev \
+          libxext-dev \
+          libxfixes-dev \
+          libxi-dev \
+          libxrender-dev \
+          libxcb1-dev \
+          libxcb-glx0-dev \
+          libxcb-keysyms1-dev \
+          libxcb-image0-dev \
+          libxcb-shm0-dev \
+          libxcb-util0-dev \
+          libxcb-util-dev \
+          libxkbcommon-dev \
+          libxkbcommon-x11-dev \
+          libxcb-cursor0 \
+          libxcb-shape0
+        
+        echo "✅ Linux dependencies installed"
+
+    - name: Install system dependencies (Windows)
+      if: inputs.platform == 'windows'
+      shell: pwsh
+      run: |
+        Write-Host "🪟 Setting up Windows build environment..."
+        
+        # Windows typically doesn't need additional system packages for Python builds
+        # but we can set up some useful tools
+        
+        # Ensure chocolatey is available for potential future use
+        if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+          Write-Host "📦 Chocolatey not found - this is normal for GitHub runners"
+        }
+        
+        Write-Host "✅ Windows environment ready"
+
+    - name: Install system dependencies (macOS)
+      if: inputs.platform == 'macOS'
+      shell: bash
+      run: |
+        echo "🍎 Setting up macOS build environment..."
+        
+        # Ensure Xcode command line tools are available
+        if ! xcode-select -p >/dev/null 2>&1; then
+          echo "⚠️ Xcode command line tools not found"
+          echo "Installing Xcode command line tools..."
+          xcode-select --install 2>/dev/null || true
+          
+          # Wait for installation (with timeout)
+          for i in {1..30}; do
+            if xcode-select -p >/dev/null 2>&1; then
+              break
+            fi
+            echo "⏳ Waiting for Xcode tools installation... ($i/30)"
+            sleep 10
+          done
+        fi
+        
+        # Verify tools are available
+        if xcode-select -p >/dev/null 2>&1; then
+          echo "✅ Xcode command line tools available at: $(xcode-select -p)"
+        else
+          echo "⚠️ Xcode command line tools may not be properly installed"
+        fi
+        
+        # Check for Homebrew (optional, for future use)
+        if command -v brew >/dev/null 2>&1; then
+          echo "✅ Homebrew available: $(brew --version | head -1)"
+        else
+          echo "ℹ️ Homebrew not available (this is normal for GitHub runners)"
+        fi
+        
+        echo "✅ macOS environment ready"
+
+    - name: Setup Python build tools
+      shell: bash
+      run: |
+        echo "🐍 Setting up Python build tools..."
+        
+        # Upgrade pip with retry
+        for attempt in {1..3}; do
+          echo "🔄 Upgrading pip (attempt $attempt/3)"
+          if python -m pip install --upgrade pip; then
+            break
+          else
+            if [ $attempt -lt 3 ]; then
+              echo "⏳ Waiting 10s before retry..."
+              sleep 10
+            fi
+          fi
+        done
+        
+        # Install core build tools
+        echo "📦 Installing core build tools..."
+        pip install --upgrade setuptools wheel
+        
+        # Install platform-specific tools
+        case "${{ inputs.platform }}" in
+          linux|windows)
+            echo "📦 Installing Briefcase for cross-platform builds..."
+            pip install briefcase
+            ;;
+          macOS)
+            echo "📦 Installing py2app for native macOS builds..."
+            pip install py2app
+            ;;
+        esac
+        
+        # Install common tools
+        echo "📦 Installing common tools..."
+        pip install pillow  # For icon generation
+        
+        echo "✅ Python build tools installed"
+
+    - name: Install project dependencies
+      shell: bash
+      run: |
+        echo "📦 Installing project dependencies..."
+        
+        # Install main requirements with retry
+        if [ -f "requirements.txt" ]; then
+          for attempt in {1..3}; do
+            echo "🔄 Installing requirements.txt (attempt $attempt/3)"
+            if pip install -r requirements.txt; then
+              break
+            else
+              if [ $attempt -lt 3 ]; then
+                echo "⏳ Waiting 15s before retry..."
+                sleep 15
+              fi
+            fi
+          done
+        else
+          echo "⚠️ requirements.txt not found"
+        fi
+        
+        # Install client requirements if they exist
+        if [ -f "r2midi_client/requirements.txt" ]; then
+          echo "📦 Installing client requirements..."
+          for attempt in {1..3}; do
+            echo "🔄 Installing client requirements (attempt $attempt/3)"
+            if pip install -r r2midi_client/requirements.txt; then
+              break
+            else
+              if [ $attempt -lt 3 ]; then
+                echo "⏳ Waiting 15s before retry..."
+                sleep 15
+              fi
+            fi
+          done
+        fi
+        
+        echo "✅ Project dependencies installed"
+
+    - name: Verify environment
+      shell: bash
+      run: |
+        echo "🔍 Verifying build environment..."
+        
+        # Check Python
+        echo "Python version: $(python --version)"
+        echo "Python location: $(which python)"
+        
+        # Check pip
+        echo "Pip version: $(pip --version)"
+        
+        # Check platform-specific tools
+        case "${{ inputs.platform }}" in
+          linux|windows)
+            if command -v briefcase >/dev/null 2>&1; then
+              echo "✅ Briefcase available: $(briefcase --version)"
+            else
+              echo "❌ Briefcase not found"
+              exit 1
+            fi
+            ;;
+          macOS)
+            if python -c "import py2app" 2>/dev/null; then
+              echo "✅ py2app available"
+            else
+              echo "❌ py2app not found"
+              exit 1
+            fi
+            ;;
+        esac
+        
+        # Check for project files
+        echo "📁 Project structure check:"
+        [ -f "pyproject.toml" ] && echo "✅ pyproject.toml found" || echo "⚠️ pyproject.toml missing"
+        [ -d "server" ] && echo "✅ server directory found" || echo "⚠️ server directory missing"
+        [ -d "r2midi_client" ] && echo "✅ r2midi_client directory found" || echo "⚠️ r2midi_client directory missing"
+        
+        echo "✅ Environment verification complete"
+
+    - name: Set environment variables
+      shell: bash
+      run: |
+        echo "🔧 Setting environment variables..."
+        
+        # Set platform-specific variables
+        echo "PLATFORM=${{ inputs.platform }}" >> $GITHUB_ENV
+        echo "BUILD_TYPE=${{ inputs.build-type }}" >> $GITHUB_ENV
+        echo "PYTHON_VERSION=${{ inputs.python-version }}" >> $GITHUB_ENV
+        
+        # Set build method
+        case "${{ inputs.platform }}" in
+          linux|windows)
+            echo "BUILD_METHOD=briefcase" >> $GITHUB_ENV
+            ;;
+          macOS)
+            echo "BUILD_METHOD=native" >> $GITHUB_ENV
+            ;;
+        esac
+        
+        # Set paths
+        echo "BUILD_DIR=$(pwd)/build" >> $GITHUB_ENV
+        echo "DIST_DIR=$(pwd)/dist" >> $GITHUB_ENV
+        echo "ARTIFACTS_DIR=$(pwd)/artifacts" >> $GITHUB_ENV
+        
+        echo "✅ Environment variables set"

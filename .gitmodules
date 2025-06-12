@@ -1,3 +1,0 @@
-[submodule "server/midi-presets"]
-	path = server/midi-presets
-	url = https://github.com/tirans/midi-presets.git

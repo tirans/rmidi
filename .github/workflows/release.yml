@@ -117,38 +117,28 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
-      - name: Fix submodules
+      - name: Verify project structure
         run: |
-          echo "🔧 Setting up Git submodules..."
-
+          echo "🔍 Verifying project structure for Python package build..."
+          
           # Configure Git for safety
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-          # Clean up any problematic submodule state
-          echo "🗑️ Removing existing submodule configuration..."
-          git submodule deinit -f server/midi-presets || true
-          rm -rf .git/modules/server/midi-presets || true
-          git rm -rf server/midi-presets || true
-
-          # Add submodule fresh
-          echo "➕ Re-adding the submodule..."
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
-
-          # Initialize submodule
-          echo "🔄 Initializing submodule..."
-          git submodule init
-
-          # Explicitly checkout main branch of submodule instead of specific commit
-          echo "🌿 Checking out main branch of submodule..."
-          mkdir -p server/midi-presets
-          cd server/midi-presets || { echo "❌ Failed to enter submodule directory"; exit 1; }
-          git init
-          git remote add origin https://github.com/tirans/midi-presets.git
-          git fetch origin
-          git checkout -b main origin/main || git checkout main
-          cd ../..
-
-          echo "✅ Submodules setup complete"
+          
+          # Ensure server/midi-presets directory exists (no longer a submodule)
+          if [ ! -d "server/midi-presets" ]; then
+            echo "📁 Creating server/midi-presets directory..."
+            mkdir -p server/midi-presets
+            echo "# MIDI Presets Directory" > server/midi-presets/README.md
+            echo "This directory can contain MIDI preset files." >> server/midi-presets/README.md
+            echo "" >> server/midi-presets/README.md
+            echo "For the original presets repository, see:" >> server/midi-presets/README.md
+            echo "https://github.com/tirans/midi-presets" >> server/midi-presets/README.md
+            
+            # Create .gitkeep to ensure directory is included in builds
+            touch server/midi-presets/.gitkeep
+          fi
+          
+          echo "✅ Project structure verified"
 
       - name: Set up Python
         uses: actions/setup-python@v5

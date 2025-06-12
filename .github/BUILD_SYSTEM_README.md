@@ -40,6 +40,43 @@
     └── reusable-build.yml     # ✨ Clean, modular build workflow
 ```
 
+## 🗑️ **Git Submodule Cleanup**
+
+### **Issue Fixed**
+The `server/midi-presets` Git submodule was causing GitHub Actions failures due to:
+- Complex submodule initialization logic
+- Network timeouts during submodule updates
+- Authentication issues with submodule repositories
+- Inconsistent submodule state across builds
+
+### **Solution Implemented**
+✅ **Removed Git submodule completely**  
+✅ **Replaced with regular directory structure**  
+✅ **Updated all workflows to remove submodule handling**  
+✅ **Created cleanup scripts for safe removal**  
+
+### **Migration Steps**
+1. **Run the cleanup script**:
+   ```bash
+   cd /Users/tirane/Downloads/r2midi
+   chmod +x cleanup-submodules.sh
+   ./cleanup-submodules.sh
+   ```
+
+2. **Commit the changes**:
+   ```bash
+   git commit -m "remove: server/midi-presets Git submodule"
+   git push
+   ```
+
+3. **Add MIDI presets manually** (if needed):
+   ```bash
+   # Download original presets
+   wget https://github.com/tirans/midi-presets/archive/main.zip
+   unzip main.zip
+   cp -r midi-presets-main/* server/midi-presets/
+   ```
+
 ## 🚀 **Key Improvements**
 
 ### **Error Handling & Resilience**

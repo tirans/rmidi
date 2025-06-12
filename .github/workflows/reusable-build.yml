@@ -58,47 +58,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
-
-      - name: Setup Git submodules
-        shell: bash
-        run: |
-          echo "🔧 Setting up Git submodules..."
-
-          # Configure Git for safety
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-          # Handle submodules safely
-          if [ -f ".gitmodules" ]; then
-            echo "📁 Found .gitmodules, initializing submodules..."
-
-            # Clean up any problematic submodule state
-            git submodule deinit -f server/midi-presets 2>/dev/null || true
-            rm -rf .git/modules/server/midi-presets 2>/dev/null || true
-            git rm -rf server/midi-presets 2>/dev/null || true
-
-            # Add submodule fresh
-            if ! git submodule add https://github.com/tirans/midi-presets.git server/midi-presets 2>/dev/null; then
-              echo "ℹ️ Submodule already exists or failed to add"
-            fi
-
-            # Initialize submodule
-            git submodule init
-
-            # Explicitly checkout main branch of submodule instead of specific commit
-            echo "🌿 Checking out main branch of submodule..."
-            mkdir -p server/midi-presets
-            cd server/midi-presets || { echo "❌ Failed to enter submodule directory"; exit 1; }
-            git init
-            git remote add origin https://github.com/tirans/midi-presets.git
-            git fetch origin
-            git checkout -b main origin/main || git checkout main
-            cd ../..
-
-            echo "✅ Submodules setup complete"
-          else
-            echo "ℹ️ No .gitmodules found, skipping submodule setup"
-          fi
+          # Removed submodules: recursive - no longer needed
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -114,7 +74,7 @@ jobs:
         shell: bash
         run: |
           echo "📋 Determining application version..."
-
+          
           # Extract version from server/version.py
           if [ -f "server/version.py" ]; then
             VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
@@ -124,17 +84,51 @@ jobs:
             echo "⚠️ No version file found, using default"
             VERSION="1.0.0"
           fi
-
+          
           # Add suffix if provided
           if [ -n "${{ inputs.version-suffix }}" ]; then
             FULL_VERSION="${VERSION}${{ inputs.version-suffix }}"
           else
             FULL_VERSION="${VERSION}"
           fi
-
+          
           echo "Version: $FULL_VERSION"
           echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "APP_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+
+      - name: Verify project structure
+        shell: bash
+        run: |
+          echo "🔍 Verifying project structure..."
+          
+          # Check for required files and directories
+          MISSING_ITEMS=()
+          
+          [ ! -f "pyproject.toml" ] && MISSING_ITEMS+=("pyproject.toml")
+          [ ! -d "server" ] && MISSING_ITEMS+=("server/")
+          [ ! -f "server/main.py" ] && MISSING_ITEMS+=("server/main.py")
+          [ ! -d "r2midi_client" ] && MISSING_ITEMS+=("r2midi_client/")
+          [ ! -f "requirements.txt" ] && MISSING_ITEMS+=("requirements.txt")
+          
+          if [ ${#MISSING_ITEMS[@]} -gt 0 ]; then
+            echo "❌ Missing required project files:"
+            printf '  - %s\n' "${MISSING_ITEMS[@]}"
+            exit 1
+          fi
+          
+          # Ensure server/midi-presets directory exists
+          if [ ! -d "server/midi-presets" ]; then
+            echo "📁 Creating server/midi-presets directory..."
+            mkdir -p server/midi-presets
+            echo "# MIDI Presets Directory" > server/midi-presets/README.md
+            echo "Place MIDI preset files here." >> server/midi-presets/README.md
+          fi
+          
+          echo "✅ Project structure verified"
+          echo "📁 Project contents:"
+          ls -la
+          echo "📁 Server contents:"
+          ls -la server/
 
       - name: Setup build environment
         uses: ./.github/actions/setup-environment
@@ -147,10 +141,10 @@ jobs:
         shell: bash
         run: |
           echo "🎨 Generating application icons..."
-
+          
           if [ -f "scripts/generate_icons.py" ]; then
             chmod +x scripts/generate_icons.py
-
+            
             # Run with retry mechanism
             for attempt in {1..3}; do
               echo "🔄 Icon generation attempt $attempt/3"
@@ -161,6 +155,8 @@ jobs:
                 if [ $attempt -lt 3 ]; then
                   echo "⏳ Waiting 5s before retry..."
                   sleep 5
+                else
+                  echo "⚠️ Icon generation failed, using defaults"
                 fi
               fi
             done
@@ -201,15 +197,15 @@ jobs:
         shell: bash
         run: |
           echo "📦 Preparing artifacts..."
-
+          
           # Create artifacts directory
           mkdir -p artifacts
-
+          
           # Copy build outputs
           if [ -d "${{ steps.build.outputs.artifacts-path }}" ]; then
-            cp -r "${{ steps.build.outputs.artifacts-path }}"/* artifacts/ 2>/dev/null || echo "No artifacts to copy"
+            cp -r "${{ steps.build.outputs.artifacts-path }}"/* artifacts/ 2>/dev/null || echo "No build artifacts to copy"
           fi
-
+          
           # Copy installers/packages if they exist
           find . -maxdepth 1 -name "*.dmg" -exec cp {} artifacts/ \; 2>/dev/null || true
           find . -maxdepth 1 -name "*.pkg" -exec cp {} artifacts/ \; 2>/dev/null || true
@@ -217,11 +213,14 @@ jobs:
           find . -maxdepth 1 -name "*.deb" -exec cp {} artifacts/ \; 2>/dev/null || true
           find . -maxdepth 1 -name "*.zip" -exec cp {} artifacts/ \; 2>/dev/null || true
           find . -maxdepth 1 -name "*.tar.gz" -exec cp {} artifacts/ \; 2>/dev/null || true
-
+          
+          # Copy package info files
+          find . -maxdepth 1 -name "PACKAGES.txt" -exec cp {} artifacts/ \; 2>/dev/null || true
+          
           # Generate comprehensive build info
           cat > artifacts/BUILD_INFO.md << EOF
           # R2MIDI Build Information
-
+          
           ## Build Details
           - **Version**: ${{ steps.version.outputs.version }}
           - **Platform**: ${{ inputs.platform }}
@@ -233,10 +232,10 @@ jobs:
           - **Branch**: ${{ github.ref_name }}
           - **Workflow**: ${{ github.workflow }}
           - **Run Number**: ${{ github.run_number }}
-
+          
           ## Build Method
           EOF
-
+          
           case "${{ inputs.platform }}" in
             macOS)
               echo "- **Method**: Native macOS (py2app)" >> artifacts/BUILD_INFO.md
@@ -246,16 +245,23 @@ jobs:
               echo "- **Method**: Cross-platform (Briefcase)" >> artifacts/BUILD_INFO.md
               ;;
           esac
-
+          
           # List all artifacts
           echo "" >> artifacts/BUILD_INFO.md
           echo "## Artifacts" >> artifacts/BUILD_INFO.md
-          find artifacts -type f -not -name "BUILD_INFO.md" | sort | while read file; do
-            echo "- \`$(basename "$file")\` ($(du -h "$file" | cut -f1))" >> artifacts/BUILD_INFO.md
-          done
-
+          if [ "$(ls -A artifacts/)" ]; then
+            find artifacts -type f -not -name "BUILD_INFO.md" | sort | while read file; do
+              if [ -f "$file" ]; then
+                size=$(du -h "$file" 2>/dev/null | cut -f1 || echo "unknown")
+                echo "- \`$(basename "$file")\` ($size)" >> artifacts/BUILD_INFO.md
+              fi
+            done
+          else
+            echo "- No build artifacts generated" >> artifacts/BUILD_INFO.md
+          fi
+          
           echo "📋 Artifacts prepared:"
-          ls -la artifacts/ || echo "No artifacts found"
+          ls -la artifacts/ 2>/dev/null || echo "No artifacts directory found"
 
       - name: Upload build artifacts
         id: upload
@@ -276,7 +282,7 @@ jobs:
           echo "**Build Type:** ${{ inputs.build-type }}" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Artifacts:** ${{ steps.upload.outputs.artifact-name }}" >> $GITHUB_STEP_SUMMARY
-
+          
           if [ -n "${{ steps.build.outputs.server-app-path }}" ]; then
             echo "**Server App:** \`${{ steps.build.outputs.server-app-path }}\`" >> $GITHUB_STEP_SUMMARY
           fi
@@ -289,20 +295,26 @@ jobs:
         shell: bash
         run: |
           echo "🧹 Cleaning up after build failure..."
-
+          
           # Clean up any temporary files
           rm -rf build/temp* 2>/dev/null || true
           rm -rf dist/temp* 2>/dev/null || true
-
+          
           # Log debug information
           echo "📋 Debug information:"
           echo "Working directory: $(pwd)"
           echo "Python version: $(python --version)"
           echo "Pip version: $(pip --version)"
-
+          
           if [ "${{ inputs.platform }}" = "macOS" ]; then
             echo "Xcode version: $(xcode-select --print-path 2>/dev/null || echo 'Not available')"
           fi
-
+          
           echo "Environment variables:"
           env | grep -E "(APP_|BUILD_|PLATFORM)" | sort
+
+      - name: Cleanup resources
+        if: always()
+        uses: ./.github/actions/cleanup-signing
+        with:
+          platform: ${{ inputs.platform }}

@@ -1,4 +1,4 @@
-name: Reusable Build Workflow (macOS Native)
+name: Reusable Build Workflow
 
 on:
   workflow_call:
@@ -40,6 +40,10 @@ on:
       APP_STORE_CONNECT_KEY_ID:
         required: false
       APP_STORE_CONNECT_ISSUER_ID:
+        required: false
+      WINDOWS_CERTIFICATE_P12:
+        required: false
+      WINDOWS_CERTIFICATE_PASSWORD:
         required: false
       APP_BUNDLE_ID_PREFIX:
         required: false
@@ -115,8 +119,16 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          # No Briefcase for macOS - using native tools only
           pip install pillow
+          
+          # Install Briefcase for Windows and Linux, NOT for macOS
+          if [ "${{ inputs.platform }}" != "macOS" ]; then
+            echo "Installing Briefcase for ${{ inputs.platform }}"
+            pip install briefcase
+          else
+            echo "Skipping Briefcase for macOS (using native tools)"
+          fi
+          
           pip install -r requirements.txt
           if [ -f r2midi_client/requirements.txt ]; then 
             pip install -r r2midi_client/requirements.txt
@@ -129,7 +141,7 @@ jobs:
           python scripts/generate_icons.py
         shell: bash
 
-      - name: Setup code signing (macOS)
+      - name: Setup code signing (if enabled)
         if: inputs.sign-builds && inputs.platform == 'macOS'
         uses: ./.github/actions/setup-macos-signing
         with:
@@ -154,14 +166,14 @@ jobs:
           author-name: ${{ secrets.APP_AUTHOR_NAME }}
           author-email: ${{ secrets.APP_AUTHOR_EMAIL }}
 
-      - name: Build applications (macOS Native)
+      - name: Build applications
         id: build-apps
         uses: ./.github/actions/build-apps
         with:
           platform: ${{ inputs.platform }}
           sign: ${{ inputs.sign-builds }}
 
-      - name: Package applications (macOS Native)
+      - name: Package applications
         uses: ./.github/actions/package-apps
         with:
           platform: ${{ inputs.platform }}

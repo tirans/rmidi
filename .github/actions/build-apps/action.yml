@@ -1,5 +1,5 @@
-name: Build Applications (macOS Native)
-description: Build macOS applications using native Apple tools only
+name: Build Applications
+description: Build applications using Briefcase for Windows/Linux, native tools for macOS
 
 inputs:
   platform:
@@ -12,77 +12,109 @@ inputs:
 
 outputs:
   server-app-path:
-    description: 'Path to the server .app bundle'
-    value: ${{ steps.build-apps.outputs.server-app-path }}
+    description: 'Path to the server .app bundle (macOS only)'
+    value: ${{ steps.build-macos.outputs.server-app-path }}
   client-app-path:
-    description: 'Path to the client .app bundle'
-    value: ${{ steps.build-apps.outputs.client-app-path }}
+    description: 'Path to the client .app bundle (macOS only)'
+    value: ${{ steps.build-macos.outputs.client-app-path }}
 
 runs:
   using: "composite"
   steps:
+    # ORIGINAL BRIEFCASE APPROACH FOR WINDOWS AND LINUX
+    - name: Create applications (Windows/Linux)
+      if: inputs.platform != 'macOS'
+      shell: bash
+      run: |
+        echo "🔨 Creating applications for ${{ inputs.platform }} using Briefcase..."
+        
+        # Determine app type based on platform
+        if [ "${{ inputs.platform }}" = "linux" ]; then
+          APP_TYPE="system"
+        else
+          APP_TYPE="app"
+        fi
+        
+        # Create server
+        echo "Creating R2MIDI Server..."
+        briefcase create ${{ inputs.platform }} $APP_TYPE -a server
+        
+        # Create client
+        echo "Creating R2MIDI Client..."
+        briefcase create ${{ inputs.platform }} $APP_TYPE -a r2midi-client
+
+    - name: Build applications (Windows/Linux)
+      if: inputs.platform != 'macOS'
+      shell: bash
+      run: |
+        echo "⚙️ Building applications for ${{ inputs.platform }} using Briefcase..."
+        
+        # Determine app type based on platform
+        if [ "${{ inputs.platform }}" = "linux" ]; then
+          APP_TYPE="system"
+        else
+          APP_TYPE="app"
+        fi
+        
+        # Build server
+        echo "Building R2MIDI Server..."
+        briefcase build ${{ inputs.platform }} $APP_TYPE -a server
+        
+        # Build client
+        echo "Building R2MIDI Client..."
+        briefcase build ${{ inputs.platform }} $APP_TYPE -a r2midi-client
+
+    # NATIVE APPLE TOOLS FOR MACOS ONLY
     - name: Install macOS build dependencies
+      if: inputs.platform == 'macOS'
       shell: bash
       run: |
         echo "📦 Installing macOS native build dependencies..."
-
-        # Install required tools
         python -m pip install --upgrade pip
         pip install py2app setuptools wheel
-
-        # Install project dependencies
         pip install -r requirements.txt
         if [ -f r2midi_client/requirements.txt ]; then 
           pip install -r r2midi_client/requirements.txt
         fi
-
         echo "✅ Dependencies installed"
 
-    - name: Prepare build environment
+    - name: Prepare macOS build environment
+      if: inputs.platform == 'macOS'
       shell: bash
       run: |
         echo "🔧 Preparing native macOS build environment..."
-
-        # Create build directories
         mkdir -p build/server build/client dist
-
-        # Copy source files
         cp -r server/ build/server/
         cp -r r2midi_client/ build/client/
-
-        # Copy resources and ensure icon exists
         cp -r resources/ build/ 2>/dev/null || mkdir -p build/resources
         cp entitlements.plist build/ 2>/dev/null || true
-
-        # Ensure we have an icon file
         if [ ! -f "build/resources/r2midi.icns" ] && [ -f "r2midi.icns" ]; then
           cp r2midi.icns build/resources/r2midi.icns
         fi
-
         echo "✅ Build environment ready"
 
-    - name: Create py2app setup files
+    - name: Create macOS setup scripts
+      if: inputs.platform == 'macOS'
       shell: bash
       run: |
-        echo "📝 Creating py2app setup files..."
-
-        VERSION="${{ env.APP_VERSION || '1.0.0' }}"
-
-        # Create setup.py for server
-        cat > build/server/setup.py << EOF
+        echo "📝 Creating macOS setup scripts..."
+        VERSION="${APP_VERSION:-1.0.0}"
+        
+        # Create server setup script
+        cat > build/server/setup.py << 'SETUP_EOF'
 from setuptools import setup
 import sys
 import os
 
-# Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 APP = ['main.py']
 DATA_FILES = []
 
-# Add midi-presets if it exists
 if os.path.exists('midi-presets'):
     DATA_FILES.append(('midi-presets', ['midi-presets']))
+
+ICON_FILE = '../resources/r2midi.icns' if os.path.exists('../resources/r2midi.icns') else None
 
 OPTIONS = {
     'argv_emulation': False,
@@ -90,8 +122,8 @@ OPTIONS = {
         'CFBundleName': 'R2MIDI Server',
         'CFBundleDisplayName': 'R2MIDI Server',
         'CFBundleIdentifier': 'com.r2midi.server',
-        'CFBundleVersion': '$VERSION',
-        'CFBundleShortVersionString': '$VERSION',
+        'CFBundleVersion': 'VERSION_PLACEHOLDER',
+        'CFBundleShortVersionString': 'VERSION_PLACEHOLDER',
         'CFBundleSignature': 'R2MS',
         'LSMinimumSystemVersion': '10.15.0',
         'LSBackgroundOnly': False,
@@ -111,7 +143,7 @@ OPTIONS = {
     ],
     'excludes': ['tkinter', 'PyQt6', 'PyQt5', 'PySide2', 'PySide6'],
     'resources': [],
-    'iconfile': '../resources/r2midi.icns' if os.path.exists('../resources/r2midi.icns') else None,
+    'iconfile': ICON_FILE,
     'strip': True,
     'optimize': 2,
 }
@@ -122,19 +154,20 @@ setup(
     options={'py2app': OPTIONS},
     setup_requires=['py2app'],
 )
-EOF
+SETUP_EOF
 
-        # Create setup.py for client
-        cat > build/client/setup.py << EOF
+        # Create client setup script
+        cat > build/client/setup.py << 'SETUP_EOF'
 from setuptools import setup
 import sys
 import os
 
-# Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 APP = ['main.py']
 DATA_FILES = []
+
+ICON_FILE = '../resources/r2midi.icns' if os.path.exists('../resources/r2midi.icns') else None
 
 OPTIONS = {
     'argv_emulation': False,
@@ -142,8 +175,8 @@ OPTIONS = {
         'CFBundleName': 'R2MIDI Client',
         'CFBundleDisplayName': 'R2MIDI Client',
         'CFBundleIdentifier': 'com.r2midi.client',
-        'CFBundleVersion': '$VERSION',
-        'CFBundleShortVersionString': '$VERSION',
+        'CFBundleVersion': 'VERSION_PLACEHOLDER',
+        'CFBundleShortVersionString': 'VERSION_PLACEHOLDER',
         'CFBundleSignature': 'R2MC',
         'LSMinimumSystemVersion': '10.15.0',
         'LSBackgroundOnly': False,
@@ -162,7 +195,7 @@ OPTIONS = {
     ],
     'excludes': ['tkinter'],
     'resources': [],
-    'iconfile': '../resources/r2midi.icns' if os.path.exists('../resources/r2midi.icns') else None,
+    'iconfile': ICON_FILE,
     'strip': True,
     'optimize': 2,
 }
@@ -173,92 +206,125 @@ setup(
     options={'py2app': OPTIONS},
     setup_requires=['py2app'],
 )
-EOF
+SETUP_EOF
 
-        echo "✅ Setup files created"
+        # Replace version placeholder in both files
+        sed -i '' "s/VERSION_PLACEHOLDER/$VERSION/g" build/server/setup.py build/client/setup.py || \
+        sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" build/server/setup.py build/client/setup.py
+        
+        echo "✅ macOS setup scripts created"
 
-    - name: Build applications with py2app
-      id: build-apps
+    - name: Build macOS applications with py2app
+      id: build-macos
+      if: inputs.platform == 'macOS'
       shell: bash
       run: |
         echo "🔨 Building macOS applications with py2app..."
-
+        
         # Build server
         echo "Building R2MIDI Server..."
         cd build/server
-        python setup.py py2app --dist-dir "../../dist/server"
+        if ! python setup.py py2app --dist-dir "../../dist/server"; then
+          echo "❌ Server build failed"
+          exit 1
+        fi
         cd ../..
-
+        
         # Build client  
         echo "Building R2MIDI Client..."
         cd build/client
-        python setup.py py2app --dist-dir "../../dist/client"
+        if ! python setup.py py2app --dist-dir "../../dist/client"; then
+          echo "❌ Client build failed"
+          exit 1
+        fi
         cd ../..
-
+        
         # Find the built apps
+        echo "🔍 Looking for built applications..."
         SERVER_APP=$(find dist/server -name "*.app" -type d | head -1)
         CLIENT_APP=$(find dist/client -name "*.app" -type d | head -1)
-
-        if [ -z "$SERVER_APP" ]; then
+        
+        echo "Found apps:"
+        echo "Server: $SERVER_APP"
+        echo "Client: $CLIENT_APP"
+        
+        if [ -z "$SERVER_APP" ] || [ ! -d "$SERVER_APP" ]; then
           echo "❌ Server app not built"
           echo "Contents of dist/server:"
           ls -la dist/server/ || true
           exit 1
         fi
-
-        if [ -z "$CLIENT_APP" ]; then
+        
+        if [ -z "$CLIENT_APP" ] || [ ! -d "$CLIENT_APP" ]; then
           echo "❌ Client app not built"
           echo "Contents of dist/client:"
           ls -la dist/client/ || true
           exit 1
         fi
-
-        # Set outputs with absolute paths
-        SERVER_APP_ABS="$GITHUB_WORKSPACE/$SERVER_APP"
-        CLIENT_APP_ABS="$GITHUB_WORKSPACE/$CLIENT_APP"
-
+        
+        # Convert to absolute paths
+        SERVER_APP_ABS="$(cd "$(dirname "$SERVER_APP")" && pwd)/$(basename "$SERVER_APP")"
+        CLIENT_APP_ABS="$(cd "$(dirname "$CLIENT_APP")" && pwd)/$(basename "$CLIENT_APP")"
+        
         echo "server-app-path=$SERVER_APP_ABS" >> $GITHUB_OUTPUT
         echo "client-app-path=$CLIENT_APP_ABS" >> $GITHUB_OUTPUT
-
-        echo "✅ Applications built successfully"
+        
+        echo "✅ macOS applications built successfully"
         echo "📦 Server app: $SERVER_APP_ABS"
         echo "📦 Client app: $CLIENT_APP_ABS"
 
-    - name: Verify applications
+    - name: Verify macOS applications
+      if: inputs.platform == 'macOS'
       shell: bash
       run: |
-        echo "🔍 Verifying built applications..."
-
-        SERVER_APP="${{ steps.build-apps.outputs.server-app-path }}"
-        CLIENT_APP="${{ steps.build-apps.outputs.client-app-path }}"
-
-        # Check app structure
-        echo "Server app structure:"
-        ls -la "$SERVER_APP/Contents/" || true
-        echo "Server executable:"
-        ls -la "$SERVER_APP/Contents/MacOS/" || true
-
-        echo "Client app structure:"
-        ls -la "$CLIENT_APP/Contents/" || true
-        echo "Client executable:"
-        ls -la "$CLIENT_APP/Contents/MacOS/" || true
-
-        # Check that executables exist and are executable
-        SERVER_EXEC=$(find "$SERVER_APP/Contents/MacOS" -type f -perm +111 | head -1)
-        CLIENT_EXEC=$(find "$CLIENT_APP/Contents/MacOS" -type f -perm +111 | head -1)
-
-        if [ -n "$SERVER_EXEC" ]; then
-          echo "✅ Server executable found: $SERVER_EXEC"
+        echo "🔍 Verifying macOS applications..."
+        
+        SERVER_APP="${{ steps.build-macos.outputs.server-app-path }}"
+        CLIENT_APP="${{ steps.build-macos.outputs.client-app-path }}"
+        
+        echo "Verifying server app: $SERVER_APP"
+        if [ -d "$SERVER_APP" ]; then
+          echo "✅ Server app exists"
+          SERVER_EXEC=$(find "$SERVER_APP/Contents/MacOS" -type f -perm +111 2>/dev/null | head -1)
+          if [ -n "$SERVER_EXEC" ]; then
+            echo "✅ Server executable found: $SERVER_EXEC"
+          else
+            echo "❌ Server executable not found"
+            exit 1
+          fi
         else
-          echo "❌ Server executable not found or not executable"
+          echo "❌ Server app directory not found"
           exit 1
         fi
-
-        if [ -n "$CLIENT_EXEC" ]; then
-          echo "✅ Client executable found: $CLIENT_EXEC"
+        
+        echo "Verifying client app: $CLIENT_APP"
+        if [ -d "$CLIENT_APP" ]; then
+          echo "✅ Client app exists"
+          CLIENT_EXEC=$(find "$CLIENT_APP/Contents/MacOS" -type f -perm +111 2>/dev/null | head -1)
+          if [ -n "$CLIENT_EXEC" ]; then
+            echo "✅ Client executable found: $CLIENT_EXEC"
+          else
+            echo "❌ Client executable not found"
+            exit 1
+          fi
         else
-          echo "❌ Client executable not found or not executable"
+          echo "❌ Client app directory not found"
           exit 1
         fi
+        
+        echo "✅ macOS application verification complete"
 
-        echo "✅ Application verification complete"
+    - name: List build output
+      shell: bash
+      run: |
+        echo "📁 Build output for ${{ inputs.platform }}:"
+        if [ "${{ inputs.platform }}" = "macOS" ]; then
+          echo "macOS apps built with native tools:"
+          echo "Server: ${{ steps.build-macos.outputs.server-app-path }}"
+          echo "Client: ${{ steps.build-macos.outputs.client-app-path }}"
+        else
+          echo "Windows/Linux apps built with Briefcase:"
+          if [ -d "build" ]; then
+            find build -type f \( -name "*.app" -o -name "*.exe" -o -name "*.deb" \) | head -20
+          fi
+        fi

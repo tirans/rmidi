@@ -1,66 +1,31 @@
-name: Reusable Build Workflow (macOS Native)
+name: macOS Build (Native Apple Tools)
 
 on:
-  workflow_call:
+  push:
+    branches: [ master, macos-native ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
     inputs:
-      platform:
-        required: true
-        type: string
-      os:
-        required: true
-        type: string
-      python-version:
+      version-type:
+        description: 'Version increment type'
         required: false
-        type: string
-        default: "3.12"
-      build-type:
-        required: true
-        type: string  # dev, staging, production
-      version-suffix:
-        required: false
-        type: string
-        default: ""
-      sign-builds:
-        required: false
-        type: boolean
-        default: false
-    secrets:
-      APPLE_CERTIFICATE_P12:
-        required: false
-      APPLE_CERTIFICATE_PASSWORD:
-        required: false
-      APPLE_ID:
-        required: false
-      APPLE_ID_PASSWORD:
-        required: false
-      APPLE_TEAM_ID:
-        required: false
-      APP_STORE_CONNECT_API_KEY:
-        required: false
-      APP_STORE_CONNECT_KEY_ID:
-        required: false
-      APP_STORE_CONNECT_ISSUER_ID:
-        required: false
-      APP_BUNDLE_ID_PREFIX:
-        required: false
-      APP_DISPLAY_NAME_SERVER:
-        required: false
-      APP_DISPLAY_NAME_CLIENT:
-        required: false
-      APP_AUTHOR_NAME:
-        required: false
-      APP_AUTHOR_EMAIL:
-        required: false
-    outputs:
-      artifact-name:
-        description: "Name of the uploaded artifact"
-        value: ${{ jobs.build.outputs.artifact-name }}
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
+        default: 'none'
+
+permissions:
+  contents: write
 
 jobs:
-  build:
-    runs-on: ${{ inputs.os }}
-    outputs:
-      artifact-name: ${{ steps.upload.outputs.artifact-name }}
+  # Build macOS applications using native Apple tools
+  build-macos:
+    name: Build macOS (Native Tools)
+    runs-on: macos-13
 
     steps:
       - name: Checkout code
@@ -77,60 +42,39 @@ jobs:
           git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
           git submodule init
           git submodule update --init --recursive
-        shell: bash
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ inputs.python-version }}
+          python-version: "3.12"
 
       - name: Get version info
         id: version
         run: |
           VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
-
-          if [ -n "${{ inputs.version-suffix }}" ]; then
-            FULL_VERSION="${VERSION}${{ inputs.version-suffix }}"
-          else
-            FULL_VERSION="${VERSION}"
-          fi
-
-          echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
-          echo "APP_VERSION=$FULL_VERSION" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Cache Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
         with:
-          platform: ${{ inputs.platform }}
+          platform: macOS
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          # No Briefcase for macOS - using native tools only
           pip install pillow
           pip install -r requirements.txt
           if [ -f r2midi_client/requirements.txt ]; then 
             pip install -r r2midi_client/requirements.txt
           fi
-        shell: bash
 
       - name: Generate icon files
         run: |
           chmod +x scripts/generate_icons.py
           python scripts/generate_icons.py
-        shell: bash
 
-      - name: Setup code signing (macOS)
-        if: inputs.sign-builds && inputs.platform == 'macOS'
+      - name: Setup code signing
         uses: ./.github/actions/setup-macos-signing
         with:
           certificate-p12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
@@ -145,42 +89,67 @@ jobs:
       - name: Configure build metadata
         uses: ./.github/actions/configure-build
         with:
-          build-type: ${{ inputs.build-type }}
+          build-type: production
           version: ${{ steps.version.outputs.version }}
-          platform: ${{ inputs.platform }}
+          platform: macOS
           bundle-prefix: ${{ secrets.APP_BUNDLE_ID_PREFIX }}
           server-name: ${{ secrets.APP_DISPLAY_NAME_SERVER }}
           client-name: ${{ secrets.APP_DISPLAY_NAME_CLIENT }}
           author-name: ${{ secrets.APP_AUTHOR_NAME }}
           author-email: ${{ secrets.APP_AUTHOR_EMAIL }}
 
-      - name: Build applications (macOS Native)
+      - name: Build applications (Native)
         id: build-apps
         uses: ./.github/actions/build-apps
         with:
-          platform: ${{ inputs.platform }}
-          sign: ${{ inputs.sign-builds }}
+          platform: macOS
+          sign: true
 
-      - name: Package applications (macOS Native)
+      - name: Package applications (Native)
         uses: ./.github/actions/package-apps
         with:
-          platform: ${{ inputs.platform }}
-          build-type: ${{ inputs.build-type }}
+          platform: macOS
+          build-type: production
           version: ${{ steps.version.outputs.version }}
           server-app-path: ${{ steps.build-apps.outputs.server-app-path }}
           client-app-path: ${{ steps.build-apps.outputs.client-app-path }}
 
       - name: Upload artifacts
-        id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.build-type }}-${{ inputs.platform }}-${{ github.run_number }}
+          name: macos-native-${{ github.run_number }}
           path: artifacts/
           retention-days: 30
           compression-level: 6
+
+      - name: Summary
+        run: |
+          echo "## 🍎 macOS Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Artifacts Created:" >> $GITHUB_STEP_SUMMARY
+          if [ -d "artifacts" ]; then
+            echo "| File | Size |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+            for file in artifacts/*; do
+              if [ -f "$file" ]; then
+                size=$(ls -lh "$file" | awk '{print $5}')
+                name=$(basename "$file")
+                echo "| $name | $size |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          else
+            echo "No artifacts found" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Build Method:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Tool**: py2app (native macOS)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Signing**: Apple Developer ID" >> $GITHUB_STEP_SUMMARY
+          echo "- **Packaging**: DMG + PKG installers" >> $GITHUB_STEP_SUMMARY
+          echo "- **Notarization**: xcrun notarytool" >> $GITHUB_STEP_SUMMARY
+          echo "- **No Briefcase**: Pure Apple tools only" >> $GITHUB_STEP_SUMMARY
 
       - name: Cleanup
         if: always()
         uses: ./.github/actions/cleanup-signing
         with:
-          platform: ${{ inputs.platform }}
+          platform: macOS

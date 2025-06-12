@@ -119,13 +119,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          
-          # Only install briefcase for non-macOS platforms
-          if [ "${{ inputs.platform }}" != "macOS" ]; then
-            pip install briefcase
-          fi
-          
-          pip install pillow
+          pip install briefcase pillow
           pip install -r requirements.txt
           if [ -f r2midi_client/requirements.txt ]; then 
             pip install -r r2midi_client/requirements.txt
@@ -164,7 +158,6 @@ jobs:
           author-email: ${{ secrets.APP_AUTHOR_EMAIL }}
 
       - name: Build applications
-        id: build-apps
         uses: ./.github/actions/build-apps
         with:
           platform: ${{ inputs.platform }}
@@ -176,8 +169,6 @@ jobs:
           platform: ${{ inputs.platform }}
           build-type: ${{ inputs.build-type }}
           version: ${{ steps.version.outputs.version }}
-          server-app-path: ${{ steps.build-apps.outputs.server-app-path }}
-          client-app-path: ${{ steps.build-apps.outputs.client-app-path }}
 
       - name: Upload artifacts
         id: upload

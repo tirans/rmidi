@@ -69,7 +69,7 @@ runs:
         VERSION="${{ env.APP_VERSION || '1.0.0' }}"
 
         # Create setup.py for server
-        cat > build/server/setup.py << 'EOF'
+        cat > build/server/setup.py << EOF
 from setuptools import setup
 import sys
 import os
@@ -125,7 +125,7 @@ setup(
 EOF
 
         # Create setup.py for client
-        cat > build/client/setup.py << 'EOF'
+        cat > build/client/setup.py << EOF
 from setuptools import setup
 import sys
 import os

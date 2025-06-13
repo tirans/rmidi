@@ -111,6 +111,53 @@ These changes make the cleanup process more robust by:
 
 The changes have been applied to both the server and client application build processes.
 
+## 🔧 **Linux and Windows Build Path Fixes**
+
+### **Issue: Incorrect Path Patterns for Built Applications**
+**Problem**: The build process was failing to find the built applications for Linux and Windows because the path patterns in the build script didn't match the actual paths where Briefcase was building the applications.
+
+For Linux, the script was looking for:
+```
+build/server/linux/system/*/usr/bin/*
+build/r2midi-client/linux/system/*/usr/bin/*
+```
+
+But the actual paths were:
+```
+build/server/ubuntu/noble/server-0.1.135/usr/bin/server
+build/r2midi-client/ubuntu/noble/r2midi-client-0.1.135/usr/bin/r2midi-client
+```
+
+### **Solution: Updated Path Patterns**
+✅ **Updated the path patterns** in `.github/scripts/build-briefcase.sh` to match the actual paths:
+
+1. **Linux Path Patterns**: Changed to use the actual distribution and version-specific paths
+   ```bash
+   # Before
+   SERVER_PATTERN="build/server/linux/system/*/usr/bin/*"
+   CLIENT_PATTERN="build/r2midi-client/linux/system/*/usr/bin/*"
+
+   # After
+   SERVER_PATTERN="build/server/ubuntu/*/server-*/usr/bin/*"
+   CLIENT_PATTERN="build/r2midi-client/ubuntu/*/r2midi-client-*/usr/bin/*"
+   ```
+
+2. **Windows Path Patterns**: Made more specific to avoid potential conflicts
+   ```bash
+   # Before
+   SERVER_PATTERN="build/server/windows/app/*/*.exe"
+   CLIENT_PATTERN="build/r2midi-client/windows/app/*/*.exe"
+
+   # After
+   SERVER_PATTERN="build/server/windows/app/*/server-*.exe"
+   CLIENT_PATTERN="build/r2midi-client/windows/app/*/r2midi-client-*.exe"
+   ```
+
+These changes make the build process more robust by:
+- Using more specific path patterns that match the actual build output
+- Accommodating the distribution-specific paths (ubuntu instead of linux)
+- Including version information in the patterns to ensure the correct files are found
+
 ## 🔍 **Verification**
 
 Run the verification script to ensure all fixes are applied:
@@ -123,5 +170,6 @@ The script now specifically checks that:
 - Submodule references are removed from workflows
 - All required action files exist
 - Build scripts are executable
+- Path patterns in build-briefcase.sh match the actual build paths
 
 Your CI workflow is now much more robust and will work reliably across different project configurations! 🚀

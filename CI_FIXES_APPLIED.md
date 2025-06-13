@@ -80,6 +80,37 @@ black --check --diff . || echo "⚠️ Code formatting issues found (non-blockin
 ✅ **Better error messages** and logging  
 ✅ **Faster CI runs** (only installs needed tools)  
 
+## 🔧 **macOS Build Process Improvements**
+
+### **Issue: File Conflict During py2app Build**
+**Problem**: The macOS build process was failing with errors like `[Errno 17] File exists: '.../app/collect/wheel-0.45.1.dist-info'` despite previous cleanup attempts.
+
+### **Solution: Enhanced Cleanup Process**
+✅ **Improved the cleanup process** in `.github/scripts/build-macos.sh` to be more robust:
+
+1. **Directory Creation**: Added `mkdir -p` commands to ensure the directory structure exists before attempting cleanup
+   ```bash
+   mkdir -p build/bdist.macosx-10.13-universal2/python3.12-standalone/app
+   ```
+
+2. **Error Handling**: Added error suppression to prevent failures if directories don't exist
+   ```bash
+   rm -rf ... 2>/dev/null || true
+   ```
+
+3. **Multiple Path Patterns**: Added cleanup for alternative paths that might be used on different macOS versions
+   ```bash
+   rm -rf build/bdist.macosx-*/python3.12-standalone/app/collect 2>/dev/null || true
+   rm -rf build/bdist.macosx-*/python3.*-standalone/app/collect 2>/dev/null || true
+   ```
+
+These changes make the cleanup process more robust by:
+- Ensuring directory structures exist before attempting to remove subdirectories
+- Handling cases where the exact path might vary between macOS versions
+- Preventing script failures due to missing directories
+
+The changes have been applied to both the server and client application build processes.
+
 ## 🔍 **Verification**
 
 Run the verification script to ensure all fixes are applied:

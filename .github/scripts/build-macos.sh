@@ -190,7 +190,13 @@ build_applications() {
 
     # Clean the build directory to prevent file conflicts
     echo "🧹 Cleaning collect directory to prevent file conflicts..."
-    rm -rf build/bdist.macosx-10.13-universal2/python3.12-standalone/app/collect
+    # Create the directory structure if it doesn't exist
+    mkdir -p build/bdist.macosx-10.13-universal2/python3.12-standalone/app
+    # Remove the collect directory if it exists
+    rm -rf build/bdist.macosx-10.13-universal2/python3.12-standalone/app/collect 2>/dev/null || true
+    # Also try alternative paths that might be used on different macOS versions
+    rm -rf build/bdist.macosx-*/python3.12-standalone/app/collect 2>/dev/null || true
+    rm -rf build/bdist.macosx-*/python3.*-standalone/app/collect 2>/dev/null || true
 
     if retry_command "python setup.py py2app --dist-dir ../../dist/server" 3 20; then
         echo "✅ Server build successful"
@@ -209,7 +215,13 @@ build_applications() {
 
     # Clean the build directory to prevent file conflicts
     echo "🧹 Cleaning collect directory to prevent file conflicts..."
-    rm -rf build/bdist.macosx-10.13-universal2/python3.12-standalone/app/collect
+    # Create the directory structure if it doesn't exist
+    mkdir -p build/bdist.macosx-10.13-universal2/python3.12-standalone/app
+    # Remove the collect directory if it exists
+    rm -rf build/bdist.macosx-10.13-universal2/python3.12-standalone/app/collect 2>/dev/null || true
+    # Also try alternative paths that might be used on different macOS versions
+    rm -rf build/bdist.macosx-*/python3.12-standalone/app/collect 2>/dev/null || true
+    rm -rf build/bdist.macosx-*/python3.*-standalone/app/collect 2>/dev/null || true
 
     if retry_command "python setup.py py2app --dist-dir ../../dist/client" 3 20; then
         echo "✅ Client build successful"

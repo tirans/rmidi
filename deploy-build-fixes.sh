@@ -1,4 +1,98 @@
 #!/bin/bash
+# deploy-build-fixes.sh - Deploy resilient build fixes for r2midi project
+set -euo pipefail
+
+# Configuration
+PROJECT_ROOT="/Users/tirane/Desktop/r2midi"
+BACKUP_DIR="${PROJECT_ROOT}/.github/backups/$(date +%Y%m%d-%H%M%S)"
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    local color=$1
+    local message=$2
+    echo -e "${color}${message}${NC}"
+}
+
+# Function to create backup
+create_backup() {
+    print_status $BLUE "📁 Creating backup of current build files..."
+    
+    mkdir -p "$BACKUP_DIR"
+    
+    # Backup existing files
+    local files_to_backup=(
+        ".github/scripts/build-macos.sh"
+        ".github/scripts/build-briefcase.sh"
+        ".github/actions/build-apps/action.yml"
+    )
+    
+    for file in "${files_to_backup[@]}"; do
+        if [ -f "$PROJECT_ROOT/$file" ]; then
+            local backup_path="$BACKUP_DIR/$file"
+            mkdir -p "$(dirname "$backup_path")"
+            cp "$PROJECT_ROOT/$file" "$backup_path"
+            print_status $GREEN "✅ Backed up: $file"
+        else
+            print_status $YELLOW "⚠️ File not found for backup: $file"
+        fi
+    done
+    
+    print_status $GREEN "✅ Backup created at: $BACKUP_DIR"
+}
+
+# Function to validate project structure
+validate_project() {
+    print_status $BLUE "🔍 Validating project structure..."
+    
+    if [ ! -d "$PROJECT_ROOT" ]; then
+        print_status $RED "❌ Project root not found: $PROJECT_ROOT"
+        exit 1
+    fi
+    
+    local required_dirs=(
+        ".github/scripts"
+        ".github/actions/build-apps"
+        "server"
+        "r2midi_client"
+    )
+    
+    for dir in "${required_dirs[@]}"; do
+        if [ ! -d "$PROJECT_ROOT/$dir" ]; then
+            print_status $RED "❌ Required directory not found: $dir"
+            exit 1
+        fi
+    done
+    
+    local required_files=(
+        "pyproject.toml"
+        "requirements.txt"
+        "server/main.py"
+        "r2midi_client/main.py"
+    )
+    
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$PROJECT_ROOT/$file" ]; then
+            print_status $RED "❌ Required file not found: $file"
+            exit 1
+        fi
+    done
+    
+    print_status $GREEN "✅ Project structure validation passed"
+}
+
+# Function to deploy the enhanced macOS build script
+deploy_macos_script() {
+    print_status $BLUE "🍎 Deploying enhanced macOS build script..."
+    
+    cat > "$PROJECT_ROOT/.github/scripts/build-macos.sh" << 'EOF'
+#!/bin/bash
 # build-macos.sh - Resilient Native macOS build script using py2app
 set -euo pipefail
 
@@ -342,7 +436,7 @@ build_applications() {
         # Enhanced logging for debugging
         echo "📋 Detailed build information:"
         ls -la . 2>/dev/null || true
-        find . -name "*.log" -exec echo "=== {} ===" \; -exec cat {} \; 2>/dev/null || true
+        find . -name "*.log" -exec echo "=== {} ===" \; -exec cat {} \; 2>/dev/null || echo "No log files found"
         
         cd ../..
         return 1
@@ -447,3 +541,220 @@ export SERVER_APP_PATH
 export CLIENT_APP_PATH
 
 echo "🔧 Enhanced macOS native build script loaded"
+EOF
+    
+    chmod +x "$PROJECT_ROOT/.github/scripts/build-macos.sh"
+    print_status $GREEN "✅ Enhanced macOS build script deployed"
+}
+
+# Function to deploy the enhanced briefcase script
+deploy_briefcase_script() {
+    print_status $BLUE "📦 Deploying enhanced Briefcase build script..."
+    
+    cat > "$PROJECT_ROOT/.github/scripts/build-briefcase.sh" << 'EOF'
+#!/bin/bash
+# build-briefcase.sh - Resilient Briefcase build script for Windows/Linux platforms
+set -euo pipefail
+
+# Function to handle errors with comprehensive logging
+handle_error() {
+    local exit_code=$?
+    local line_number=$1
+    echo "❌ Error occurred in build-briefcase.sh at line $line_number"
+    echo "Exit code: $exit_code"
+    
+    # Log comprehensive debug information
+    echo "🔍 Debug Information:"
+    echo "Working directory: $(pwd)"
+    echo "Platform: ${PLATFORM:-unknown}"
+    echo "Build method: ${BUILD_METHOD:-unknown}"
+    echo "Python version: $(python --version 2>/dev/null || echo 'Python not found')"
+    echo "Briefcase version: $(briefcase --version 2>/dev/null || echo 'Briefcase not found')"
+    
+    return $exit_code
+}
+
+trap 'handle_error $LINENO' ERR
+
+# Function to retry commands with intelligent backoff
+retry_command() {
+    local cmd="$1"
+    local max_attempts="${2:-3}"
+    local base_delay="${3:-5}"
+    local timeout_duration="${4:-300}"
+    
+    for attempt in $(seq 1 $max_attempts); do
+        local delay=$((base_delay * attempt))
+        echo "🔄 Attempt $attempt/$max_attempts: $cmd"
+        
+        if timeout "$timeout_duration" bash -c "$cmd" 2>&1; then
+            echo "✅ Command succeeded on attempt $attempt"
+            return 0
+        else
+            local exit_code=$?
+            echo "⚠️ Command failed with exit code $exit_code"
+            
+            if [ $attempt -lt $max_attempts ]; then
+                echo "⏳ Waiting ${delay}s before retry..."
+                sleep $delay
+                
+                # Platform-specific cleanup
+                echo "🧹 Cleaning up partial build state..."
+                case "${PLATFORM:-}" in
+                    linux)
+                        pkill -f briefcase 2>/dev/null || true
+                        rm -rf /tmp/briefcase-* 2>/dev/null || true
+                        ;;
+                    windows)
+                        rm -rf /tmp/briefcase-* 2>/dev/null || true
+                        rm -rf build/*/windows/app/src/app_packages 2>/dev/null || true
+                        ;;
+                esac
+                
+                rm -rf build/*/build 2>/dev/null || true
+                rm -rf dist/temp* 2>/dev/null || true
+            fi
+        fi
+    done
+    
+    echo "❌ Command failed after $max_attempts attempts: $cmd"
+    return 1
+}
+
+# Function to build applications with enhanced monitoring
+build_applications() {
+    echo "🔨 Building applications with Briefcase for ${PLATFORM}..."
+    
+    # Verify briefcase installation
+    if ! command -v briefcase >/dev/null 2>&1; then
+        echo "📦 Installing Briefcase..."
+        retry_command "pip install briefcase>=0.3.21" 3 10
+    fi
+    
+    # Validate project structure
+    if [ ! -f "pyproject.toml" ]; then
+        echo "❌ pyproject.toml not found"
+        exit 1
+    fi
+    
+    # Clean environment
+    rm -rf build/*/logs build/*/temp* dist/temp* .briefcase-* 2>/dev/null || true
+    
+    # Determine app format
+    case "${PLATFORM}" in
+        linux)
+            APP_FORMAT="system"
+            ;;
+        windows)
+            APP_FORMAT="app"
+            ;;
+        *)
+            echo "❌ Unsupported platform: ${PLATFORM}"
+            return 1
+            ;;
+    esac
+    
+    echo "📋 Building for ${PLATFORM} with format ${APP_FORMAT}"
+    
+    # Create and build applications
+    retry_command "briefcase create ${PLATFORM} ${APP_FORMAT} -a server --no-input" 3 15
+    retry_command "briefcase create ${PLATFORM} ${APP_FORMAT} -a r2midi-client --no-input" 3 15
+    
+    retry_command "briefcase build ${PLATFORM} ${APP_FORMAT} -a server --no-input" 3 20 600
+    retry_command "briefcase build ${PLATFORM} ${APP_FORMAT} -a r2midi-client --no-input" 3 20 600
+    
+    # Find built applications
+    case "${PLATFORM}" in
+        linux)
+            SERVER_PATTERN="build/server/ubuntu/*/server-*/usr/bin/server*"
+            CLIENT_PATTERN="build/r2midi-client/ubuntu/*/r2midi-client-*/usr/bin/r2midi-client*"
+            ;;
+        windows)
+            SERVER_PATTERN="build/server/windows/app/src/server.exe"
+            CLIENT_PATTERN="build/r2midi-client/windows/app/src/r2midi-client.exe"
+            ;;
+    esac
+    
+    # Locate applications safely
+    SERVER_APP_PATH=""
+    CLIENT_APP_PATH=""
+    
+    while IFS= read -r -d '' app_path; do
+        if [ -f "$app_path" ] && [ -x "$app_path" ]; then
+            SERVER_APP_PATH="$(realpath "$app_path")"
+            echo "✅ Server app found: $SERVER_APP_PATH"
+            break
+        fi
+    done < <(find . -path "$SERVER_PATTERN" -type f -executable -print0 2>/dev/null)
+    
+    while IFS= read -r -d '' app_path; do
+        if [ -f "$app_path" ] && [ -x "$app_path" ]; then
+            CLIENT_APP_PATH="$(realpath "$app_path")"
+            echo "✅ Client app found: $CLIENT_APP_PATH"
+            break
+        fi
+    done < <(find . -path "$CLIENT_PATTERN" -type f -executable -print0 2>/dev/null)
+    
+    # Create artifacts
+    mkdir -p build/artifacts
+    [ -n "$SERVER_APP_PATH" ] && [ -f "$SERVER_APP_PATH" ] && cp "$SERVER_APP_PATH" build/artifacts/ 2>/dev/null || true
+    [ -n "$CLIENT_APP_PATH" ] && [ -f "$CLIENT_APP_PATH" ] && cp "$CLIENT_APP_PATH" build/artifacts/ 2>/dev/null || true
+    
+    # Generate build info
+    cat > build/artifacts/build-info.txt << BUILD_INFO_EOF
+R2MIDI Briefcase Build Information
+==================================
+
+Platform: ${PLATFORM}
+Build Type: ${BUILD_TYPE:-development}
+Version: ${APP_VERSION:-1.0.0}
+Method: Briefcase
+Format: ${APP_FORMAT}
+Built: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+Build Results:
+Server App: ${SERVER_APP_PATH:-Not found}
+Client App: ${CLIENT_APP_PATH:-Not found}
+BUILD_INFO_EOF
+    
+    echo "✅ Briefcase build process completed"
+}
+
+# Export variables for GitHub Actions
+export SERVER_APP_PATH
+export CLIENT_APP_PATH
+
+echo "🔧 Enhanced Briefcase build script loaded for ${PLATFORM:-unknown}"
+EOF
+    
+    chmod +x "$PROJECT_ROOT/.github/scripts/build-briefcase.sh"
+    print_status $GREEN "✅ Enhanced Briefcase build script deployed"
+}
+
+# Main deployment function
+main() {
+    print_status $BLUE "🚀 Starting resilient build fixes deployment..."
+    
+    # Change to project directory
+    cd "$PROJECT_ROOT"
+    
+    # Execute deployment steps
+    validate_project
+    create_backup
+    deploy_macos_script
+    deploy_briefcase_script
+    
+    print_status $GREEN "✅ Deployment completed successfully!"
+    print_status $BLUE "📋 Summary:"
+    echo "  - Enhanced macOS build script with py2app conflict resolution"
+    echo "  - Improved Briefcase script with broken pipe fixes"
+    echo "  - Created backup at: $BACKUP_DIR"
+    
+    print_status $YELLOW "🔄 Next steps:"
+    echo "  1. Test the build scripts locally"
+    echo "  2. Commit the changes to your repository"
+    echo "  3. Monitor GitHub Actions for improved builds"
+}
+
+# Run the main function
+main "$@"

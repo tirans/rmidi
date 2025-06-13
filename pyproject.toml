@@ -72,6 +72,12 @@ sources = [
     "server",
 ]
 
+# Exclude directories that should not be included in the build
+excludes = [
+    "server/midi-presets",
+    "server/logs",
+]
+
 test_sources = ["tests"]
 
 requires = [

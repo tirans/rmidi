@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# Pre-commit hook to prevent committing /server/midi-presets directory and its files
+# Except for .gitkeep and README.md files
+
+echo "Running pre-commit hook to check for midi-presets files..."
+
+# Check if the server/midi-presets directory itself is being committed
+if git diff --cached --name-only | grep -q "^server/midi-presets$"; then
+    echo "Error: Attempting to commit the server/midi-presets directory itself."
+    echo "This directory should not be committed to the repository."
+    echo ""
+    echo "Please unstage it with: git reset HEAD server/midi-presets"
+    exit 1
+fi
+
+# Check if any staged files are in the server/midi-presets directory
+# Exclude .gitkeep and README.md files
+MIDI_PRESETS_FILES=$(git diff --cached --name-only | grep -E "^server/midi-presets/" | grep -v -E "\.gitkeep$|README\.md$")
+
+if [ -n "$MIDI_PRESETS_FILES" ]; then
+    echo "Error: Attempting to commit files from the server/midi-presets directory."
+    echo "These files should not be committed to the repository."
+    echo "The following files were found:"
+    echo "$MIDI_PRESETS_FILES"
+    echo ""
+    echo "Please unstage these files with: git reset HEAD <file>"
+    exit 1
+fi
+
+# Check if the .gitmodules file contains a reference to the midi-presets submodule
+if git diff --cached --name-only | grep -q ".gitmodules"; then
+    SUBMODULE_REF=$(git diff --cached .gitmodules | grep -E "server/midi-presets")
+    if [ -n "$SUBMODULE_REF" ]; then
+        echo "Error: Attempting to commit .gitmodules with a reference to server/midi-presets."
+        echo "The midi-presets submodule should not be committed to the repository."
+        echo ""
+        echo "Please unstage .gitmodules with: git reset HEAD .gitmodules"
+        exit 1
+    fi
+fi
+
+# If we get here, no midi-presets files were found in the commit
+echo "No midi-presets files found in commit. Proceeding..."
+exit 0

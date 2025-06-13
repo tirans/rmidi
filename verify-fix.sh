@@ -75,6 +75,18 @@ done
 
 # Check 5: Verify workflows updated
 echo "📝 Checking workflow files..."
+if [ -f ".github/workflows/ci.yml" ]; then
+    if grep -q "basic smoke test\|importlib.util" ".github/workflows/ci.yml"; then
+        echo "❌ ci.yml still contains basic smoke test code"
+        ISSUES_FOUND=$((ISSUES_FOUND + 1))
+    else
+        echo "✅ ci.yml updated (smoke test removed)"
+    fi
+else
+    echo "❌ ci.yml missing"
+    ISSUES_FOUND=$((ISSUES_FOUND + 1))
+fi
+
 if [ -f ".github/workflows/reusable-build.yml" ]; then
     if grep -q "submodule" ".github/workflows/reusable-build.yml"; then
         echo "⚠️ reusable-build.yml still contains submodule references"

@@ -464,8 +464,29 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 **Note**: You don't need to worry about incrementing the version number. This is handled automatically by GitHub Actions when your changes are merged to the master branch.
 
-## Acknowledgments
+## MIDI Presets Management
 
+The R2MIDI server automatically manages the MIDI presets repository. For most users, no manual setup is required as the server will automatically clone the repository on startup.
+
+For developers who want to contribute to both the R2MIDI project and the midi-presets repository, there's an option to set up the `server/midi-presets` directory as a Git submodule. See [SUBMODULE_SETUP.md](SUBMODULE_SETUP.md) for detailed instructions on both automatic and manual management options.
+
+## Git Hooks
+
+To prevent accidentally committing the `server/midi-presets` directory or its files to the repository, we provide Git hooks that will automatically check your commits.
+
+### Installation
+
+To install the Git hooks, run the following command from the repository root:
+
+```bash
+./install-hooks.sh
+```
+
+This will set up a pre-commit hook that prevents committing the `server/midi-presets` directory itself, files from the directory (except for `.gitkeep` and `README.md`), or the `.gitmodules` file with references to the midi-presets submodule.
+
+For more details about the Git hooks and how to manage them, see [GIT_HOOKS.md](GIT_HOOKS.md).
+
+## Acknowledgments
 - PyQt6 for the excellent GUI framework
 - httpx for async HTTP client
 - psutil for system monitoring

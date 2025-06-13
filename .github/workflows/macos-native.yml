@@ -70,7 +70,11 @@ jobs:
           fi
 
           git fetch origin
-          git checkout -b main origin/main || git checkout main
+          if git show-ref --verify --quiet refs/heads/main; then
+            git checkout main
+          else
+            git checkout -b main origin/main
+          fi
           cd ../..
 
           echo "✅ Submodules setup complete"

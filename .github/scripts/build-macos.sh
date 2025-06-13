@@ -187,6 +187,11 @@ build_applications() {
     # Build server application
     echo "🏗️ Building server application..."
     cd build/server
+
+    # Clean the build directory to prevent file conflicts
+    echo "🧹 Cleaning collect directory to prevent file conflicts..."
+    rm -rf build/bdist.macosx-10.13-universal2/python3.12-standalone/app/collect
+
     if retry_command "python setup.py py2app --dist-dir ../../dist/server" 3 20; then
         echo "✅ Server build successful"
     else
@@ -201,6 +206,11 @@ build_applications() {
     # Build client application
     echo "🏗️ Building client application..."
     cd build/client
+
+    # Clean the build directory to prevent file conflicts
+    echo "🧹 Cleaning collect directory to prevent file conflicts..."
+    rm -rf build/bdist.macosx-10.13-universal2/python3.12-standalone/app/collect
+
     if retry_command "python setup.py py2app --dist-dir ../../dist/client" 3 20; then
         echo "✅ Client build successful"
     else

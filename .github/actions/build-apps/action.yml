@@ -36,10 +36,11 @@ runs:
       run: |
         echo "🔍 Validating build inputs..."
 
-        # Validate platform
-        case "${{ inputs.platform }}" in
-          linux|windows|macOS)
-            echo "✅ Platform: ${{ inputs.platform }}"
+        # Validate platform - normalize to lowercase and trim whitespace
+        PLATFORM=$(echo "${{ inputs.platform }}" | tr '[:upper:]' '[:lower:]' | xargs)
+        case "$PLATFORM" in
+          linux|windows|macos)
+            echo "✅ Platform: ${{ inputs.platform }} (normalized: $PLATFORM)"
             ;;
           *)
             echo "❌ Invalid platform: ${{ inputs.platform }}"
@@ -48,10 +49,11 @@ runs:
             ;;
         esac
 
-        # Validate build type
-        case "${{ inputs.build-type }}" in
+        # Validate build type - normalize to lowercase and trim whitespace
+        BUILD_TYPE=$(echo "${{ inputs.build-type }}" | tr '[:upper:]' '[:lower:]' | xargs)
+        case "$BUILD_TYPE" in
           dev|staging|production)
-            echo "✅ Build type: ${{ inputs.build-type }}"
+            echo "✅ Build type: ${{ inputs.build-type }} (normalized: $BUILD_TYPE)"
             ;;
           *)
             echo "❌ Invalid build type: ${{ inputs.build-type }}"
@@ -71,14 +73,14 @@ runs:
         mkdir -p build/{server,client,artifacts}
         mkdir -p dist/{server,client}
 
-        # Set environment variables
-        echo "PLATFORM=${{ inputs.platform }}" >> $GITHUB_ENV
-        echo "BUILD_TYPE=${{ inputs.build-type }}" >> $GITHUB_ENV
+        # Set environment variables - use normalized values
+        echo "PLATFORM=$PLATFORM" >> $GITHUB_ENV
+        echo "BUILD_TYPE=$BUILD_TYPE" >> $GITHUB_ENV
         echo "APP_VERSION=${{ inputs.version }}" >> $GITHUB_ENV
         echo "SHOULD_SIGN=${{ inputs.sign }}" >> $GITHUB_ENV
 
-        # Platform-specific setup
-        case "${{ inputs.platform }}" in
+        # Platform-specific setup - use normalized platform value
+        case "$PLATFORM" in
           linux)
             echo "BUILD_METHOD=briefcase" >> $GITHUB_ENV
             echo "APP_FORMAT=system" >> $GITHUB_ENV
@@ -87,7 +89,7 @@ runs:
             echo "BUILD_METHOD=briefcase" >> $GITHUB_ENV
             echo "APP_FORMAT=app" >> $GITHUB_ENV
             ;;
-          macOS)
+          macos)
             echo "BUILD_METHOD=native" >> $GITHUB_ENV
             echo "APP_FORMAT=app" >> $GITHUB_ENV
             ;;

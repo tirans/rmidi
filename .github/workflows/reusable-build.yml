@@ -69,12 +69,18 @@ jobs:
             requirements.txt
             r2midi_client/requirements.txt
 
+      - name: Install Briefcase
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install briefcase
+
       - name: Get application version
         id: version
         shell: bash
         run: |
           echo "📋 Determining application version..."
-          
+
           # Extract version from server/version.py
           if [ -f "server/version.py" ]; then
             VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
@@ -84,14 +90,14 @@ jobs:
             echo "⚠️ No version file found, using default"
             VERSION="1.0.0"
           fi
-          
+
           # Add suffix if provided
           if [ -n "${{ inputs.version-suffix }}" ]; then
             FULL_VERSION="${VERSION}${{ inputs.version-suffix }}"
           else
             FULL_VERSION="${VERSION}"
           fi
-          
+
           echo "Version: $FULL_VERSION"
           echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "APP_VERSION=$FULL_VERSION" >> $GITHUB_ENV
@@ -100,22 +106,22 @@ jobs:
         shell: bash
         run: |
           echo "🔍 Verifying project structure..."
-          
+
           # Check for required files and directories
           MISSING_ITEMS=()
-          
+
           [ ! -f "pyproject.toml" ] && MISSING_ITEMS+=("pyproject.toml")
           [ ! -d "server" ] && MISSING_ITEMS+=("server/")
           [ ! -f "server/main.py" ] && MISSING_ITEMS+=("server/main.py")
           [ ! -d "r2midi_client" ] && MISSING_ITEMS+=("r2midi_client/")
           [ ! -f "requirements.txt" ] && MISSING_ITEMS+=("requirements.txt")
-          
+
           if [ ${#MISSING_ITEMS[@]} -gt 0 ]; then
             echo "❌ Missing required project files:"
             printf '  - %s\n' "${MISSING_ITEMS[@]}"
             exit 1
           fi
-          
+
           # Ensure server/midi-presets directory exists
           if [ ! -d "server/midi-presets" ]; then
             echo "📁 Creating server/midi-presets directory..."
@@ -123,7 +129,7 @@ jobs:
             echo "# MIDI Presets Directory" > server/midi-presets/README.md
             echo "Place MIDI preset files here." >> server/midi-presets/README.md
           fi
-          
+
           echo "✅ Project structure verified"
           echo "📁 Project contents:"
           ls -la
@@ -141,10 +147,10 @@ jobs:
         shell: bash
         run: |
           echo "🎨 Generating application icons..."
-          
+
           if [ -f "scripts/generate_icons.py" ]; then
             chmod +x scripts/generate_icons.py
-            
+
             # Run with retry mechanism
             for attempt in {1..3}; do
               echo "🔄 Icon generation attempt $attempt/3"
@@ -197,15 +203,15 @@ jobs:
         shell: bash
         run: |
           echo "📦 Preparing artifacts..."
-          
+
           # Create artifacts directory
           mkdir -p artifacts
-          
+
           # Copy build outputs
           if [ -d "${{ steps.build.outputs.artifacts-path }}" ]; then
             cp -r "${{ steps.build.outputs.artifacts-path }}"/* artifacts/ 2>/dev/null || echo "No build artifacts to copy"
           fi
-          
+
           # Copy installers/packages if they exist
           find . -maxdepth 1 -name "*.dmg" -exec cp {} artifacts/ \; 2>/dev/null || true
           find . -maxdepth 1 -name "*.pkg" -exec cp {} artifacts/ \; 2>/dev/null || true
@@ -213,14 +219,14 @@ jobs:
           find . -maxdepth 1 -name "*.deb" -exec cp {} artifacts/ \; 2>/dev/null || true
           find . -maxdepth 1 -name "*.zip" -exec cp {} artifacts/ \; 2>/dev/null || true
           find . -maxdepth 1 -name "*.tar.gz" -exec cp {} artifacts/ \; 2>/dev/null || true
-          
+
           # Copy package info files
           find . -maxdepth 1 -name "PACKAGES.txt" -exec cp {} artifacts/ \; 2>/dev/null || true
-          
+
           # Generate comprehensive build info
           cat > artifacts/BUILD_INFO.md << EOF
           # R2MIDI Build Information
-          
+
           ## Build Details
           - **Version**: ${{ steps.version.outputs.version }}
           - **Platform**: ${{ inputs.platform }}
@@ -232,10 +238,10 @@ jobs:
           - **Branch**: ${{ github.ref_name }}
           - **Workflow**: ${{ github.workflow }}
           - **Run Number**: ${{ github.run_number }}
-          
+
           ## Build Method
           EOF
-          
+
           case "${{ inputs.platform }}" in
             macOS)
               echo "- **Method**: Native macOS (py2app)" >> artifacts/BUILD_INFO.md
@@ -245,7 +251,7 @@ jobs:
               echo "- **Method**: Cross-platform (Briefcase)" >> artifacts/BUILD_INFO.md
               ;;
           esac
-          
+
           # List all artifacts
           echo "" >> artifacts/BUILD_INFO.md
           echo "## Artifacts" >> artifacts/BUILD_INFO.md
@@ -259,7 +265,7 @@ jobs:
           else
             echo "- No build artifacts generated" >> artifacts/BUILD_INFO.md
           fi
-          
+
           echo "📋 Artifacts prepared:"
           ls -la artifacts/ 2>/dev/null || echo "No artifacts directory found"
 
@@ -282,7 +288,7 @@ jobs:
           echo "**Build Type:** ${{ inputs.build-type }}" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Artifacts:** ${{ steps.upload.outputs.artifact-name }}" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ -n "${{ steps.build.outputs.server-app-path }}" ]; then
             echo "**Server App:** \`${{ steps.build.outputs.server-app-path }}\`" >> $GITHUB_STEP_SUMMARY
           fi
@@ -295,21 +301,21 @@ jobs:
         shell: bash
         run: |
           echo "🧹 Cleaning up after build failure..."
-          
+
           # Clean up any temporary files
           rm -rf build/temp* 2>/dev/null || true
           rm -rf dist/temp* 2>/dev/null || true
-          
+
           # Log debug information
           echo "📋 Debug information:"
           echo "Working directory: $(pwd)"
           echo "Python version: $(python --version)"
           echo "Pip version: $(pip --version)"
-          
+
           if [ "${{ inputs.platform }}" = "macOS" ]; then
             echo "Xcode version: $(xcode-select --print-path 2>/dev/null || echo 'Not available')"
           fi
-          
+
           echo "Environment variables:"
           env | grep -E "(APP_|BUILD_|PLATFORM)" | sort
 

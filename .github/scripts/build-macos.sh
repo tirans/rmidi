@@ -221,8 +221,8 @@ build_applications() {
         SERVER_APP_PATH="$(realpath "${SERVER_APPS[0]}")"
         echo "✅ Server app: $SERVER_APP_PATH"
 
-        # Verify executable exists
-        SERVER_EXEC=$(find "$SERVER_APP_PATH/Contents/MacOS" -type f -perm +111 2>/dev/null | head -1)
+        # Verify executable exists - avoid broken pipe with head
+        SERVER_EXEC=$(find "$SERVER_APP_PATH/Contents/MacOS" -type f -perm +111 -print -quit 2>/dev/null)
         if [ -n "$SERVER_EXEC" ]; then
             echo "✅ Server executable: $SERVER_EXEC"
         else
@@ -239,8 +239,8 @@ build_applications() {
         CLIENT_APP_PATH="$(realpath "${CLIENT_APPS[0]}")"
         echo "✅ Client app: $CLIENT_APP_PATH"
 
-        # Verify executable exists
-        CLIENT_EXEC=$(find "$CLIENT_APP_PATH/Contents/MacOS" -type f -perm +111 2>/dev/null | head -1)
+        # Verify executable exists - avoid broken pipe with head
+        CLIENT_EXEC=$(find "$CLIENT_APP_PATH/Contents/MacOS" -type f -perm +111 -print -quit 2>/dev/null)
         if [ -n "$CLIENT_EXEC" ]; then
             echo "✅ Client executable: $CLIENT_EXEC"
         else

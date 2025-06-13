@@ -15,7 +15,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
           git submodule deinit -f server/midi-presets || true
           rm -rf .git/modules/server/midi-presets || true
           git rm -rf server/midi-presets || true
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+          git submodule add -f https://github.com/tirans/midi-presets.git server/midi-presets
           git submodule init
           git submodule update --init --recursive
 

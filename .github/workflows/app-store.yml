@@ -40,7 +40,7 @@ jobs:
 
           # Add submodule fresh
           echo "➕ Re-adding the submodule..."
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+          git submodule add -f https://github.com/tirans/midi-presets.git server/midi-presets
 
           # Initialize submodule
           echo "🔄 Initializing submodule..."

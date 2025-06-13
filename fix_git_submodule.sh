@@ -11,7 +11,7 @@ rm -rf .git/modules/server/midi-presets 2>/dev/null || true
 # Re-add the submodule
 echo "➕ Re-adding the submodule..."
 git rm -rf server/midi-presets 2>/dev/null || true
-git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
+git submodule add -f https://github.com/tirans/midi-presets.git server/midi-presets
 
 # Initialize and update with proper branch handling
 echo "🔄 Initializing submodule..."

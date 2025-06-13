@@ -92,7 +92,7 @@ jobs:
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Install system dependencies
-        uses: .github/actions/install-system-deps
+        uses: ./.github/actions/install-system-deps
         with:
           platform: macOS
 
@@ -111,7 +111,7 @@ jobs:
           python scripts/generate_icons.py
 
       - name: Setup code signing
-        uses: .github/actions/setup-macos-signing
+        uses: ./.github/actions/setup-macos-signing
         with:
           certificate-p12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -123,7 +123,7 @@ jobs:
           app-store-connect-issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 
       - name: Configure build metadata
-        uses: .github/actions/configure-build
+        uses: ./.github/actions/configure-build
         with:
           build-type: production
           version: ${{ steps.version.outputs.version }}
@@ -136,13 +136,13 @@ jobs:
 
       - name: Build applications (Native)
         id: build-apps
-        uses: .github/actions/build-apps
+        uses: ./.github/actions/build-apps
         with:
           platform: macOS
           sign: true
 
       - name: Package applications (Native)
-        uses: .github/actions/package-apps
+        uses: ./.github/actions/package-apps
         with:
           platform: macOS
           build-type: production
@@ -186,6 +186,6 @@ jobs:
 
       - name: Cleanup
         if: always()
-        uses: .github/actions/cleanup-signing
+        uses: ./.github/actions/cleanup-signing
         with:
           platform: macOS

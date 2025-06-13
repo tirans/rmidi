@@ -59,7 +59,16 @@ jobs:
           mkdir -p server/midi-presets
           cd server/midi-presets || { echo "❌ Failed to enter submodule directory"; exit 1; }
           git init
-          git remote add origin https://github.com/tirans/midi-presets.git
+
+          # Check if remote origin already exists
+          if git remote | grep -q "^origin$"; then
+            echo "Remote origin already exists, updating URL..."
+            git remote set-url origin https://github.com/tirans/midi-presets.git
+          else
+            echo "Adding remote origin..."
+            git remote add origin https://github.com/tirans/midi-presets.git
+          fi
+
           git fetch origin
           git checkout -b main origin/main || git checkout main
           cd ../..

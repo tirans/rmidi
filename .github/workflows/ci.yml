@@ -42,7 +42,19 @@ jobs:
             libasound2-dev \
             portaudio19-dev \
             build-essential \
-            pkg-config
+            pkg-config \
+            libegl1-mesa-dev \
+            libgl1-mesa-glx \
+            libglib2.0-0 \
+            libxkbcommon-x11-0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-xinerama0 \
+            libxcb-xfixes0 \
+            xvfb
 
       - name: Install Python dependencies
         shell: bash
@@ -54,7 +66,7 @@ jobs:
           fi
           
           # Install test dependencies
-          python -m pip install pytest pytest-asyncio pytest-mock pytest-cov
+          python -m pip install pytest pytest-asyncio pytest-mock pytest-cov pytest-qt
 
       - name: Validate project structure
         shell: bash
@@ -66,7 +78,8 @@ jobs:
         run: |
           # Run tests with coverage on Ubuntu (since we only use Python 3.12 now)
           if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            python -m pytest tests/ -v --cov=server --cov=r2midi_client --cov-report=xml --cov-report=term
+            # Use virtual display for PyQt6 tests
+            xvfb-run -a python -m pytest tests/ -v --cov=server --cov=r2midi_client --cov-report=xml --cov-report=term
           else
             python -m pytest tests/ -v
           fi
@@ -170,7 +183,20 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev portaudio19-dev
+          sudo apt-get install -y \
+            libasound2-dev \
+            portaudio19-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-glx \
+            libglib2.0-0 \
+            libxkbcommon-x11-0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-xinerama0 \
+            libxcb-xfixes0
 
       - name: Install dependencies
         shell: bash

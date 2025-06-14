@@ -82,7 +82,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flake8 pytest build twine
+          python -m pip install flake8 pytest build twine pyinstaller
           if [ -f requirements.txt ]; then 
             pip install -r requirements.txt
           fi
@@ -90,13 +90,6 @@ jobs:
             pip install -r r2midi_client/requirements.txt
           fi
           pip install -e ".[test]"
-
-      - name: Lint with flake8
-        run: |
-          # Stop the build if there are Python syntax errors or undefined names
-          #flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Exit-zero treats all errors as warnings
-          #flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Test with pytest
         run: |
@@ -124,11 +117,7 @@ jobs:
 
       - name: Setup workspace
         run: |
-          # Mark workspace as safe directory
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # Skip submodule setup since server/midi-presets is in .gitignore
-          # This indicates the build is designed to work without it
           echo "ℹ️ Skipping submodule setup (not required for build)"
 
       - name: Set up Python
@@ -156,13 +145,13 @@ jobs:
           path: dist/
           retention-days: 30
 
-  build-stable-cross-platform:
+  build-cross-platform:
     needs: test
     if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
-        # Include all platforms: Windows, Linux, and macOS
+        # Windows and Linux only (macOS handled separately)
         include:
           - os: windows-latest
             platform: windows
@@ -172,10 +161,6 @@ jobs:
             platform: linux
             platform_name: linux  
             emoji: 🐧
-          - os: macos-13
-            platform: macOS
-            platform_name: macos
-            emoji: 🍎
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -186,11 +171,7 @@ jobs:
 
       - name: Setup workspace
         run: |
-          # Mark workspace as safe directory
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # Skip submodule setup since server/midi-presets is in .gitignore
-          # This indicates the build is designed to work without it
           echo "ℹ️ Skipping submodule setup (not required for build)"
         shell: bash
 
@@ -198,12 +179,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install system dependencies (Windows)
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          Write-Host "${{ matrix.emoji }} Installing Windows dependencies..."
 
       - name: Install system dependencies (Linux)
         if: matrix.platform == 'linux'
@@ -222,13 +197,6 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev libxcb-cursor0 \
             libxcb-shape0
 
-      - name: Install system dependencies (macOS)
-        if: matrix.platform == 'macOS'
-        run: |
-          echo "${{ matrix.emoji }} Installing macOS dependencies..."
-          # macOS typically doesn't need additional system dependencies for Python/Qt
-          # but we can install any required packages here if needed in the future
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -239,191 +207,308 @@ jobs:
           fi
         shell: bash
 
-      - name: Configure stable build metadata
+      - name: Configure build metadata
         run: |
-          # Get current version
           VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-
-          # Set stable build metadata - keep existing bundle for compatibility
-          echo "SERVER_NAME=R2MIDI Server" >> $GITHUB_ENV
-          echo "CLIENT_NAME=R2MIDI Client" >> $GITHUB_ENV
-          echo "AUTHOR_NAME=R2MIDI Team" >> $GITHUB_ENV
-          echo "AUTHOR_EMAIL=tiran@tirans.com" >> $GITHUB_ENV
-
-          echo "${{ matrix.emoji }} Building stable version: $VERSION for ${{ matrix.platform }}"
+          echo "${{ matrix.emoji }} Building version: $VERSION for ${{ matrix.platform }}"
         shell: bash
 
-      - name: Update pyproject.toml with stable config
+      - name: Update pyproject.toml
         run: |
-          # Update with stable metadata while preserving existing bundle structure
           sed -i.bak "s|version = \"0\.1\.64\"|version = \"${APP_VERSION}\"|g" pyproject.toml
-          sed -i.bak "s|author = \".*\"|author = \"${AUTHOR_NAME}\"|g" pyproject.toml
-          sed -i.bak "s|author_email = \".*\"|author_email = \"${AUTHOR_EMAIL}\"|g" pyproject.toml
-          sed -i.bak "s|formal_name = \"R2MIDI Server\"|formal_name = \"${SERVER_NAME}\"|g" pyproject.toml
-          sed -i.bak "s|formal_name = \"R2MIDI Client\"|formal_name = \"${CLIENT_NAME}\"|g" pyproject.toml
-
-          echo "Updated pyproject.toml for stable build"
         shell: bash
 
-      - name: Build stable applications (unsigned)
+      - name: Build applications
         run: |
-          echo "${{ matrix.emoji }} Creating stable applications for ${{ matrix.platform }}..."
+          echo "${{ matrix.emoji }} Creating applications for ${{ matrix.platform }}..."
           if [ "${{ matrix.platform }}" = "windows" ]; then
             briefcase create ${{ matrix.platform }} app -a server
             briefcase build ${{ matrix.platform }} app -a server
+            briefcase package ${{ matrix.platform }} app -a server
 
             briefcase create ${{ matrix.platform }} app -a r2midi-client
             briefcase build ${{ matrix.platform }} app -a r2midi-client
-          elif [ "${{ matrix.platform }}" = "macOS" ]; then
-            briefcase create ${{ matrix.platform }} app -a server
-            briefcase build ${{ matrix.platform }} app -a server
-
-            briefcase create ${{ matrix.platform }} app -a r2midi-client
-            briefcase build ${{ matrix.platform }} app -a r2midi-client
+            briefcase package ${{ matrix.platform }} app -a r2midi-client
           else
             briefcase create ${{ matrix.platform }} system -a server
             briefcase build ${{ matrix.platform }} system -a server 
+            briefcase package ${{ matrix.platform }} system -a server
 
             briefcase create ${{ matrix.platform }} system -a r2midi-client
             briefcase build ${{ matrix.platform }} system -a r2midi-client
-          fi
-        shell: bash
-
-      - name: Package stable applications (unsigned)
-        run: |
-          echo "${{ matrix.emoji }} Packaging stable applications (unsigned)..."
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            briefcase package ${{ matrix.platform }} app -a server  
-            briefcase package ${{ matrix.platform }} app -a r2midi-client
-          elif [ "${{ matrix.platform }}" = "macOS" ]; then
-            briefcase package ${{ matrix.platform }} app -a server --adhoc-sign
-            briefcase package ${{ matrix.platform }} app -a r2midi-client --adhoc-sign
-          else
-            briefcase package ${{ matrix.platform }} system -a server  
             briefcase package ${{ matrix.platform }} system -a r2midi-client
           fi
         shell: bash
 
-      - name: Prepare stable build artifacts (Linux)
-        if: matrix.platform == 'linux'
+      - name: Prepare build artifacts
         run: |
-          mkdir -p stable_builds
-          echo "🐧 Packaging Linux stable builds..."
+          mkdir -p build_artifacts
+          echo "${{ matrix.emoji }} Packaging ${{ matrix.platform }} builds..."
 
-          # Copy the .deb packages from dist directory to stable_builds with proper naming
-          if [ -f "dist/server_${APP_VERSION}-1~ubuntu-noble_amd64.deb" ]; then
-            cp "dist/server_${APP_VERSION}-1~ubuntu-noble_amd64.deb" "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.deb"
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            # Copy .deb packages
+            find dist/ -name "*.deb" -exec cp {} build_artifacts/ \; 2>/dev/null || true
+            
+            # Create tar.gz files as fallback
+            if [ -d "build/server/linux/system" ]; then
+              tar -czf "build_artifacts/R2MIDI-Server-linux-v${APP_VERSION}.tar.gz" -C build/server/linux/system .
+            fi
+            if [ -d "build/r2midi-client/linux/system" ]; then
+              tar -czf "build_artifacts/R2MIDI-Client-linux-v${APP_VERSION}.tar.gz" -C build/r2midi-client/linux/system .
+            fi
+          else
+            # Windows - create zip files
+            if [ -d "build/server/windows/app" ]; then
+              cd build/server/windows/app && zip -r "$GITHUB_WORKSPACE/build_artifacts/R2MIDI-Server-windows-v${APP_VERSION}.zip" * && cd "$GITHUB_WORKSPACE"
+            fi
+            if [ -d "build/r2midi-client/windows/app" ]; then
+              cd build/r2midi-client/windows/app && zip -r "$GITHUB_WORKSPACE/build_artifacts/R2MIDI-Client-windows-v${APP_VERSION}.zip" * && cd "$GITHUB_WORKSPACE"
+            fi
           fi
 
-          if [ -f "dist/r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb" ]; then
-            cp "dist/r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb" "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.deb"
-          fi
-
-          # Create tar.gz files from the .deb packages for compatibility with release.yml
-          if [ -f "dist/server_${APP_VERSION}-1~ubuntu-noble_amd64.deb" ]; then
-            # Create a temporary directory to extract and package the .deb contents
-            mkdir -p temp_extract/server
-            cp "dist/server_${APP_VERSION}-1~ubuntu-noble_amd64.deb" temp_extract/server/
-            cd temp_extract/server
-            ar x "server_${APP_VERSION}-1~ubuntu-noble_amd64.deb"
-            mkdir -p data
-            tar -xf data.tar.* -C data
-            cd "$GITHUB_WORKSPACE"
-            tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C temp_extract/server/data .
-            rm -rf temp_extract/server
-          fi
-
-          if [ -f "dist/r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb" ]; then
-            # Create a temporary directory to extract and package the .deb contents
-            mkdir -p temp_extract/client
-            cp "dist/r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb" temp_extract/client/
-            cd temp_extract/client
-            ar x "r2midi-client_${APP_VERSION}-1~ubuntu-noble_amd64.deb"
-            mkdir -p data
-            tar -xf data.tar.* -C data
-            cd "$GITHUB_WORKSPACE"
-            tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C temp_extract/client/data .
-            rm -rf temp_extract/client
-          fi
-
-          # Fallback to using build directory if .deb extraction fails
-          if [ ! -f "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" ] && [ -d "build/server/linux/system" ]; then
-            tar -czf "stable_builds/R2MIDI-Server-linux-stable-v${APP_VERSION}.tar.gz" -C build/server/linux/system .
-          fi
-
-          if [ ! -f "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" ] && [ -d "build/r2midi-client/linux/system" ]; then
-            tar -czf "stable_builds/R2MIDI-Client-linux-stable-v${APP_VERSION}.tar.gz" -C build/r2midi-client/linux/system .
-          fi
-
-          echo "🐧 Stable build artifacts:"
-          ls -la stable_builds/
+          echo "${{ matrix.emoji }} Build artifacts:"
+          ls -la build_artifacts/
         shell: bash
 
-      - name: Prepare stable build artifacts (Windows)
-        if: matrix.platform == 'windows'
-        run: |
-          mkdir -p stable_builds
-          echo "🪟 Packaging Windows stable builds..."
-
-          if (Test-Path -Path "build/server/windows/app") {
-            Compress-Archive -Path "build/server/windows/app/*" -DestinationPath "stable_builds/R2MIDI-Server-windows-stable-v$env:APP_VERSION.zip" -Force
-          }
-
-          if (Test-Path -Path "build/r2midi-client/windows/app") {
-            Compress-Archive -Path "build/r2midi-client/windows/app/*" -DestinationPath "stable_builds/R2MIDI-Client-windows-stable-v$env:APP_VERSION.zip" -Force
-          }
-
-          echo "🪟 Stable build artifacts:"
-          Get-ChildItem -Path stable_builds
-        shell: pwsh
-
-      - name: Prepare stable build artifacts (macOS)
-        if: matrix.platform == 'macOS'
-        run: |
-          mkdir -p stable_builds
-          echo "🍎 Packaging macOS stable builds..."
-
-          if [ -d "build/server/macOS/app" ]; then
-            cd build/server/macOS/app
-            zip -r "$GITHUB_WORKSPACE/stable_builds/R2MIDI-Server-macos-stable-v${APP_VERSION}.zip" *.app
-            cd "$GITHUB_WORKSPACE"
-          fi
-
-          if [ -d "build/r2midi-client/macOS/app" ]; then
-            cd build/r2midi-client/macOS/app
-            zip -r "$GITHUB_WORKSPACE/stable_builds/R2MIDI-Client-macos-stable-v${APP_VERSION}.zip" *.app
-            cd "$GITHUB_WORKSPACE"
-          fi
-
-          echo "🍎 Stable build artifacts:"
-          ls -la stable_builds/
-        shell: bash
-
-      - name: Upload stable build artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: stable-builds-${{ matrix.platform_name }}
-          path: stable_builds/
+          name: ${{ matrix.platform }}-builds
+          path: build_artifacts/
           retention-days: 30
 
-  create-staging-release:
-    needs: [build-stable-cross-platform ]
+  build-macos-packages:
+    name: Build macOS Signed Packages
+    runs-on: macos-latest
+    needs: test
+    if: github.event_name == 'push'
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup workspace
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "ℹ️ Skipping submodule setup (not required for build)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Get application version
+        id: version
+        run: |
+          VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "🍎 Building macOS packages for version: $VERSION"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+          pip install -r requirements.txt
+          if [ -f r2midi_client/requirements.txt ]; then 
+            pip install -r r2midi_client/requirements.txt
+          fi
+
+      - name: Setup certificates and keychain
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION_CERT: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERT }}
+          APPLE_DEVELOPER_ID_INSTALLER_CERT: ${{ secrets.APPLE_DEVELOPER_ID_INSTALLER_CERT }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          echo "🔐 Setting up certificates..."
+          
+          TEMP_KEYCHAIN="build.keychain"
+          TEMP_KEYCHAIN_PASSWORD="temp_password_$(date +%s)"
+          
+          security create-keychain -p "$TEMP_KEYCHAIN_PASSWORD" "$TEMP_KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$TEMP_KEYCHAIN"
+          security unlock-keychain -p "$TEMP_KEYCHAIN_PASSWORD" "$TEMP_KEYCHAIN"
+          security list-keychains -d user -s "$TEMP_KEYCHAIN" $(security list-keychains -d user | sed s/\"//g)
+          
+          echo "$APPLE_DEVELOPER_ID_APPLICATION_CERT" | base64 --decode > app_cert.p12
+          echo "$APPLE_DEVELOPER_ID_INSTALLER_CERT" | base64 --decode > installer_cert.p12
+          
+          security import app_cert.p12 -k "$TEMP_KEYCHAIN" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security import installer_cert.p12 -k "$TEMP_KEYCHAIN" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/productsign
+          
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$TEMP_KEYCHAIN_PASSWORD" "$TEMP_KEYCHAIN"
+          
+          rm -f app_cert.p12 installer_cert.p12
+          echo "✅ Certificates imported"
+
+      - name: Build applications with PyInstaller
+        run: |
+          echo "🔨 Building applications..."
+          mkdir -p build/server build/client
+          
+          # Build server
+          python -m PyInstaller \
+            --name "R2MIDI Server" \
+            --windowed \
+            --onedir \
+            --clean \
+            --distpath build/server \
+            --workpath build/server/work \
+            --specpath build/server \
+            --add-data "server:server" \
+            --hidden-import "uvicorn" \
+            --hidden-import "fastapi" \
+            --hidden-import "pydantic" \
+            --osx-bundle-identifier "com.r2midi.server" \
+            server/main.py
+          
+          # Build client
+          python -m PyInstaller \
+            --name "R2MIDI Client" \
+            --windowed \
+            --onedir \
+            --clean \
+            --distpath build/client \
+            --workpath build/client/work \
+            --specpath build/client \
+            --add-data "r2midi_client:r2midi_client" \
+            --hidden-import "PyQt6" \
+            --hidden-import "httpx" \
+            --osx-bundle-identifier "com.r2midi.client" \
+            r2midi_client/main.py
+
+      - name: Sign applications
+        env:
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+        run: |
+          echo "✍️ Signing applications..."
+          
+          sign_app() {
+            local app_path="$1"
+            echo "Signing: $app_path"
+            
+            find "$app_path" -type f \( -perm +111 -o -name "*.dylib" -o -name "*.so" \) -exec codesign \
+              --force --verify --verbose \
+              --sign "Developer ID Application: $APPLE_DEVELOPER_ID" \
+              --options runtime --timestamp {} \;
+            
+            codesign --force --verify --verbose \
+              --sign "Developer ID Application: $APPLE_DEVELOPER_ID" \
+              --options runtime --timestamp "$app_path"
+          }
+          
+          if [ -d "build/server/R2MIDI Server" ]; then
+            sign_app "build/server/R2MIDI Server"
+          fi
+          
+          if [ -d "build/client/R2MIDI Client" ]; then
+            sign_app "build/client/R2MIDI Client"
+          fi
+
+      - name: Create and sign packages
+        env:
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+        run: |
+          echo "📦 Creating packages..."
+          mkdir -p packages
+          
+          create_pkg() {
+            local app_path="$1"
+            local pkg_name="$2"
+            local identifier="$3"
+            
+            if [ -d "$app_path" ]; then
+              echo "Creating $pkg_name.pkg..."
+              
+              mkdir -p "pkg_temp/$pkg_name/Applications"
+              cp -R "$app_path" "pkg_temp/$pkg_name/Applications/"
+              
+              pkgbuild --root "pkg_temp/$pkg_name" --identifier "$identifier" \
+                --version "$APP_VERSION" --install-location "/" \
+                "packages/$pkg_name-unsigned.pkg"
+              
+              productsign --sign "Developer ID Installer: $APPLE_DEVELOPER_ID" \
+                "packages/$pkg_name-unsigned.pkg" "packages/$pkg_name-v$APP_VERSION.pkg"
+              
+              rm "packages/$pkg_name-unsigned.pkg"
+              rm -rf "pkg_temp/$pkg_name"
+            fi
+          }
+          
+          create_pkg "build/server/R2MIDI Server" "R2MIDI-Server" "com.r2midi.server"
+          create_pkg "build/client/R2MIDI Client" "R2MIDI-Client" "com.r2midi.client"
+
+      - name: Notarize packages
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APP_SPECIFIC_PASSWORD: ${{ secrets.APP_SPECIFIC_PASSWORD }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          echo "🔔 Notarizing packages..."
+          
+          for pkg in packages/*.pkg; do
+            if [ -f "$pkg" ]; then
+              echo "Notarizing: $(basename "$pkg")"
+              xcrun notarytool submit "$pkg" \
+                --apple-id "$APPLE_ID" \
+                --password "$APP_SPECIFIC_PASSWORD" \
+                --team-id "$TEAM_ID" \
+                --wait
+              
+              xcrun stapler staple "$pkg"
+              xcrun stapler validate "$pkg"
+            fi
+          done
+
+      - name: Create DMG files
+        run: |
+          echo "💿 Creating DMG files..."
+          
+          create_dmg() {
+            local app_path="$1"
+            local dmg_name="$2"
+            
+            if [ -d "$app_path" ]; then
+              mkdir -p "dmg_temp/$dmg_name"
+              cp -R "$app_path" "dmg_temp/$dmg_name/"
+              ln -s /Applications "dmg_temp/$dmg_name/Applications"
+              
+              hdiutil create -volname "$dmg_name" -srcfolder "dmg_temp/$dmg_name" \
+                -ov -format UDZO "packages/$dmg_name-v$APP_VERSION.dmg"
+              
+              rm -rf "dmg_temp/$dmg_name"
+            fi
+          }
+          
+          create_dmg "build/server/R2MIDI Server" "R2MIDI-Server"
+          create_dmg "build/client/R2MIDI Client" "R2MIDI-Client"
+          
+          echo "✅ Package creation completed:"
+          ls -la packages/
+
+      - name: Upload macOS packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages
+          path: packages/
+          retention-days: 30
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          security delete-keychain build.keychain || true
+
+  create-release:
+    needs: [build-cross-platform, build-macos-packages]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup workspace
-        run: |
-          # Mark workspace as safe directory
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # Skip submodule setup since server/midi-presets is in .gitignore
-          # This indicates the build is designed to work without it
-          echo "ℹ️ Skipping submodule setup (not required for build)"
 
       - name: Get version
         id: get_version
@@ -432,84 +517,72 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Download all stable artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: stable-builds-*
-          path: all_stable_builds
-          merge-multiple: true
+          path: all_builds
+
+      - name: Organize artifacts for release
+        run: |
+          echo "📦 Organizing artifacts..."
+          mkdir -p release_artifacts
+          
+          # Copy all platform builds
+          find all_builds/ -type f -name "*.deb" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.pkg" -o -name "*.dmg" | \
+            xargs -I {} cp {} release_artifacts/ 2>/dev/null || true
+          
+          echo "📦 Release artifacts:"
+          ls -la release_artifacts/
 
       - name: Create staging release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.get_version.outputs.version }}-staging
-          name: Staging Release v${{ steps.get_version.outputs.version }}
+          name: "R2MIDI v${{ steps.get_version.outputs.version }} - Release"
           draft: true
           prerelease: true
-          files: all_stable_builds/*
+          files: release_artifacts/*
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            ## 🚧 R2MIDI v${{ steps.get_version.outputs.version }} - Staging Release
+            ## 🚀 R2MIDI v${{ steps.get_version.outputs.version }} - Release
 
-            **This is a staging release with unsigned applications for Linux/Windows only.**
+            ### 📦 Available Platforms
 
-            The production-ready release with signed applications (including macOS) will be created automatically by the signing workflow.
+            - 🐧 **Linux**: Production-ready packages
+              - **Install**: `R2MIDI-*-linux-v${{ steps.get_version.outputs.version }}.deb`
+              - **Portable**: `R2MIDI-*-linux-v${{ steps.get_version.outputs.version }}.tar.gz`
 
-            ### 📦 Available Platforms (Unsigned Stable Builds)
+            - 🍎 **macOS**: Signed and Notarized ✨
+              - **Installer**: `R2MIDI-*-v${{ steps.get_version.outputs.version }}.pkg` (Recommended)
+              - **Disk Image**: `R2MIDI-*-v${{ steps.get_version.outputs.version }}.dmg`
+              - ✅ **No security warnings!**
 
-            - 🐧 **Linux**: Production-ready, no signing required
-              - Download: `R2MIDI-*-linux-stable-v${{ steps.get_version.outputs.version }}.tar.gz`
-              - Installation: Extract and run executables
+            - 🪟 **Windows**: Unsigned (Testing)
+              - **Portable**: `R2MIDI-*-windows-v${{ steps.get_version.outputs.version }}.zip`
+              - ⚠️ Security warnings expected
 
-            - 🪟 **Windows**: Unsigned, for testing only
-              - Download: `R2MIDI-*-windows-stable-v${{ steps.get_version.outputs.version }}.zip`
-              - Installation: Extract and run .exe files (security warnings expected)
+            ### 📋 Installation
 
-            - 🍎 **macOS**: Unsigned, for testing only
-              - Download: `R2MIDI-*-macos-stable-v${{ steps.get_version.outputs.version }}.zip`
-              - Installation: Extract and open .app files (security warnings expected)
-
-            ### 📋 Installation Instructions
-
-            #### Linux (Ready for Use) ✅
+            **Linux:**
             ```bash
-            # Extract
-            tar -xzf R2MIDI-*-linux-stable-v${{ steps.get_version.outputs.version }}.tar.gz
-
-            # Make executable 
-            chmod +x r2midi-*
-
-            # Run
-            ./r2midi-server  # or ./r2midi-client
+            sudo dpkg -i R2MIDI-*-linux-v${{ steps.get_version.outputs.version }}.deb
             ```
 
-            #### Windows (Testing Only) ⚠️
-            1. Extract the ZIP file
-            2. Allow through Windows Defender when prompted
-            3. Run the .exe files
-            4. **Note**: Security warnings are expected for unsigned executables
+            **macOS:**
+            Double-click the .pkg file or mount .dmg and drag to Applications
 
-            #### macOS (Testing Only) ⚠️
-            1. Extract the ZIP file
-            2. Right-click on the .app file and select "Open"
-            3. Click "Open" when prompted about unidentified developer
-            4. **Note**: Security warnings are expected for unsigned applications
+            **Windows:**
+            Extract ZIP and run .exe files
 
-            ### 🔄 What's Next?
+            ### 🔒 Security Status
 
-            - **Signed Release**: Will be created automatically with:
-              - ✅ Code-signed Windows applications
-              - ✅ Code-signed and notarized macOS applications  
-              - ✅ All platforms ready for production use
-
-            - **PyPI Package**: Already published at https://pypi.org/project/r2midi/
-
-            ### 🛠️ For Developers
-
-            - Test these builds on your platforms
-            - Report issues with platform-specific behavior
-            - Signed production release coming soon automatically
+            | Platform | Status | Production Ready |
+            |----------|--------|------------------|
+            | 🍎 macOS | ✅ Signed & Notarized | ✅ Yes |
+            | 🐧 Linux | ✅ No signing needed | ✅ Yes |
+            | 🪟 Windows | ❌ Unsigned | ⚠️ Testing only |
 
             ---
-
-            **🔒 Production users: Wait for the signed release that will be published automatically.**
+            **🍎 macOS users: Fully signed and notarized!**  
+            **🐧 Linux users: Production ready!**  
+            **🪟 Windows users: Signed packages coming soon!**

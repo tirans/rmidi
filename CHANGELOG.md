@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.1.154] - 2025-06-14
+## [0.1.155] - 2025-06-14
+
+### Changed
+- Automatic version increment
+
+## [0.1.154] - ## [0.1.154] - 2025-06-14
 
 ### Changed
 - Version increment: patch

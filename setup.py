@@ -36,5 +36,5 @@ setup(
             "httpx>=0.25.0",
         ],
     },
-    python_requires=">=3.9,<3.13",
+    python_requires=">=3.12,<3.13",
 )

@@ -17,13 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12"]
-        exclude:
-          # Reduce matrix size for faster CI
-          - os: windows-latest
-            python-version: "3.10"
-          - os: macos-latest
-            python-version: "3.10"
+        python-version: ["3.12"]
 
     steps:
       - name: Checkout repository
@@ -70,15 +64,15 @@ jobs:
       - name: Run unit tests
         shell: bash
         run: |
-          # Run tests with coverage for Python 3.12 on Ubuntu
-          if [[ "${{ matrix.python-version }}" == "3.12" && "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+          # Run tests with coverage on Ubuntu (since we only use Python 3.12 now)
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
             python -m pytest tests/ -v --cov=server --cov=r2midi_client --cov-report=xml --cov-report=term
           else
             python -m pytest tests/ -v
           fi
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
@@ -205,7 +199,7 @@ jobs:
           
           # Check individual job results
           if [[ "${{ needs.test.result }}" == "success" ]]; then
-            echo "✅ **Tests**: All tests passed across multiple Python versions and platforms" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Tests**: All tests passed on Python 3.12 across all platforms" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Tests**: Some tests failed" >> $GITHUB_STEP_SUMMARY
           fi

@@ -16,7 +16,7 @@ This approach keeps sensitive files local and automates the complex parts.
 - macOS machine with Xcode Command Line Tools
 - Active Apple Developer Program membership ($99/year)
 - GitHub repository admin access
-- Python 3.10+
+- Python 3.12+
 
 ## 🏁 Quick Start
 

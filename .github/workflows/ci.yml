@@ -66,7 +66,7 @@ jobs:
           fi
           
           # Install test dependencies
-          python -m pip install pytest pytest-asyncio pytest-mock pytest-cov pytest-qt
+          python -m pip install pytest pytest-asyncio pytest-mock PyQt6==6.5.0 pytest-cov pytest-qt
 
       - name: Validate project structure
         shell: bash
@@ -81,7 +81,7 @@ jobs:
             # Use virtual display for PyQt6 tests
             xvfb-run -a python -m pytest tests/ -v --cov=server --cov=r2midi_client --cov-report=xml --cov-report=term
           else
-            python -m pytest tests/ -v
+            python -m pytest tests/ -v --showlocals --tb=short
           fi
 
       - name: Upload coverage to Codecov

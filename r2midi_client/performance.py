@@ -2,14 +2,15 @@
 Performance monitoring for R2MIDI application
 """
 
-import time
-import logging
-import psutil
 import asyncio
-from typing import Dict, List, Optional, Callable
+import logging
+import statistics
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
-import statistics
+from typing import Callable, Dict, List, Optional
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

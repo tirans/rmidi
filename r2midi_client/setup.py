@@ -3,9 +3,10 @@
 Setup script for R2MIDI Client (macOS)
 """
 
-from setuptools import setup
 import os
 import sys
+
+from setuptools import setup
 
 # Get version from parent directory
 sys.path.insert(

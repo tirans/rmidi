@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Test script to verify preset background colors are working"""
 
-import os
 import json
+import os
 
 
 def clear_category_colors():

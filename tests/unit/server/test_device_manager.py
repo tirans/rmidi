@@ -1,10 +1,12 @@
-import unittest
-import os
 import json
+import os
 import tempfile
-from unittest.mock import patch, mock_open, MagicMock
+import unittest
+from unittest.mock import MagicMock, mock_open, patch
+
 from server.device_manager import DeviceManager
 from server.models import Device, Preset
+
 
 class TestDeviceManager(unittest.TestCase):
     """Test cases for the DeviceManager class"""

@@ -2,9 +2,10 @@
 """
 Validate that pytest tests are properly configured and discoverable
 """
+import os
 import subprocess
 import sys
-import os
+
 
 def run_command(cmd, description):
     """Run a command and print the results"""

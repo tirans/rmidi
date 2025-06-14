@@ -7,8 +7,8 @@ for different platforms (Windows .ico, macOS .icns, Linux .png).
 """
 
 import os
-import sys
 import platform
+import sys
 from pathlib import Path
 
 try:
@@ -146,8 +146,8 @@ def generate_windows_ico(base_img, output_path):
 def generate_macos_icns(base_img, output_path):
     """Generate macOS .icns file."""
     # For simplicity, we'll create a temporary iconset
-    import tempfile
     import subprocess
+    import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
         iconset_path = Path(tmpdir) / "icon.iconset"

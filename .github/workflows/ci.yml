@@ -44,7 +44,7 @@ jobs:
             build-essential \
             pkg-config \
             libegl1-mesa-dev \
-            libgl1-mesa-glx \
+            libgl1-mesa-dri \
             libglib2.0-0 \
             libxkbcommon-x11-0 \
             libxcb-icccm4 \
@@ -187,7 +187,7 @@ jobs:
             libasound2-dev \
             portaudio19-dev \
             libegl1-mesa-dev \
-            libgl1-mesa-glx \
+            libgl1-mesa-dri \
             libglib2.0-0 \
             libxkbcommon-x11-0 \
             libxcb-icccm4 \

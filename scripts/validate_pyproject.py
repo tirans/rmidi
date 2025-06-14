@@ -4,8 +4,8 @@ Script to validate pyproject.toml for Briefcase builds.
 Checks that all required sections and fields are present.
 """
 
-import sys
 import re
+import sys
 from pathlib import Path
 
 try:

@@ -1,9 +1,10 @@
 import logging
 import os
-import shutil
 import re
+import shutil
+
 import git
-from git import Repo, GitCommandError
+from git import GitCommandError, Repo
 
 # Configure logger
 logger = logging.getLogger(__name__)

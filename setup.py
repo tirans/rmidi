@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Minimal setup.py for editable installs"""
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 # Read version from server/version.py
 version = {}

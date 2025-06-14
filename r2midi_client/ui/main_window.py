@@ -1,49 +1,30 @@
 import asyncio
+import concurrent.futures
 import logging
 import sys
+import threading
 import time
 import traceback
-from typing import Optional, Callable, Any, Coroutine
-from PyQt6.QtWidgets import (
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QStatusBar,
-    QMessageBox,
-    QSplitter,
-    QPushButton,
-    QProgressBar,
-    QLabel,
-    QApplication,
-    QGraphicsOpacityEffect,
-)
-from PyQt6.QtCore import (
-    Qt,
-    QTimer,
-    QObject,
-    pyqtSlot,
-    QThread,
-    pyqtSignal,
-    QPropertyAnimation,
-    QEasingCurve,
-    QSize,
-    QPoint,
-    pyqtProperty,
-)
-import threading
-import concurrent.futures
+from typing import Any, Callable, Coroutine, Optional
+
+from PyQt6.QtCore import (QEasingCurve, QObject, QPoint, QPropertyAnimation,
+                          QSize, Qt, QThread, QTimer, pyqtProperty, pyqtSignal,
+                          pyqtSlot)
+from PyQt6.QtWidgets import (QApplication, QGraphicsOpacityEffect, QHBoxLayout,
+                             QLabel, QMainWindow, QMessageBox, QProgressBar,
+                             QPushButton, QSplitter, QStatusBar, QVBoxLayout,
+                             QWidget)
 
 from ..api_client import CachedApiClient
-from .preset_panel import PresetPanel
-from .device_panel import DevicePanel
-from .preferences_dialog import PreferencesDialog
-from .edit_dialog import EditDialog
-from ..models import Preset
 from ..config import get_config, get_config_manager
+from ..models import Preset
+from ..performance import PerformanceContext, get_monitor
 from ..shortcuts import ShortcutManager
 from ..themes import ThemeManager
-from ..performance import get_monitor, PerformanceContext
+from .device_panel import DevicePanel
+from .edit_dialog import EditDialog
+from .preferences_dialog import PreferencesDialog
+from .preset_panel import PresetPanel
 
 # Configure logger
 logger = logging.getLogger("r2midi_client.ui.main_window")

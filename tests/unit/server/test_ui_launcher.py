@@ -1,10 +1,12 @@
-import unittest
 import os
+import subprocess
 import sys
 import time
-import subprocess
-from unittest.mock import patch, MagicMock, call
+import unittest
+from unittest.mock import MagicMock, call, patch
+
 from server.ui_launcher import UILauncher
+
 
 class TestUILauncher(unittest.TestCase):
     """Test cases for the UILauncher class"""

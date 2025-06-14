@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import yaml
 import sys
+
+import yaml
 
 file_path = ".github/actions/build-apps/action.yml"
 

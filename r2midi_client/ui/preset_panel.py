@@ -1,31 +1,18 @@
-from typing import Dict, List, Optional, Set, Tuple
-from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QListWidget,
-    QListWidgetItem,
-    QLabel,
-    QTextEdit,
-    QComboBox,
-    QGroupBox,
-    QLineEdit,
-    QPushButton,
-    QCheckBox,
-    QMenu,
-    QStyledItemDelegate,
-    QStyleOptionViewItem,
-    QStyle,
-)
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QRect
-from PyQt6.QtGui import QColor, QBrush, QIcon, QAction, QFont, QPainter, QPen
-
-from ..models import Preset
-from ..config import get_config
-
 import json
-import os
 import logging
+import os
+from typing import Dict, List, Optional, Set, Tuple
+
+from PyQt6.QtCore import QRect, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QIcon, QPainter, QPen
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QGroupBox, QHBoxLayout,
+                             QLabel, QLineEdit, QListWidget, QListWidgetItem,
+                             QMenu, QPushButton, QStyle, QStyledItemDelegate,
+                             QStyleOptionViewItem, QTextEdit, QVBoxLayout,
+                             QWidget)
+
+from ..config import get_config
+from ..models import Preset
 
 # Configure logger
 logger = logging.getLogger("r2midi_client.ui.preset_panel")
@@ -354,7 +341,7 @@ class PresetPanel(QWidget):
         for category in categories:
             # Create a colored square icon for the category
             pixmap_size = 16
-            from PyQt6.QtGui import QPixmap, QPainter
+            from PyQt6.QtGui import QPainter, QPixmap
 
             pixmap = QPixmap(pixmap_size, pixmap_size)
             color = self.category_colors.get(category)
@@ -744,7 +731,7 @@ class PresetPanel(QWidget):
         self.legend_box.setVisible(True)
 
         # Add a label for each category with its color
-        from PyQt6.QtGui import QPixmap, QPainter
+        from PyQt6.QtGui import QPainter, QPixmap
 
         for category in categories:
             # Create a horizontal layout for this legend item

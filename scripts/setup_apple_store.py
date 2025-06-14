@@ -21,18 +21,19 @@ Usage:
     python scripts/setup_apple_store.py phase2    # Automated processing and GitHub integration
 """
 
-import os
-import sys
-import subprocess
 import base64
-import json
 import getpass
+import json
+import os
 import re
-import requests
 import shutil
+import subprocess
+import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+
+import requests
 
 
 class Colors:

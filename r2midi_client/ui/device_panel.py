@@ -1,21 +1,13 @@
-from typing import Dict, List, Optional, Callable, Any, Coroutine
+import asyncio
+import json
 import logging
 import os
-import json
-import asyncio
-from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QComboBox,
-    QGroupBox,
-    QFormLayout,
-    QSpinBox,
-    QCheckBox,
-    QMessageBox,
-)
-from PyQt6.QtCore import pyqtSignal, QTimer
+from typing import Any, Callable, Coroutine, Dict, List, Optional
+
+from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QGroupBox,
+                             QHBoxLayout, QLabel, QMessageBox, QSpinBox,
+                             QVBoxLayout, QWidget)
 
 from ..models import Device, UIState
 

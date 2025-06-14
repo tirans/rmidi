@@ -1,21 +1,21 @@
-import os
+import concurrent.futures
 import json
 import logging
-import subprocess
-import shutil
-import time
-import concurrent.futures
+import os
 import re
-from typing import Dict, List, Optional, Tuple, Any
+import shutil
+import subprocess
+import time
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import modules - handle both relative and absolute imports
 try:
     # Try relative imports first (when imported as package)
-    from .models import Device, Preset, DirectoryStructureResponse
+    from .models import Device, DirectoryStructureResponse, Preset
 except ImportError:
     # Fall back to absolute imports (when run directly)
-    from server.models import Device, Preset, DirectoryStructureResponse
+    from server.models import Device, DirectoryStructureResponse, Preset
 
 
 # Path validation utility functions
@@ -139,9 +139,9 @@ class DeviceManager:
         import os
 
         try:
-            from .git_operations import git_sync, get_midi_presets_mode
+            from .git_operations import get_midi_presets_mode, git_sync
         except ImportError:
-            from server.git_operations import git_sync, get_midi_presets_mode
+            from server.git_operations import get_midi_presets_mode, git_sync
 
         mode = get_midi_presets_mode()
         logger.info(f"Validating midi-presets in {mode} mode")
@@ -230,9 +230,9 @@ class DeviceManager:
         Returns a tuple of (success, message)
         """
         try:
-            from .git_operations import git_sync, get_midi_presets_mode
+            from .git_operations import get_midi_presets_mode, git_sync
         except ImportError:
-            from server.git_operations import git_sync, get_midi_presets_mode
+            from server.git_operations import get_midi_presets_mode, git_sync
 
         mode = get_midi_presets_mode()
         logger.info(f"Running git sync in {mode} mode")

@@ -20,8 +20,8 @@ Usage:
 """
 
 import json
-import sys
 import os
+import sys
 
 
 class Colors:

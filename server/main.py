@@ -1,17 +1,18 @@
+import json
 import logging
 import logging.handlers
-import sys
 import os
-import uvicorn
-import socket
-import json
 import re
+import socket
+import sys
+from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List, Optional, Any, Tuple
-from contextlib import asynccontextmanager
-from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
@@ -101,37 +102,23 @@ def safe_path_join(base_path: str, *components: str) -> Tuple[str, bool, bool]:
 try:
     # Try relative imports first (when imported as package)
     from .device_manager import DeviceManager
-    from .midi_utils import MidiUtils
-    from .models import (
-        Device,
-        Preset,
-        PresetRequest,
-        ManufacturerRequest,
-        ManufacturerCreate,
-        DeviceCreate,
-        PresetCreate,
-        DirectoryStructureRequest,
-        DirectoryStructureResponse,
-    )
-    from .version import __version__
     from .git_operations import git_sync as git_sync_operation
+    from .midi_utils import MidiUtils
+    from .models import (Device, DeviceCreate, DirectoryStructureRequest,
+                         DirectoryStructureResponse, ManufacturerCreate,
+                         ManufacturerRequest, Preset, PresetCreate,
+                         PresetRequest)
+    from .version import __version__
 except ImportError:
     # Fall back to absolute imports (when run directly)
     from server.device_manager import DeviceManager
-    from server.midi_utils import MidiUtils
-    from server.models import (
-        Device,
-        Preset,
-        PresetRequest,
-        ManufacturerRequest,
-        ManufacturerCreate,
-        DeviceCreate,
-        PresetCreate,
-        DirectoryStructureRequest,
-        DirectoryStructureResponse,
-    )
-    from server.version import __version__
     from server.git_operations import git_sync as git_sync_operation
+    from server.midi_utils import MidiUtils
+    from server.models import (Device, DeviceCreate, DirectoryStructureRequest,
+                               DirectoryStructureResponse, ManufacturerCreate,
+                               ManufacturerRequest, Preset, PresetCreate,
+                               PresetRequest)
+    from server.version import __version__
 
 # Configure logging
 # Create logs directory if it doesn't exist
@@ -1064,10 +1051,12 @@ async def git_remote_sync():
     """
     try:
         # Import the git_remote_sync function from the git_operations module
-        from server.git_operations import git_remote_sync as git_remote_sync_operation
+        from server.git_operations import \
+            git_remote_sync as git_remote_sync_operation
     except ImportError:
         # Fall back to absolute imports (when run directly)
-        from server.git_operations import git_remote_sync as git_remote_sync_operation
+        from server.git_operations import \
+            git_remote_sync as git_remote_sync_operation
 
     # Call the git_remote_sync function from the git_operations module
     success, message, status_code = git_remote_sync_operation()

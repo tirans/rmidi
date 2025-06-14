@@ -3,9 +3,10 @@
 Setup script for R2MIDI Server (macOS)
 """
 
-from setuptools import setup
 import os
 import sys
+
+from setuptools import setup
 
 # Add parent directory to path to import version
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

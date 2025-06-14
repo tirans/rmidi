@@ -7,8 +7,8 @@ metadata, and platform-specific settings for Briefcase builds.
 """
 
 import argparse
-import re
 import platform
+import re
 import sys
 from pathlib import Path
 

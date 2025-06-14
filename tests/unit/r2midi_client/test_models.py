@@ -1,5 +1,7 @@
 import unittest
+
 from r2midi_client.models import Device, Preset, UIState
+
 
 class TestClientModels(unittest.TestCase):
     """Test cases for the client-side models"""

@@ -2,8 +2,8 @@
 """
 Test script to verify the restructured project works
 """
-import sys
 import os
+import sys
 
 # Add the project root to the Python path
 project_root = os.path.dirname(__file__)

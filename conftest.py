@@ -1,6 +1,7 @@
 """Pytest configuration"""
-import sys
 import os
+import sys
+
 import pytest
 
 # Add the project root to Python path

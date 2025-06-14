@@ -2,11 +2,11 @@
 Configuration management for R2MIDI application
 """
 
-import os
 import json
 import logging
-from typing import Dict, Any, Optional
-from dataclasses import dataclass, asdict
+import os
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

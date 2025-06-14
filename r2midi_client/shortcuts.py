@@ -2,11 +2,12 @@
 Keyboard shortcuts management for R2MIDI
 """
 
-from PyQt6.QtCore import Qt, QObject, pyqtSignal
+import logging
+from typing import Callable, Dict, Optional
+
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QWidget
-from typing import Dict, Callable, Optional
-import logging
 
 logger = logging.getLogger(__name__)
 

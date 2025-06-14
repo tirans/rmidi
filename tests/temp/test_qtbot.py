@@ -1,6 +1,7 @@
 import pytest
 from PyQt6.QtWidgets import QApplication, QPushButton
 
+
 def test_qtbot_works(qtbot):
     """Test that qtbot fixture works with PyQt6"""
     # Create a simple button widget

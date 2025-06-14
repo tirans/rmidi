@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Test script to verify icon generation works on Windows."""
 
-import sys
 import os
 import platform
+import sys
 
 # Add parent directory to path to import generate_icons
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.generate_icons import safe_print
+
 
 def test_safe_print():
     """Test the safe_print function with various inputs."""

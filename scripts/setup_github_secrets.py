@@ -17,13 +17,13 @@ Usage:
     python scripts/setup_github_secrets.py
 """
 
-import os
-import sys
-import subprocess
 import base64
-import json
 import getpass
+import json
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 

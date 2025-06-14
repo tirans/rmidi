@@ -21,12 +21,12 @@ Commands:
     guide       - Show download guide for certificates
 """
 
-import os
-import sys
-import subprocess
 import base64
 import getpass
+import os
 import re
+import subprocess
+import sys
 from typing import Dict, List
 
 

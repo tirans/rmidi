@@ -1,9 +1,10 @@
-import unittest
 import asyncio
-from unittest.mock import patch, MagicMock, call
 import subprocess
+import unittest
+from unittest.mock import MagicMock, call, patch
 
 from server.midi_utils import MidiUtils
+
 
 class TestMidiUtils(unittest.TestCase):
     """Test cases for the MidiUtils class"""

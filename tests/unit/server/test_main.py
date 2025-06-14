@@ -1,13 +1,15 @@
-import unittest
+import asyncio
 import os
 import socket
-import asyncio
-from unittest.mock import patch, MagicMock, AsyncMock
-from fastapi.testclient import TestClient as FastAPITestClient
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+from fastapi.testclient import TestClient as FastAPITestClient
 
 # Import the app and functions from server.main
-from server.main import app, is_port_in_use, find_available_port
+from server.main import app, find_available_port, is_port_in_use
+
 
 # Create a custom TestClient that's compatible with newer versions of httpx
 class TestClient(FastAPITestClient):

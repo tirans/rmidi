@@ -1,5 +1,7 @@
 import unittest
+
 from server.models import Device, Preset, PresetRequest, UIState
+
 
 class TestModels(unittest.TestCase):
     """Test cases for the models module"""

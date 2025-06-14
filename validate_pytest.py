@@ -2,11 +2,12 @@
 """
 Comprehensive pytest validation script for r2midi
 """
+import json
+import os
 import subprocess
 import sys
-import os
-import json
 from pathlib import Path
+
 
 def run_command(cmd, description="", capture=True):
     """Run a command and return the result"""

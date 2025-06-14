@@ -1,11 +1,14 @@
-import unittest
 import json
 import subprocess
-from unittest.mock import patch, MagicMock, AsyncMock
-import pytest
+import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
+
 from r2midi_client.api_client import CachedApiClient as ApiClient
 from r2midi_client.models import Device, Preset
+
 
 class TestApiClient:
     """Test cases for the ApiClient class"""

@@ -1,25 +1,13 @@
-from typing import Dict, List, Optional, Any, Callable
-import logging
 import asyncio
-from PyQt6.QtWidgets import (
-    QDialog,
-    QTabWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QComboBox,
-    QLineEdit,
-    QSpinBox,
-    QPushButton,
-    QMessageBox,
-    QFormLayout,
-    QWidget,
-    QListWidget,
-    QListWidgetItem,
-    QTextEdit,
-    QGroupBox,
-)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+import logging
+from typing import Any, Callable, Dict, List, Optional
+
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtWidgets import (QComboBox, QDialog, QFormLayout, QGroupBox,
+                             QHBoxLayout, QLabel, QLineEdit, QListWidget,
+                             QListWidgetItem, QMessageBox, QPushButton,
+                             QSpinBox, QTabWidget, QTextEdit, QVBoxLayout,
+                             QWidget)
 
 from ..api_client import CachedApiClient
 

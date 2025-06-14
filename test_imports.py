@@ -5,8 +5,8 @@ Test import validation script
 This script validates that all the test imports work correctly after refactoring.
 """
 
-import sys
 import os
+import sys
 
 # Add the project root to Python path
 project_root = '/Users/tirane/Desktop/r2midi'
@@ -26,7 +26,7 @@ def test_server_imports():
         print("✅ server.device_manager imports work")
         
         # Test server.main
-        from server.main import app, is_port_in_use, find_available_port
+        from server.main import app, find_available_port, is_port_in_use
         print("✅ server.main imports work")
         
         # Test server.midi_utils

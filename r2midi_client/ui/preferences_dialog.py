@@ -2,29 +2,16 @@
 Preferences dialog for R2MIDI application
 """
 
-from PyQt6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTabWidget,
-    QWidget,
-    QGroupBox,
-    QFormLayout,
-    QSpinBox,
-    QCheckBox,
-    QComboBox,
-    QLineEdit,
-    QPushButton,
-    QLabel,
-    QMessageBox,
-    QTextEdit,
-    QDialogButtonBox,
-)
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIntValidator
 import logging
 
-from ..config import get_config_manager, AppConfig
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QIntValidator
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
+                             QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+                             QLineEdit, QMessageBox, QPushButton, QSpinBox,
+                             QTabWidget, QTextEdit, QVBoxLayout, QWidget)
+
+from ..config import AppConfig, get_config_manager
 from ..shortcuts import ShortcutDisplay
 
 logger = logging.getLogger(__name__)

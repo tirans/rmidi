@@ -1,8 +1,8 @@
-import subprocess
-import logging
 import asyncio
-from typing import Dict, List, Optional, Tuple
+import logging
 import logging.config
+import subprocess
+from typing import Dict, List, Optional, Tuple
 
 # Get logger
 logger = logging.getLogger(__name__)

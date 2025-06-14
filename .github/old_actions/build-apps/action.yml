@@ -1,0 +1,432 @@
+name: Build Applications
+description: Build R2MIDI server and client applications with platform-specific tools
+
+inputs:
+  platform:
+    description: 'Target platform (linux, windows, macOS)'
+    required: true
+  build-type:
+    description: 'Build type (dev, staging, production)'
+    required: true
+    default: 'dev'
+  version:
+    description: 'Application version'
+    required: true
+  sign:
+    description: 'Whether to sign builds (macOS only)'
+    required: false
+    default: 'false'
+
+outputs:
+  server-app-path:
+    description: 'Path to the server application'
+    value: ${{ steps.build.outputs.server-app-path }}
+  client-app-path:
+    description: 'Path to the client application'
+    value: ${{ steps.build.outputs.client-app-path }}
+  artifacts-path:
+    description: 'Path to build artifacts directory'
+    value: ${{ steps.build.outputs.artifacts-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        echo "🔍 Validating build inputs..."
+        
+        case "${{ inputs.platform }}" in
+          linux|windows|macOS)
+            echo "✅ Platform: ${{ inputs.platform }}"
+            ;;
+          *)
+            echo "❌ Invalid platform: ${{ inputs.platform }}"
+            exit 1
+            ;;
+        esac
+        
+        case "${{ inputs.build-type }}" in
+          dev|staging|production)
+            echo "✅ Build type: ${{ inputs.build-type }}"
+            ;;
+          *)
+            echo "❌ Invalid build type: ${{ inputs.build-type }}"
+            exit 1
+            ;;
+        esac
+        
+        echo "✅ Input validation complete"
+
+    - name: Setup build environment
+      shell: bash
+      run: |
+        echo "🔧 Setting up build environment..."
+        
+        # Create build directories
+        mkdir -p build/{server,client,artifacts}
+        mkdir -p dist/{server,client}
+        
+        # Set environment variables
+        echo "PLATFORM=${{ inputs.platform }}" >> $GITHUB_ENV
+        echo "BUILD_TYPE=${{ inputs.build-type }}" >> $GITHUB_ENV
+        echo "APP_VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+        echo "SHOULD_SIGN=${{ inputs.sign }}" >> $GITHUB_ENV
+        
+        # Ensure midi-presets directory exists
+        if [ ! -d "server/midi-presets" ]; then
+          mkdir -p server/midi-presets
+          echo "# MIDI Presets" > server/midi-presets/README.md
+        fi
+        
+        echo "✅ Build environment ready"
+
+    - name: Install build tools (Linux/Windows)
+      if: inputs.platform != 'macOS'
+      shell: bash
+      run: |
+        echo "📦 Installing Briefcase for ${{ inputs.platform }}..."
+        
+        python -m pip install --upgrade pip setuptools wheel
+        pip install briefcase
+        
+        echo "✅ Briefcase installed: $(briefcase --version)"
+
+    - name: Install build tools (macOS)
+      if: inputs.platform == 'macOS'
+      shell: bash
+      run: |
+        echo "📦 Installing native macOS build tools..."
+        
+        python -m pip install --upgrade pip setuptools wheel
+        pip install py2app pillow
+        
+        echo "✅ py2app installed for native macOS builds"
+
+    - name: Install project dependencies
+      shell: bash
+      run: |
+        echo "📦 Installing project dependencies..."
+        
+        if [ -f "requirements.txt" ]; then
+          pip install -r requirements.txt
+        fi
+        
+        if [ -f "r2midi_client/requirements.txt" ]; then
+          pip install -r r2midi_client/requirements.txt
+        fi
+        
+        echo "✅ Dependencies installed"
+
+    - name: Create Briefcase config
+      if: inputs.platform != 'macOS'
+      shell: bash
+      env:
+        APP_VERSION: ${{ inputs.version }}
+      run: |
+        echo "⚙️ Setting up Briefcase configuration..."
+        
+        # Check if Briefcase config exists
+        if ! python -c "import tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); assert 'tool' in config and 'briefcase' in config['tool']" 2>/dev/null; then
+          echo "Creating Briefcase configuration..."
+          
+          # Create config file
+          printf '%s\n' \
+            '' \
+            '[tool.briefcase]' \
+            'project_name = "R2MIDI"' \
+            'bundle = "com.r2midi"' \
+            'version = "PLACEHOLDER_VERSION"' \
+            'url = "https://github.com/tirans/r2midi"' \
+            'license = "MIT"' \
+            'author = "R2MIDI Team"' \
+            'author_email = "team@r2midi.org"' \
+            '' \
+            '[tool.briefcase.app.server]' \
+            'formal_name = "R2MIDI Server"' \
+            'description = "R2MIDI Server Application"' \
+            'sources = ["server"]' \
+            'icon = "r2midi"' \
+            '' \
+            '[tool.briefcase.app.client]' \
+            'formal_name = "R2MIDI Client"' \
+            'description = "R2MIDI Client Application"' \
+            'sources = ["r2midi_client"]' \
+            'icon = "r2midi"' \
+            >> pyproject.toml
+          
+          # Replace placeholder with actual version
+          sed -i "s/PLACEHOLDER_VERSION/${APP_VERSION}/g" pyproject.toml
+        fi
+        
+        echo "✅ Briefcase configuration ready"
+
+    - name: Build with Briefcase (Linux/Windows)
+      if: inputs.platform != 'macOS'
+      shell: bash
+      run: |
+        echo "🔨 Building with Briefcase for ${{ inputs.platform }}..."
+        
+        # Create and build applications
+        briefcase create
+        briefcase build
+        
+        echo "✅ Briefcase build completed"
+
+    - name: Build with py2app (macOS)
+      if: inputs.platform == 'macOS'
+      shell: bash
+      run: |
+        echo "🔨 Building with py2app for macOS..."
+        
+        # Build server application
+        echo "🔄 Building R2MIDI Server..."
+        if [ -f "server/setup.py" ]; then
+          cd server
+          python setup.py py2app --dist-dir ../dist/server || {
+            echo "❌ Server build failed"
+            cd ..
+            exit 1
+          }
+          cd ..
+          
+          # Find the built app
+          SERVER_APP_PATH=$(find dist/server -name "*.app" -type d | head -1)
+          if [ -n "$SERVER_APP_PATH" ]; then
+            echo "✅ Server app built: $SERVER_APP_PATH"
+          else
+            echo "❌ Server app not found after build"
+            exit 1
+          fi
+        else
+          echo "❌ server/setup.py not found"
+          exit 1
+        fi
+        
+        # Build client application  
+        echo "🔄 Building R2MIDI Client..."
+        if [ -f "r2midi_client/setup.py" ]; then
+          cd r2midi_client
+          python setup.py py2app --dist-dir ../dist/client || {
+            echo "❌ Client build failed"
+            cd ..
+            exit 1
+          }
+          cd ..
+          
+          # Find the built app
+          CLIENT_APP_PATH=$(find dist/client -name "*.app" -type d | head -1)
+          if [ -n "$CLIENT_APP_PATH" ]; then
+            echo "✅ Client app built: $CLIENT_APP_PATH"
+          else
+            echo "❌ Client app not found after build"
+            exit 1
+          fi
+        else
+          echo "❌ r2midi_client/setup.py not found"
+          exit 1
+        fi
+        
+        echo "✅ macOS py2app build completed successfully"
+
+    - name: Code sign applications (macOS)
+      if: inputs.platform == 'macOS' && inputs.sign == 'true'
+      shell: bash
+      run: |
+        echo "🔐 Code signing macOS applications..."
+        
+        if [ -z "${BRIEFCASE_SIGNING_IDENTITY:-}" ]; then
+          echo "⚠️ No signing identity found, skipping code signing"
+          exit 0
+        fi
+        
+        echo "🔑 Using signing identity: $BRIEFCASE_SIGNING_IDENTITY"
+        
+        # Function to sign an application
+        sign_app() {
+          local app_path="$1"
+          local app_name=$(basename "$app_path")
+          
+          echo "🔏 Signing $app_name..."
+          
+          # Sign all nested frameworks and binaries first
+          find "$app_path" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -exec \
+            codesign --force --verify --verbose --sign "$BRIEFCASE_SIGNING_IDENTITY" \
+            --options runtime --timestamp {} \; 2>/dev/null || true
+          
+          # Sign any nested frameworks
+          find "$app_path" -name "*.framework" -type d -exec \
+            codesign --force --verify --verbose --sign "$BRIEFCASE_SIGNING_IDENTITY" \
+            --options runtime --timestamp {} \; 2>/dev/null || true
+          
+          # Sign the main application
+          codesign --force --verify --verbose --sign "$BRIEFCASE_SIGNING_IDENTITY" \
+            --options runtime --timestamp "$app_path"
+          
+          # Verify the signature
+          codesign --verify --deep --strict "$app_path"
+          
+          echo "✅ Successfully signed $app_name"
+        }
+        
+        # Sign server app
+        if [ -n "${SERVER_APP_PATH:-}" ] && [ -d "$SERVER_APP_PATH" ]; then
+          sign_app "$SERVER_APP_PATH"
+        fi
+        
+        # Sign client app
+        if [ -n "${CLIENT_APP_PATH:-}" ] && [ -d "$CLIENT_APP_PATH" ]; then
+          sign_app "$CLIENT_APP_PATH"
+        fi
+        
+        echo "✅ Code signing completed"
+
+    - name: Notarize applications (macOS)
+      if: inputs.platform == 'macOS' && inputs.sign == 'true'
+      shell: bash
+      env:
+        APP_VERSION: ${{ inputs.version }}
+      run: |
+        echo "🔔 Notarizing macOS applications..."
+        
+        if [ -z "${BRIEFCASE_NOTARIZATION_PROFILE:-}" ]; then
+          echo "⚠️ No notarization profile found, skipping notarization"
+          exit 0
+        fi
+        
+        echo "📨 Using notarization profile: $BRIEFCASE_NOTARIZATION_PROFILE"
+        
+        # Function to notarize an application
+        notarize_app() {
+          local app_path="$1"
+          local app_name=$(basename "$app_path" .app)
+          local zip_name="${app_name}-${APP_VERSION}.zip"
+          
+          echo "📦 Creating archive for $app_name..."
+          
+          # Create zip for notarization
+          cd "$(dirname "$app_path")"
+          zip -r "$zip_name" "$(basename "$app_path")"
+          cd - > /dev/null
+          
+          local zip_path="$(dirname "$app_path")/$zip_name"
+          
+          echo "📤 Submitting $app_name for notarization..."
+          
+          # Submit for notarization
+          xcrun notarytool submit "$zip_path" \
+            --keychain-profile "$BRIEFCASE_NOTARIZATION_PROFILE" \
+            --wait
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ $app_name notarization successful"
+            
+            # Staple the notarization ticket
+            echo "📎 Stapling notarization ticket to $app_name..."
+            xcrun stapler staple "$app_path"
+            
+            echo "✅ Successfully stapled $app_name"
+          else
+            echo "❌ $app_name notarization failed"
+            exit 1
+          fi
+          
+          # Clean up zip file
+          rm -f "$zip_path"
+        }
+        
+        # Notarize server app
+        if [ -n "${SERVER_APP_PATH:-}" ] && [ -d "$SERVER_APP_PATH" ]; then
+          notarize_app "$SERVER_APP_PATH"
+        fi
+        
+        # Notarize client app  
+        if [ -n "${CLIENT_APP_PATH:-}" ] && [ -d "$CLIENT_APP_PATH" ]; then
+          notarize_app "$CLIENT_APP_PATH"
+        fi
+        
+        echo "✅ Notarization completed"
+
+    - name: Set build outputs
+      id: build
+      shell: bash
+      run: |
+        echo "📋 Setting build outputs..."
+        
+        SERVER_APP_PATH=""
+        CLIENT_APP_PATH=""
+        
+        case "${{ inputs.platform }}" in
+          linux)
+            SERVER_APP_PATH=$(find . -path "*/server/*" -name "server" -type f 2>/dev/null | head -1)
+            CLIENT_APP_PATH=$(find . -path "*/client/*" -name "client" -type f 2>/dev/null | head -1)
+            ;;
+          windows)
+            SERVER_APP_PATH=$(find . -path "*/server/*" -name "server.exe" -type f 2>/dev/null | head -1)
+            CLIENT_APP_PATH=$(find . -path "*/client/*" -name "client.exe" -type f 2>/dev/null | head -1)
+            ;;
+          macOS)
+            SERVER_APP_PATH=$(find dist/server -name "*.app" -type d 2>/dev/null | head -1)
+            CLIENT_APP_PATH=$(find dist/client -name "*.app" -type d 2>/dev/null | head -1)
+            ;;
+        esac
+        
+        echo "server-app-path=$SERVER_APP_PATH" >> $GITHUB_OUTPUT
+        echo "client-app-path=$CLIENT_APP_PATH" >> $GITHUB_OUTPUT
+        echo "artifacts-path=$(pwd)/build/artifacts" >> $GITHUB_OUTPUT
+        
+        echo "📱 Build Results:"
+        echo "  Server app: ${SERVER_APP_PATH:-Not found}"
+        echo "  Client app: ${CLIENT_APP_PATH:-Not found}"
+        echo "  Platform: ${{ inputs.platform }}"
+        echo "  Signed: ${{ inputs.sign }}"
+
+    - name: Prepare build artifacts
+      shell: bash
+      env:
+        PLATFORM: ${{ inputs.platform }}
+        BUILD_TYPE: ${{ inputs.build-type }}
+        APP_VERSION: ${{ inputs.version }}
+        SHOULD_SIGN: ${{ inputs.sign }}
+        COMMIT_SHA: ${{ github.sha }}
+        BRANCH_NAME: ${{ github.ref_name }}
+      run: |
+        echo "📦 Preparing build artifacts..."
+        
+        # Copy built applications to artifacts directory
+        if [ -n "${{ steps.build.outputs.server-app-path }}" ] && [ -e "${{ steps.build.outputs.server-app-path }}" ]; then
+          cp -r "${{ steps.build.outputs.server-app-path }}" build/artifacts/
+          echo "✅ Server app copied to artifacts"
+        fi
+        
+        if [ -n "${{ steps.build.outputs.client-app-path }}" ] && [ -e "${{ steps.build.outputs.client-app-path }}" ]; then
+          cp -r "${{ steps.build.outputs.client-app-path }}" build/artifacts/
+          echo "✅ Client app copied to artifacts"
+        fi
+        
+        # Create build info using environment variables
+        {
+          echo "Platform: ${PLATFORM}"
+          echo "Build Type: ${BUILD_TYPE}"
+          echo "Version: ${APP_VERSION}"
+          echo "Signed: ${SHOULD_SIGN}"
+          echo "Built: $(date -u)"
+          echo "Commit: ${COMMIT_SHA}"
+          echo "Branch: ${BRANCH_NAME}"
+        } > build/artifacts/BUILD_INFO.txt
+        
+        # Add build method info
+        if [ "$PLATFORM" = "macOS" ]; then
+          echo "Build Method: py2app + codesign + notarize" >> build/artifacts/BUILD_INFO.txt
+        else
+          echo "Build Method: briefcase" >> build/artifacts/BUILD_INFO.txt
+        fi
+        
+        echo "✅ Artifacts prepared"
+        
+        if [ -d "build/artifacts" ]; then
+          echo "📁 Artifacts directory contents:"
+          ls -la build/artifacts/
+        fi
+        
+        echo "✅ Build process completed"

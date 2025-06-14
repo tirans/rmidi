@@ -14,6 +14,15 @@ on:
           - minor
           - major
           - none
+      build-type:
+        description: 'Build type'
+        required: false
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+        default: 'production'
 
 permissions:
   contents: write
@@ -34,75 +43,48 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Configure Git
-        run: |
-          git config --local user.name "GitHub Action"
-          git config --local user.email "action@github.com"
-
       - name: Update version
         id: version
+        shell: bash
         run: |
-          # Get current version
-          CURRENT_VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
-          echo "Current version: $CURRENT_VERSION"
+          ./.github/scripts/update-version.sh "${{ github.event.inputs.version-type || 'patch' }}"
 
-          # Determine increment type
-          INCREMENT_TYPE="${{ github.event.inputs.version-type || 'patch' }}"
-
-          if [ "$INCREMENT_TYPE" = "none" ]; then
-            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-            echo "changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Parse version
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-
-          # Increment based on type
-          case "$INCREMENT_TYPE" in
-            major)
-              NEW_VERSION="$((MAJOR + 1)).0.0"
-              ;;
-            minor)
-              NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
-              ;;
-            patch)
-              NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-              ;;
-          esac
-
-          echo "New version: $NEW_VERSION"
-
-          # Update files
-          sed -i "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" server/version.py
-          sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" pyproject.toml
-
-          # Update CHANGELOG if it exists
-          if [ -f "CHANGELOG.md" ]; then
-            TODAY=$(date +%Y-%m-%d)
-            sed -i "s/## \[Unreleased\]/## [$NEW_VERSION] - $TODAY\n\n### Changed\n- Version increment: $INCREMENT_TYPE\n\n## [Unreleased]/" CHANGELOG.md
-            git add CHANGELOG.md
-          fi
-
-          # Commit changes
-          git add server/version.py pyproject.toml
-          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
-          git push
-
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "changed=true" >> $GITHUB_OUTPUT
-
-  # Run tests in parallel with multiple Python versions
+  # Run tests
   test:
-    name: Test (Python ${{ matrix.python-version }})
+    name: Test Suite
+    uses: ./.github/workflows/ci.yml
     needs: version
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-    uses: ./.github/workflows/reusable-test.yml
+
+  # Build for all platforms
+  build-windows:
+    name: Build Windows
+    needs: [version, test]
+    uses: ./.github/workflows/build-windows.yml
     with:
-      python-version: ${{ matrix.python-version }}
-      coverage: ${{ matrix.python-version == '3.12' }}
+      version: ${{ needs.version.outputs.version }}
+      build-type: ${{ github.event.inputs.build-type || 'production' }}
+
+  build-linux:
+    name: Build Linux
+    needs: [version, test]
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      build-type: ${{ github.event.inputs.build-type || 'production' }}
+
+  build-macos:
+    name: Build macOS
+    needs: [version, test]
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      build-type: ${{ github.event.inputs.build-type || 'production' }}
+    secrets:
+      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
   # Build Python package
   python-package:
@@ -117,43 +99,15 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
-      - name: Verify project structure
-        run: |
-          echo "🔍 Verifying project structure for Python package build..."
-          
-          # Configure Git for safety
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # Ensure server/midi-presets directory exists (no longer a submodule)
-          if [ ! -d "server/midi-presets" ]; then
-            echo "📁 Creating server/midi-presets directory..."
-            mkdir -p server/midi-presets
-            echo "# MIDI Presets Directory" > server/midi-presets/README.md
-            echo "This directory can contain MIDI preset files." >> server/midi-presets/README.md
-            echo "" >> server/midi-presets/README.md
-            echo "For the original presets repository, see:" >> server/midi-presets/README.md
-            echo "https://github.com/tirans/midi-presets" >> server/midi-presets/README.md
-            
-            # Create .gitkeep to ensure directory is included in builds
-            touch server/midi-presets/.gitkeep
-          fi
-          
-          echo "✅ Project structure verified"
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Build package
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install build twine
-          python -m build
-
-      - name: Check package
-        run: |
-          python -m twine check dist/*
+          ./.github/scripts/build-python-package.sh
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
@@ -161,30 +115,6 @@ jobs:
           name: python-package
           path: dist/
           retention-days: 30
-
-  # Build applications for all platforms
-  build-apps:
-    name: Build (${{ matrix.platform }})
-    needs: [version, test]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux
-            os: ubuntu-latest
-          - platform: windows
-            os: windows-latest
-          - platform: macOS
-            os: macos-13
-            sign: true
-    uses: ./.github/workflows/reusable-build.yml
-    with:
-      platform: ${{ matrix.platform }}
-      os: ${{ matrix.os }}
-      build-type: production
-      version-suffix: ""
-      sign-builds: ${{ matrix.sign || false }}
-    secrets: inherit
 
   # Publish to PyPI
   publish-pypi:
@@ -194,8 +124,8 @@ jobs:
     environment: pypi
     permissions:
       id-token: write  # Required for OIDC trusted publishing
-    # Using OIDC trusted publishing for PyPI
-    # See: https://docs.pypi.org/trusted-publishers/using-a-publisher/
+    if: github.event.inputs.build-type == 'production' || github.ref == 'refs/heads/master'
+
     steps:
       - name: Download package
         uses: actions/download-artifact@v4
@@ -211,8 +141,9 @@ jobs:
   # Create GitHub release
   create-release:
     name: Create Release
-    needs: [version, build-apps, publish-pypi]
+    needs: [version, build-windows, build-linux, build-macos, publish-pypi]
     runs-on: ubuntu-latest
+    if: github.event.inputs.build-type == 'production' || github.ref == 'refs/heads/master'
 
     steps:
       - name: Checkout code
@@ -223,9 +154,14 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: production-*
+          pattern: "*-production-*"
           path: release_files
           merge-multiple: true
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          ./.github/scripts/prepare-release-artifacts.sh "${{ needs.version.outputs.version }}"
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -239,16 +175,18 @@ jobs:
 
             ### 📦 Downloads
 
-            #### 🍎 macOS
-            - DMG installers (drag & drop)
-            - PKG installers (automated install)
+            #### 🍎 macOS (Signed & Notarized)
+            - **DMG**: Drag & drop installer
+            - **PKG**: Automated installer with signing verification
 
-            #### 🪟 Windows
-            - ZIP packages
+            #### 🪟 Windows (Unsigned)
+            - **ZIP**: Portable application packages
+            - **MSI**: Windows installer packages
 
-            #### 🐧 Linux
-            - DEB packages
-            - TAR.GZ archives
+            #### 🐧 Linux (Unsigned)
+            - **DEB**: Debian/Ubuntu packages
+            - **TAR.GZ**: Generic Linux archives
+            - **AppImage**: Universal Linux applications
 
             ### 📋 Installation
 
@@ -260,4 +198,11 @@ jobs:
 
             ### 📊 PyPI Package
 
-            The Python package is available on PyPI: https://pypi.org/project/r2midi/
+            Available on PyPI: https://pypi.org/project/r2midi/
+
+            ### ✅ Build Information
+
+            - **Windows**: Built with Briefcase (unsigned)
+            - **Linux**: Built with Briefcase (unsigned) 
+            - **macOS**: Built with Briefcase + Apple Developer ID signing & notarization
+            - **Python Package**: Available on PyPI with OIDC trusted publishing

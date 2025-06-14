@@ -41,6 +41,16 @@ on:
         required: false
       APPLE_TEAM_ID:
         required: false
+      APP_BUNDLE_ID_PREFIX:
+        required: false
+      APP_DISPLAY_NAME_SERVER:
+        required: false
+      APP_DISPLAY_NAME_CLIENT:
+        required: false
+      APP_AUTHOR_NAME:
+        required: false
+      APP_AUTHOR_EMAIL:
+        required: false
     outputs:
       artifact-name:
         description: "Name of the uploaded artifact"

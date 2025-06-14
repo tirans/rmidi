@@ -6,6 +6,7 @@ PROJECT_ROOT="/Users/tirane/Desktop/r2midi"
 cd "$PROJECT_ROOT"
 
 echo "🔍 Verifying GitHub workflow and action references..."
+echo ""
 
 # Track results
 TOTAL_CHECKS=0
@@ -25,31 +26,52 @@ check_workflow_file() {
     
     local file_issues=()
     
-    # Check for incorrect workflow references (missing version)
-    if grep -q "uses: \.\/\.github/workflows/.*\.yml$" "$file" 2>/dev/null; then
-        local bad_workflows=$(grep -n "uses: \.\/\.github/workflows/.*\.yml$" "$file")
-        while IFS= read -r line; do
-            file_issues+=("  Workflow missing version: $line")
-        done <<< "$bad_workflows"
+    # Check for incorrect workflow references (local workflows should NOT have @ref)
+    if grep -q "uses: .*\.github/workflows/.*\.yml@" "$file" 2>/dev/null; then
+        local bad_workflows=$(grep -n "uses: .*\.github/workflows/.*\.yml@" "$file" 2>/dev/null || true)
+        if [ -n "$bad_workflows" ]; then
+            while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                    file_issues+=("  ❌ Local workflow with @ref (invalid): $line")
+                fi
+            done <<< "$bad_workflows"
+        fi
     fi
     
-    # Check for incorrect action references (missing ./ prefix)
+    # Check for local workflows missing ./ prefix
+    if grep -q "uses: \.github/workflows/" "$file" 2>/dev/null; then
+        local bad_prefix=$(grep -n "uses: \.github/workflows/" "$file" 2>/dev/null || true)
+        if [ -n "$bad_prefix" ]; then
+            while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                    file_issues+=("  ❌ Local workflow missing ./ prefix: $line")
+                fi
+            done <<< "$bad_prefix"
+        fi
+    fi
+    
+    # Check for local actions missing ./ prefix
     if grep -q "uses: \.github/actions/" "$file" 2>/dev/null; then
-        local bad_actions=$(grep -n "uses: \.github/actions/" "$file")
-        while IFS= read -r line; do
-            file_issues+=("  Action missing ./ prefix: $line")
-        done <<< "$bad_actions"
+        local bad_actions=$(grep -n "uses: \.github/actions/" "$file" 2>/dev/null || true)
+        if [ -n "$bad_actions" ]; then
+            while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                    file_issues+=("  ❌ Local action missing ./ prefix: $line")
+                fi
+            done <<< "$bad_actions"
+        fi
     fi
     
-    # Check for correct patterns
-    local correct_workflows=$(grep -c "uses: \.\/\.github/workflows/.*\.yml@" "$file" 2>/dev/null || echo "0")
-    local correct_actions=$(grep -c "uses: \.\/\.github/actions/" "$file" 2>/dev/null || echo "0")
+    # Count correct patterns
+    local correct_workflows=$(grep -c "uses: \./\.github/workflows/.*\.yml$" "$file" 2>/dev/null || echo "0")
+    local correct_actions=$(grep -c "uses: \./\.github/actions/" "$file" 2>/dev/null || echo "0")
+    local external_refs=$(grep -c "uses: [^./].*@" "$file" 2>/dev/null || echo "0")
     
     if [ ${#file_issues[@]} -gt 0 ]; then
         ISSUES+=("Issues in $file:")
         ISSUES+=("${file_issues[@]}")
     else
-        echo "  ✅ Correct patterns: $correct_workflows workflows, $correct_actions actions"
+        echo "  ✅ Local workflows: $correct_workflows, Local actions: $correct_actions, External refs: $external_refs"
         PASSED_CHECKS=$((PASSED_CHECKS + 1))
     fi
 }
@@ -121,9 +143,9 @@ echo "Failed checks: $((TOTAL_CHECKS - PASSED_CHECKS))"
 
 echo ""
 echo "📋 Reference Format Rules:"
-echo "- Reusable workflows: uses: ./.github/workflows/name.yml@main"
+echo "- Local reusable workflows: uses: ./.github/workflows/name.yml (NO @ref)"
 echo "- Local actions: uses: ./.github/actions/action-name"
-echo "- External actions: uses: owner/repo@version"
+echo "- External workflows/actions: uses: owner/repo@version or uses: owner/repo/path@version"
 
 if [ ${#ISSUES[@]} -eq 0 ]; then
     echo ""

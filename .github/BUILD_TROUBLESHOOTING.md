@@ -84,7 +84,7 @@ Before running builds, you can validate your environment:
 
 ```bash
 # Validate build environment
-./.github/scripts/validate-build-environment.sh
+.github/scripts/validate-build-environment.sh
 
 # Check project structure
 python -c "

@@ -6,9 +6,9 @@ The build failures were caused by **incorrect GitHub Action path references** in
 
 ## 🔍 **Root Cause**
 
-**Error Pattern**: `Error: Failed to load /home/runner/work/r2midi/r2midi/./.github/actions/build-apps/action.yml`
+**Error Pattern**: `Error: Failed to load /home/runner/work/r2midi/r2midi/.github/actions/build-apps/action.yml`
 
-**Problem**: Paths like `./.github/actions/build-apps` should be `.github/actions/build-apps`
+**Problem**: Paths like `.github/actions/build-apps` should be `.github/actions/build-apps`
 
 The extra `./` prefix was causing GitHub Actions to incorrectly resolve paths with double dots in the working directory path.
 
@@ -17,39 +17,39 @@ The extra `./` prefix was causing GitHub Actions to incorrectly resolve paths wi
 ### **Workflow Files Updated**
 
 1. **`.github/workflows/ci.yml`**
-   - ❌ `uses: ./.github/workflows/reusable-build.yml`
+   - ❌ `uses: .github/workflows/reusable-build.yml`
    - ✅ `uses: .github/workflows/reusable-build.yml`
 
 2. **`.github/workflows/release.yml`**
-   - ❌ `uses: ./.github/workflows/reusable-test.yml`
+   - ❌ `uses: .github/workflows/reusable-test.yml`
    - ✅ `uses: .github/workflows/reusable-test.yml`
-   - ❌ `uses: ./.github/workflows/reusable-build.yml`
+   - ❌ `uses: .github/workflows/reusable-build.yml`
    - ✅ `uses: .github/workflows/reusable-build.yml`
 
 3. **`.github/workflows/reusable-build.yml`**
-   - ❌ `uses: ./.github/actions/setup-environment`
+   - ❌ `uses: .github/actions/setup-environment`
    - ✅ `uses: .github/actions/setup-environment`
-   - ❌ `uses: ./.github/actions/setup-macos-signing`
+   - ❌ `uses: .github/actions/setup-macos-signing`
    - ✅ `uses: .github/actions/setup-macos-signing`
-   - ❌ `uses: ./.github/actions/build-apps`
+   - ❌ `uses: .github/actions/build-apps`
    - ✅ `uses: .github/actions/build-apps`
-   - ❌ `uses: ./.github/actions/package-apps`
+   - ❌ `uses: .github/actions/package-apps`
    - ✅ `uses: .github/actions/package-apps`
-   - ❌ `uses: ./.github/actions/cleanup-signing`
+   - ❌ `uses: .github/actions/cleanup-signing`
    - ✅ `uses: .github/actions/cleanup-signing`
 
 4. **`.github/workflows/macos-native.yml`**
-   - ❌ `uses: ./.github/actions/install-system-deps`
+   - ❌ `uses: .github/actions/install-system-deps`
    - ✅ `uses: .github/actions/install-system-deps`
-   - ❌ `uses: ./.github/actions/setup-macos-signing`
+   - ❌ `uses: .github/actions/setup-macos-signing`
    - ✅ `uses: .github/actions/setup-macos-signing`
-   - ❌ `uses: ./.github/actions/configure-build`
+   - ❌ `uses: .github/actions/configure-build`
    - ✅ `uses: .github/actions/configure-build`
-   - ❌ `uses: ./.github/actions/build-apps`
+   - ❌ `uses: .github/actions/build-apps`
    - ✅ `uses: .github/actions/build-apps`
-   - ❌ `uses: ./.github/actions/package-apps`
+   - ❌ `uses: .github/actions/package-apps`
    - ✅ `uses: .github/actions/package-apps`
-   - ❌ `uses: ./.github/actions/cleanup-signing`
+   - ❌ `uses: .github/actions/cleanup-signing`
    - ✅ `uses: .github/actions/cleanup-signing`
 
 ### **Files Checked (No Issues Found)**
@@ -76,7 +76,7 @@ Created verification script: `verify-action-paths.sh`
 
 ### **Before Fix**
 ```
-Error: Failed to load /home/runner/work/r2midi/r2midi/./.github/actions/build-apps/action.yml
+Error: Failed to load /home/runner/work/r2midi/r2midi/.github/actions/build-apps/action.yml
 ```
 
 ### **After Fix**

@@ -223,7 +223,7 @@ jobs:
           - platform: macOS
             os: macos-13
 
-    uses: ./.github/workflows/reusable-build.yml
+    uses: .github/workflows/reusable-build.yml
     with:
       platform: ${{ matrix.platform }}
       os: ${{ matrix.os }}

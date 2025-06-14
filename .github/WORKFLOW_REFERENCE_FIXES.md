@@ -18,7 +18,7 @@ invalid value workflow reference: no version specified
 uses: .github/workflows/reusable-build.yml
 
 # ✅ CORRECT - With version and ./ prefix
-uses: ./.github/workflows/reusable-build.yml@main
+uses: .github/workflows/reusable-build.yml@main
 ```
 
 #### **For Actions** (same repo):
@@ -27,7 +27,7 @@ uses: ./.github/workflows/reusable-build.yml@main
 uses: .github/actions/build-apps
 
 # ✅ CORRECT - With ./ prefix (no version needed)
-uses: ./.github/actions/build-apps
+uses: .github/actions/build-apps
 ```
 
 ---
@@ -36,27 +36,27 @@ uses: ./.github/actions/build-apps
 
 ### **✅ Workflow Reference Fixes**
 1. **`.github/workflows/ci.yml`** 
-   - ✅ `uses: ./.github/workflows/reusable-build.yml@main`
+   - ✅ `uses: .github/workflows/reusable-build.yml@main`
 
 2. **`.github/workflows/release.yml`**
-   - ✅ `uses: ./.github/workflows/reusable-test.yml@main`
-   - ✅ `uses: ./.github/workflows/reusable-build.yml@main`
+   - ✅ `uses: .github/workflows/reusable-test.yml@main`
+   - ✅ `uses: .github/workflows/reusable-build.yml@main`
 
 ### **✅ Action Reference Fixes**  
 3. **`.github/workflows/reusable-build.yml`** (5 fixes)
-   - ✅ `uses: ./.github/actions/setup-environment`
-   - ✅ `uses: ./.github/actions/setup-macos-signing`
-   - ✅ `uses: ./.github/actions/build-apps`
-   - ✅ `uses: ./.github/actions/package-apps`
-   - ✅ `uses: ./.github/actions/cleanup-signing`
+   - ✅ `uses: .github/actions/setup-environment`
+   - ✅ `uses: .github/actions/setup-macos-signing`
+   - ✅ `uses: .github/actions/build-apps`
+   - ✅ `uses: .github/actions/package-apps`
+   - ✅ `uses: .github/actions/cleanup-signing`
 
 4. **`.github/workflows/macos-native.yml`** (6 fixes)
-   - ✅ `uses: ./.github/actions/install-system-deps`
-   - ✅ `uses: ./.github/actions/setup-macos-signing`
-   - ✅ `uses: ./.github/actions/configure-build`
-   - ✅ `uses: ./.github/actions/build-apps`
-   - ✅ `uses: ./.github/actions/package-apps`
-   - ✅ `uses: ./.github/actions/cleanup-signing`
+   - ✅ `uses: .github/actions/install-system-deps`
+   - ✅ `uses: .github/actions/setup-macos-signing`
+   - ✅ `uses: .github/actions/configure-build`
+   - ✅ `uses: .github/actions/build-apps`
+   - ✅ `uses: .github/actions/package-apps`
+   - ✅ `uses: .github/actions/cleanup-signing`
 
 **Total References Fixed**: **14 fixes** across 4 workflow files
 
@@ -69,8 +69,8 @@ uses: ./.github/actions/build-apps
 | Type | Format | Example | Notes |
 |------|--------|---------|-------|
 | **External Action** | `owner/repo@version` | `actions/checkout@v4` | Standard format |
-| **Local Action** | `./.github/actions/name` | `./.github/actions/build-apps` | Requires `./` prefix |
-| **Reusable Workflow** | `./.github/workflows/name.yml@ref` | `./.github/workflows/reusable-build.yml@main` | Requires version |
+| **Local Action** | `.github/actions/name` | `.github/actions/build-apps` | Requires `./` prefix |
+| **Reusable Workflow** | `.github/workflows/name.yml@ref` | `.github/workflows/reusable-build.yml@main` | Requires version |
 
 ### **🔄 Why These Formats?**
 

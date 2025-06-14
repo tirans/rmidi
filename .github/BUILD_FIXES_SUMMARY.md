@@ -161,7 +161,7 @@ timeout-minutes: build timeout
 1. **Test the Enhanced Builds**
    ```bash
    # Validate environment first
-   ./.github/scripts/validate-build-environment.sh
+   .github/scripts/validate-build-environment.sh
    
    # Test locally (if on macOS)
    cd /Users/tirane/Desktop/r2midi

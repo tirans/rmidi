@@ -7,33 +7,13 @@ import time
 import traceback
 from typing import Any, Callable, Coroutine, Optional
 
-from PyQt6.QtCore import (
-    QEasingCurve,
-    QObject,
-    QPoint,
-    QPropertyAnimation,
-    QSize,
-    Qt,
-    QThread,
-    QTimer,
-    pyqtProperty,
-    pyqtSignal,
-    pyqtSlot,
-)
-from PyQt6.QtWidgets import (
-    QApplication,
-    QGraphicsOpacityEffect,
-    QHBoxLayout,
-    QLabel,
-    QMainWindow,
-    QMessageBox,
-    QProgressBar,
-    QPushButton,
-    QSplitter,
-    QStatusBar,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtCore import (QEasingCurve, QObject, QPoint, QPropertyAnimation,
+                          QSize, Qt, QThread, QTimer, pyqtProperty, pyqtSignal,
+                          pyqtSlot)
+from PyQt6.QtWidgets import (QApplication, QGraphicsOpacityEffect, QHBoxLayout,
+                             QLabel, QMainWindow, QMessageBox, QProgressBar,
+                             QPushButton, QSplitter, QStatusBar, QVBoxLayout,
+                             QWidget)
 
 from ..api_client import CachedApiClient
 from ..config import get_config, get_config_manager

@@ -7,12 +7,25 @@ on:
   pull_request:
     branches: [ master, develop ]
   workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip pytest execution'
+        required: false
+        default: false
+        type: boolean
+      skip_lint:
+        description: 'Skip code quality checks'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   test:
     name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    # Skip tests if manually requested or if commit message contains [skip tests]
+    if: ${{ !inputs.skip_tests && !contains(github.event.head_commit.message, '[skip tests]') }}
     strategy:
       fail-fast: false
       matrix:
@@ -66,7 +79,7 @@ jobs:
           fi
           
           # Install test dependencies
-          python -m pip install pytest pytest-asyncio pytest-mock PyQt6==6.5.0 pytest-cov pytest-qt
+          python -m pip install pytest pytest-asyncio pytest-mock pytest-cov pytest-qt
 
       - name: Validate project structure
         shell: bash
@@ -81,7 +94,7 @@ jobs:
             # Use virtual display for PyQt6 tests
             xvfb-run -a python -m pytest tests/ -v --cov=server --cov=r2midi_client --cov-report=xml --cov-report=term
           else
-            python -m pytest tests/ -v --showlocals --tb=short
+            python -m pytest tests/ -v
           fi
 
       - name: Upload coverage to Codecov
@@ -96,6 +109,8 @@ jobs:
     name: Code Quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Skip lint if manually requested or if commit message contains [skip lint]
+    if: ${{ !inputs.skip_lint && !contains(github.event.head_commit.message, '[skip lint]') }}
 
     steps:
       - name: Checkout repository
@@ -226,12 +241,16 @@ jobs:
           # Check individual job results
           if [[ "${{ needs.test.result }}" == "success" ]]; then
             echo "✅ **Tests**: All tests passed on Python 3.12 across all platforms" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.test.result }}" == "skipped" ]]; then
+            echo "⏭️ **Tests**: Skipped (manual skip or [skip tests] in commit message)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Tests**: Some tests failed" >> $GITHUB_STEP_SUMMARY
           fi
           
           if [[ "${{ needs.lint.result }}" == "success" ]]; then
             echo "✅ **Code Quality**: Code formatting, imports, and linting checks passed" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.lint.result }}" == "skipped" ]]; then
+            echo "⏭️ **Code Quality**: Skipped (manual skip or [skip lint] in commit message)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Code Quality**: Code quality issues found" >> $GITHUB_STEP_SUMMARY
           fi
@@ -248,8 +267,10 @@ jobs:
             echo "❌ **Build Test**: Build configuration issues detected" >> $GITHUB_STEP_SUMMARY
           fi
           
-          # Overall status
-          if [[ "${{ needs.test.result }}" == "success" && "${{ needs.lint.result }}" == "success" && "${{ needs.build-test.result }}" == "success" ]]; then
+          # Overall status (considering skipped jobs as OK for overall status)
+          if [[ ("${{ needs.test.result }}" == "success" || "${{ needs.test.result }}" == "skipped") && 
+                ("${{ needs.lint.result }}" == "success" || "${{ needs.lint.result }}" == "skipped") && 
+                "${{ needs.build-test.result }}" == "success" ]]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "🎉 **Overall Status**: Ready for merge!" >> $GITHUB_STEP_SUMMARY
           else

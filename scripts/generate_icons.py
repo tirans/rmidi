@@ -19,13 +19,14 @@ except ImportError:
 
 # Handle encoding issues on different platforms
 def safe_print(message, success=None):
-    """Print messages with platform-safe symbols."""
+    """Print messages with robust Unicode handling across all platforms."""
     # Check if we're on Windows
     is_windows = platform.system() == "Windows"
 
     # Replace Unicode symbols with ASCII alternatives on Windows
     if is_windows:
         message = message.replace("✅", "[OK]").replace("❌", "[ERROR]").replace("⚠️", "[WARN]")
+        message = message.replace("√", "OK")  # Handle the √ character specifically
 
     # Add success/failure/warning prefix if specified
     if success is not None:
@@ -37,23 +38,37 @@ def safe_print(message, success=None):
             prefix = "[WARN] " if is_windows else "⚠️ "
         message = prefix + message
 
-    # Force UTF-8 encoding on Windows to handle any remaining Unicode
-    if is_windows:
+    # Most robust printing approach with multiple fallback levels
+    try:
+        # Level 1: Try normal print first
+        print(message)
+    except UnicodeEncodeError:
         try:
-            # Try to print with UTF-8 encoding without replacing sys.stdout
-            import sys
-            import io
-            # Don't replace sys.stdout directly to avoid closing it
-            print(message)
-        except UnicodeEncodeError:
-            # Fallback: encode to ASCII with replacement
-            print(message.encode('ascii', 'replace').decode('ascii'))
-    else:
+            # Level 2: Try writing to stdout.buffer with UTF-8 encoding
+            if hasattr(sys.stdout, 'buffer'):
+                sys.stdout.buffer.write((message + '\n').encode('utf-8'))
+                sys.stdout.buffer.flush()
+            else:
+                # Level 3: Encode with UTF-8 and error handling
+                safe_message = message.encode('utf-8', 'replace').decode('utf-8')
+                print(safe_message)
+        except Exception:
+            try:
+                # Level 4: ASCII encoding with character replacement
+                ascii_message = message.encode('ascii', 'replace').decode('ascii')
+                print(ascii_message)
+            except Exception:
+                # Level 5: Strip all non-ASCII characters as final fallback
+                fallback_message = ''.join(c if ord(c) < 128 else '?' for c in str(message))
+                print(fallback_message)
+    except Exception as e:
+        # Handle any other printing errors
         try:
-            print(message)
-        except UnicodeEncodeError:
-            # Fallback: encode to ASCII with replacement
-            print(message.encode('ascii', 'replace').decode('ascii'))
+            print(f"Print error: {str(e)}")
+            simplified = str(message).encode('ascii', 'ignore').decode('ascii')
+            print(f"Message: {simplified}")
+        except Exception:
+            print("Unable to display message due to encoding issues")
 
 
 def create_base_icon(size=1024):

@@ -33,6 +33,7 @@ setup(
             "pytest-asyncio>=0.21.1",
             "pytest-mock>=3.11.1",
             "pytest-cov>=4.1.0",
+            "pytest-qt>=4.4.0",
             "httpx>=0.25.0",
         ],
     },

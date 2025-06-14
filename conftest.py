@@ -13,3 +13,6 @@ def pytest_configure(config):
     # Set Qt platform for headless testing
     if not os.environ.get('DISPLAY'):
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
+    # Force pytest-qt to use PyQt6
+    os.environ.setdefault('PYTEST_QT_API', 'pyqt6')

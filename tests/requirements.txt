@@ -3,7 +3,7 @@ httpx==0.28.1
 PyQt6==6.9.1
 PyQt6_sip==13.10.2
 pytest==8.4.0
-pytest
 pytest-asyncio
 pytest-mock
 pytest-cov
+pytest-qt

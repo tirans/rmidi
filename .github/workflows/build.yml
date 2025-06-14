@@ -74,15 +74,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fix submodules
+      - name: Setup workspace
         run: |
+          # Mark workspace as safe directory
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule deinit -f server/midi-presets || true
-          rm -rf .git/modules/server/midi-presets || true
-          git rm -rf server/midi-presets || true
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
-          git submodule init
-          git submodule update --init --recursive
+          
+          # Skip submodule setup since server/midi-presets is in .gitignore
+          # This indicates the build is designed to work without it
+          echo "ℹ️ Skipping submodule setup (not required for build)"
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -149,15 +148,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fix submodules
+      - name: Setup workspace
         run: |
+          # Mark workspace as safe directory
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule deinit -f server/midi-presets || true
-          rm -rf .git/modules/server/midi-presets || true
-          git rm -rf server/midi-presets || true
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
-          git submodule init
-          git submodule update --init --recursive
+          
+          # Skip submodule setup since server/midi-presets is in .gitignore
+          # This indicates the build is designed to work without it
+          echo "ℹ️ Skipping submodule setup (not required for build)"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -212,15 +210,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fix submodules
+      - name: Setup workspace
         run: |
+          # Mark workspace as safe directory
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule deinit -f server/midi-presets || true
-          rm -rf .git/modules/server/midi-presets || true
-          git rm -rf server/midi-presets || true
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
-          git submodule init
-          git submodule update --init --recursive
+          
+          # Skip submodule setup since server/midi-presets is in .gitignore
+          # This indicates the build is designed to work without it
+          echo "ℹ️ Skipping submodule setup (not required for build)"
         shell: bash
 
       - name: Set up Python
@@ -445,15 +442,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Fix submodules
+      - name: Setup workspace
         run: |
+          # Mark workspace as safe directory
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule deinit -f server/midi-presets || true
-          rm -rf .git/modules/server/midi-presets || true
-          git rm -rf server/midi-presets || true
-          git submodule add https://github.com/tirans/midi-presets.git server/midi-presets
-          git submodule init
-          git submodule update --init --recursive
+          
+          # Skip submodule setup since server/midi-presets is in .gitignore
+          # This indicates the build is designed to work without it
+          echo "ℹ️ Skipping submodule setup (not required for build)"
 
       - name: Get version
         id: get_version

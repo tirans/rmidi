@@ -2,4 +2,4 @@ httpx==0.28.1
 psutil==7.0.0
 PyQt6==6.9.1
 pyqt6-sip==13.10.2
-setuptools==80.9.0
+setuptools==78.1.1

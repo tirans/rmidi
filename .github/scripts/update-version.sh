@@ -204,11 +204,34 @@ else
     echo "✅ Committed version changes"
 fi
 
-# Push changes
+# Push changes with retry logic for CI environments
 echo "📤 Pushing version changes..."
-git push origin HEAD
 
-# Create Git tag
+# First, try to pull any remote changes
+if ! git pull --rebase origin HEAD 2>/dev/null; then
+    echo "⚠️ Pull failed, continuing with push attempt..."
+fi
+
+# Try to push with retry logic
+PUSH_RETRIES=3
+for i in $(seq 1 $PUSH_RETRIES); do
+    if git push origin HEAD; then
+        echo "✅ Successfully pushed version changes"
+        break
+    else
+        echo "⚠️ Push attempt $i failed"
+        if [ $i -lt $PUSH_RETRIES ]; then
+            echo "🔄 Retrying after pull..."
+            git pull --rebase origin HEAD 2>/dev/null || true
+            sleep 2
+        else
+            echo "❌ Failed to push after $PUSH_RETRIES attempts"
+            exit 1
+        fi
+    fi
+done
+
+# Create and push Git tag with retry logic
 echo "🏷️ Creating Git tag..."
 git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION
 
@@ -220,9 +243,22 @@ Changes:
 - Version increment: $VERSION_TYPE
 - See CHANGELOG.md for details"
 
-git push origin "v$NEW_VERSION"
-
-echo "✅ Created and pushed tag: v$NEW_VERSION"
+echo "📤 Pushing tag..."
+for i in $(seq 1 $PUSH_RETRIES); do
+    if git push origin "v$NEW_VERSION"; then
+        echo "✅ Successfully pushed tag: v$NEW_VERSION"
+        break
+    else
+        echo "⚠️ Tag push attempt $i failed"
+        if [ $i -lt $PUSH_RETRIES ]; then
+            echo "🔄 Retrying tag push..."
+            sleep 2
+        else
+            echo "⚠️ Failed to push tag after $PUSH_RETRIES attempts (continuing anyway)"
+            break
+        fi
+    fi
+done
 
 # Set GitHub Actions outputs
 echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT

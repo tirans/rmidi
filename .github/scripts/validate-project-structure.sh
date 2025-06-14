@@ -212,7 +212,6 @@ validate_dependencies() {
             "fastapi"
             "uvicorn"
             "pydantic"
-            "python-rtmidi"
             "mido"
         )
         

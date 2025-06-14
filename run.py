@@ -9,7 +9,8 @@ import sys
 project_root = os.path.dirname(__file__)
 sys.path.insert(0, project_root)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Import server as a package
     import server
+
     server.main.main()

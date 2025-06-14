@@ -15,24 +15,28 @@ def test_safe_print():
     """Test the safe_print function with various inputs."""
     print(f"Testing on {platform.system()} platform...")
     print("=" * 50)
-    
+
     # Test basic messages
     safe_print("Testing basic message")
-    
+
     # Test with success indicators
     safe_print("Testing success message", True)
     safe_print("Testing error message", False)
     safe_print("Testing warning message", None)
-    
+
     # Test with Unicode characters
     safe_print("Testing with emojis: 🎵 🎹 🎼", True)
     safe_print("Testing path: C:\\Users\\test\\r2midi\\resources\\icon.ico", True)
-    
+
     # Test long messages
-    safe_print("Testing very long message that might contain various characters and symbols: !@#$%^&*()_+-=[]{}|;':\",./<>?", True)
-    
+    safe_print(
+        "Testing very long message that might contain various characters and symbols: !@#$%^&*()_+-=[]{}|;':\",./<>?",
+        True,
+    )
+
     print("=" * 50)
     print("If you see this message, the test completed successfully!")
+
 
 if __name__ == "__main__":
     test_safe_print()

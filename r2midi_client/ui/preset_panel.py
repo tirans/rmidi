@@ -5,11 +5,24 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from PyQt6.QtCore import QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QIcon, QPainter, QPen
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QGroupBox, QHBoxLayout,
-                             QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                             QMenu, QPushButton, QStyle, QStyledItemDelegate,
-                             QStyleOptionViewItem, QTextEdit, QVBoxLayout,
-                             QWidget)
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..config import get_config
 from ..models import Preset

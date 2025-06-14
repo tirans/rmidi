@@ -22,7 +22,7 @@ class TestModels(unittest.TestCase):
             manufacturer="Test Manufacturer",
             midi_port={"main": "Port 1"},
             midi_channel={"main": 1},
-            community_folders=["folder1", "folder2"]
+            community_folders=["folder1", "folder2"],
         )
         self.assertEqual(device.name, "Test Device")
         self.assertEqual(device.midi_port, {"main": "Port 1"})
@@ -48,12 +48,14 @@ class TestModels(unittest.TestCase):
             sendmidi_command="sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0",
             cc_0=0,
             pgm=0,
-            source="default"
+            source="default",
         )
         self.assertEqual(preset.preset_name, "Test Preset")
         self.assertEqual(preset.category, "Test Category")
         self.assertEqual(preset.characters, ["Warm", "Bright"])
-        self.assertEqual(preset.sendmidi_command, "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0")
+        self.assertEqual(
+            preset.sendmidi_command, "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0"
+        )
         self.assertEqual(preset.cc_0, 0)
         self.assertEqual(preset.pgm, 0)
         self.assertEqual(preset.source, "default")
@@ -62,9 +64,7 @@ class TestModels(unittest.TestCase):
         """Test the PresetRequest model"""
         # Test with minimal required fields
         preset_request = PresetRequest(
-            preset_name="Test Preset",
-            midi_port="Port 1",
-            midi_channel=1
+            preset_name="Test Preset", midi_port="Port 1", midi_channel=1
         )
         self.assertEqual(preset_request.preset_name, "Test Preset")
         self.assertEqual(preset_request.midi_port, "Port 1")
@@ -76,7 +76,7 @@ class TestModels(unittest.TestCase):
             preset_name="Test Preset",
             midi_port="Port 1",
             midi_channel=1,
-            sequencer_port="Port 2"
+            sequencer_port="Port 2",
         )
         self.assertEqual(preset_request.preset_name, "Test Preset")
         self.assertEqual(preset_request.midi_port, "Port 1")
@@ -105,7 +105,7 @@ class TestModels(unittest.TestCase):
             midi_out_port="Out Port",
             sequencer_port="Seq Port",
             midi_channel=5,
-            sync_enabled=False
+            sync_enabled=False,
         )
         self.assertEqual(ui_state.manufacturer, "Test Manufacturer")
         self.assertEqual(ui_state.device, "Test Device")
@@ -115,6 +115,7 @@ class TestModels(unittest.TestCase):
         self.assertEqual(ui_state.sequencer_port, "Seq Port")
         self.assertEqual(ui_state.midi_channel, 5)
         self.assertFalse(ui_state.sync_enabled)
+
 
 if __name__ == "__main__":
     unittest.main()

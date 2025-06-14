@@ -17,6 +17,7 @@ except ImportError:
     print("X Pillow is required. Install with: pip install pillow")
     sys.exit(1)
 
+
 # Handle encoding issues on different platforms
 def safe_print(message, success=None):
     """Print messages with robust Unicode handling across all platforms."""
@@ -25,7 +26,11 @@ def safe_print(message, success=None):
 
     # Replace Unicode symbols with ASCII alternatives on Windows
     if is_windows:
-        message = message.replace("✅", "[OK]").replace("❌", "[ERROR]").replace("⚠️", "[WARN]")
+        message = (
+            message.replace("✅", "[OK]")
+            .replace("❌", "[ERROR]")
+            .replace("⚠️", "[WARN]")
+        )
         message = message.replace("√", "OK")  # Handle the √ character specifically
 
     # Add success/failure/warning prefix if specified
@@ -45,27 +50,29 @@ def safe_print(message, success=None):
     except UnicodeEncodeError:
         try:
             # Level 2: Try writing to stdout.buffer with UTF-8 encoding
-            if hasattr(sys.stdout, 'buffer'):
-                sys.stdout.buffer.write((message + '\n').encode('utf-8'))
+            if hasattr(sys.stdout, "buffer"):
+                sys.stdout.buffer.write((message + "\n").encode("utf-8"))
                 sys.stdout.buffer.flush()
             else:
                 # Level 3: Encode with UTF-8 and error handling
-                safe_message = message.encode('utf-8', 'replace').decode('utf-8')
+                safe_message = message.encode("utf-8", "replace").decode("utf-8")
                 print(safe_message)
         except Exception:
             try:
                 # Level 4: ASCII encoding with character replacement
-                ascii_message = message.encode('ascii', 'replace').decode('ascii')
+                ascii_message = message.encode("ascii", "replace").decode("ascii")
                 print(ascii_message)
             except Exception:
                 # Level 5: Strip all non-ASCII characters as final fallback
-                fallback_message = ''.join(c if ord(c) < 128 else '?' for c in str(message))
+                fallback_message = "".join(
+                    c if ord(c) < 128 else "?" for c in str(message)
+                )
                 print(fallback_message)
     except Exception as e:
         # Handle any other printing errors
         try:
             print(f"Print error: {str(e)}")
-            simplified = str(message).encode('ascii', 'ignore').decode('ascii')
+            simplified = str(message).encode("ascii", "ignore").decode("ascii")
             print(f"Message: {simplified}")
         except Exception:
             print("Unable to display message due to encoding issues")
@@ -74,7 +81,7 @@ def safe_print(message, success=None):
 def create_base_icon(size=1024):
     """Create a base R2MIDI icon."""
     # Create a new image with a gradient background
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     # Draw a gradient background
@@ -88,7 +95,7 @@ def create_base_icon(size=1024):
         [(margin, margin), (size - margin, size - margin)],
         fill=(255, 255, 255, 200),
         outline=(0, 0, 0, 255),
-        width=size // 50
+        width=size // 50,
     )
 
     # Draw text
@@ -114,7 +121,9 @@ def create_base_icon(size=1024):
     # Draw "MIDI" text below
     text2 = "MIDI"
     try:
-        font2 = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size // 3)
+        font2 = ImageFont.truetype(
+            "/System/Library/Fonts/Helvetica.ttc", font_size // 3
+        )
     except:
         font2 = font
 
@@ -139,7 +148,7 @@ def generate_windows_ico(base_img, output_path):
         images.append(resized)
 
     # Save as ICO
-    images[0].save(output_path, format='ICO', sizes=[(s, s) for s in sizes])
+    images[0].save(output_path, format="ICO", sizes=[(s, s) for s in sizes])
     safe_print(f"Created Windows icon: {output_path}", True)
 
 
@@ -155,16 +164,16 @@ def generate_macos_icns(base_img, output_path):
 
         # macOS icon sizes
         sizes = {
-            'icon_16x16.png': 16,
-            'icon_16x16@2x.png': 32,
-            'icon_32x32.png': 32,
-            'icon_32x32@2x.png': 64,
-            'icon_128x128.png': 128,
-            'icon_128x128@2x.png': 256,
-            'icon_256x256.png': 256,
-            'icon_256x256@2x.png': 512,
-            'icon_512x512.png': 512,
-            'icon_512x512@2x.png': 1024,
+            "icon_16x16.png": 16,
+            "icon_16x16@2x.png": 32,
+            "icon_32x32.png": 32,
+            "icon_32x32@2x.png": 64,
+            "icon_128x128.png": 128,
+            "icon_128x128@2x.png": 256,
+            "icon_256x256.png": 256,
+            "icon_256x256@2x.png": 512,
+            "icon_512x512.png": 512,
+            "icon_512x512@2x.png": 1024,
         }
 
         for filename, size in sizes.items():
@@ -174,14 +183,14 @@ def generate_macos_icns(base_img, output_path):
         # Convert to icns using iconutil
         try:
             subprocess.run(
-                ['iconutil', '-c', 'icns', str(iconset_path), '-o', str(output_path)],
-                check=True
+                ["iconutil", "-c", "icns", str(iconset_path), "-o", str(output_path)],
+                check=True,
             )
             safe_print(f"Created macOS icon: {output_path}", True)
         except subprocess.CalledProcessError:
             safe_print(f"Failed to create macOS icon (iconutil not available)", None)
             # Fallback: save as PNG
-            base_img.save(output_path.with_suffix('.png'))
+            base_img.save(output_path.with_suffix(".png"))
             safe_print(f"Created PNG fallback: {output_path.with_suffix('.png')}", True)
 
 

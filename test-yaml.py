@@ -6,7 +6,7 @@ import yaml
 file_path = ".github/actions/build-apps/action.yml"
 
 try:
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         yaml.safe_load(f)
     print(f"✅ {file_path} - YAML syntax is valid!")
     sys.exit(0)

@@ -38,14 +38,15 @@ import requests
 
 class Colors:
     """ANSI color codes for terminal output."""
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
+
+    HEADER = "\033[95m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
 
 
 class AppleStoreSetup:
@@ -97,12 +98,7 @@ class AppleStoreSetup:
         self.credentials_dir.mkdir(exist_ok=True)
 
         # Create subdirectories
-        subdirs = [
-            "certificates",
-            "app_store_connect",
-            "config", 
-            "temp"
-        ]
+        subdirs = ["certificates", "app_store_connect", "config", "temp"]
 
         for subdir in subdirs:
             (self.credentials_dir / subdir).mkdir(exist_ok=True)
@@ -120,23 +116,25 @@ class AppleStoreSetup:
 """
 
         gitignore_path = self.credentials_dir / ".gitignore"
-        with open(gitignore_path, 'w') as f:
+        with open(gitignore_path, "w") as f:
             f.write(gitignore_content)
         self.print_success(f"Created: {gitignore_path}")
 
         # Update main .gitignore to ensure credentials folder is ignored
         main_gitignore = self.repo_root / ".gitignore"
-        gitignore_entry = "\n# Apple Developer Credentials (local only)\napple_credentials/\n"
+        gitignore_entry = (
+            "\n# Apple Developer Credentials (local only)\napple_credentials/\n"
+        )
 
         if main_gitignore.exists():
-            with open(main_gitignore, 'r') as f:
+            with open(main_gitignore, "r") as f:
                 content = f.read()
             if "apple_credentials/" not in content:
-                with open(main_gitignore, 'a') as f:
+                with open(main_gitignore, "a") as f:
                     f.write(gitignore_entry)
                 self.print_success("Updated main .gitignore")
         else:
-            with open(main_gitignore, 'w') as f:
+            with open(main_gitignore, "w") as f:
                 f.write(gitignore_entry)
             self.print_success("Created main .gitignore")
 
@@ -150,7 +148,7 @@ class AppleStoreSetup:
                 "server_display_name": "R2MIDI Server",
                 "client_display_name": "R2MIDI Client",
                 "author_name": "Your Name",
-                "author_email": "your.email@domain.com"
+                "author_email": "your.email@domain.com",
             },
             "apple_developer": {
                 "apple_id": "your.apple.id@domain.com",
@@ -158,21 +156,21 @@ class AppleStoreSetup:
                 "app_specific_password": "your-app-specific-password",
                 "app_store_connect_key_id": "YOUR_KEY_ID",
                 "app_store_connect_issuer_id": "YOUR_ISSUER_ID",
-                "app_store_connect_api_key_path": "/path/to/AuthKey_KEYID.p8"
+                "app_store_connect_api_key_path": "/path/to/AuthKey_KEYID.p8",
             },
             "build_options": {
                 "enable_app_store_build": True,
                 "enable_app_store_submission": True,
-                "enable_notarization": True
+                "enable_notarization": True,
             },
             "github": {
                 "repository": "tirans/r2midi",
-                "personal_access_token": "ghp_your_token_here"
-            }
+                "personal_access_token": "ghp_your_token_here",
+            },
         }
 
         config_path = self.credentials_dir / "config" / "app_config.json"
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(config_template, f, indent=2)
 
         self.print_success(f"Created: {config_path}")
@@ -259,7 +257,7 @@ This will:
 """
 
         readme_path = self.credentials_dir / "README.md"
-        with open(readme_path, 'w') as f:
+        with open(readme_path, "w") as f:
             f.write(instructions)
 
         self.print_success(f"Created: {readme_path}")
@@ -279,11 +277,21 @@ This will:
 
         print(f"\n{Colors.GREEN}✅ Local setup structure created{Colors.ENDC}")
         print(f"\n📋 Next steps:")
-        print(f"1. Read the instructions: {Colors.CYAN}{self.credentials_dir}/README.md{Colors.ENDC}")
-        print(f"2. Download certificates to: {Colors.CYAN}{self.credentials_dir}/certificates/{Colors.ENDC}")
-        print(f"3. Download App Store Connect API key to: {Colors.CYAN}{self.credentials_dir}/app_store_connect/{Colors.ENDC}")
-        print(f"4. Edit configuration: {Colors.CYAN}{self.credentials_dir}/config/app_config.json{Colors.ENDC}")
-        print(f"5. Run: {Colors.BOLD}python scripts/setup_apple_store.py phase2{Colors.ENDC}")
+        print(
+            f"1. Read the instructions: {Colors.CYAN}{self.credentials_dir}/README.md{Colors.ENDC}"
+        )
+        print(
+            f"2. Download certificates to: {Colors.CYAN}{self.credentials_dir}/certificates/{Colors.ENDC}"
+        )
+        print(
+            f"3. Download App Store Connect API key to: {Colors.CYAN}{self.credentials_dir}/app_store_connect/{Colors.ENDC}"
+        )
+        print(
+            f"4. Edit configuration: {Colors.CYAN}{self.credentials_dir}/config/app_config.json{Colors.ENDC}"
+        )
+        print(
+            f"5. Run: {Colors.BOLD}python scripts/setup_apple_store.py phase2{Colors.ENDC}"
+        )
 
         # Open the credentials folder in Finder
         if sys.platform == "darwin":
@@ -302,7 +310,7 @@ This will:
             sys.exit(1)
 
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
             return config
         except Exception as e:
@@ -338,14 +346,14 @@ This will:
             ("app_info", "bundle_id_prefix"),
             ("apple_developer", "apple_id"),
             ("apple_developer", "team_id"),
-            ("github", "personal_access_token")
+            ("github", "personal_access_token"),
         ]
 
         # Check for App Store Connect API key fields
         api_key_fields = [
             ("apple_developer", "app_store_connect_key_id"),
             ("apple_developer", "app_store_connect_issuer_id"),
-            ("apple_developer", "app_store_connect_api_key_path")
+            ("apple_developer", "app_store_connect_api_key_path"),
         ]
 
         missing_api_key_fields = []
@@ -358,8 +366,12 @@ This will:
             self.print_warning("App Store Connect API key fields not filled:")
             for field in missing_api_key_fields:
                 self.print_warning(f"  - {field}")
-            self.print_warning("Apple ID authentication may fail with 401 error in CI/CD environments.")
-            self.print_warning("See docs/apple_auth_troubleshooting.md for instructions on setting up API key authentication.")
+            self.print_warning(
+                "Apple ID authentication may fail with 401 error in CI/CD environments."
+            )
+            self.print_warning(
+                "See docs/apple_auth_troubleshooting.md for instructions on setting up API key authentication."
+            )
 
         for section, field in required_fields:
             value = config.get(section, {}).get(field, "")
@@ -383,13 +395,16 @@ This will:
 
         for cert_file in cert_files:
             try:
-                subprocess.run([
-                    "security", "import", str(cert_file), 
-                    "-k", "login.keychain"
-                ], check=True, capture_output=True)
+                subprocess.run(
+                    ["security", "import", str(cert_file), "-k", "login.keychain"],
+                    check=True,
+                    capture_output=True,
+                )
                 self.print_success(f"Installed: {cert_file.name}")
             except subprocess.CalledProcessError as e:
-                self.print_warning(f"Certificate {cert_file.name} might already be installed")
+                self.print_warning(
+                    f"Certificate {cert_file.name} might already be installed"
+                )
 
     def export_certificates(self) -> dict:
         """Export certificates from Keychain as base64 encoded P12."""
@@ -399,21 +414,26 @@ This will:
 
         # Find available certificates
         try:
-            result = subprocess.run([
-                "security", "find-identity", "-v", "-p", "codesigning"
-            ], capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                ["security", "find-identity", "-v", "-p", "codesigning"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
 
             certificates = {}
-            for line in result.stdout.split('\n'):
+            for line in result.stdout.split("\n"):
                 if "Developer ID Application:" in line:
                     match = re.search(r'"([^"]*Developer ID Application[^"]*)"', line)
                     if match:
-                        certificates['developer_id'] = match.group(1)
+                        certificates["developer_id"] = match.group(1)
 
                 elif "3rd Party Mac Developer Application:" in line:
-                    match = re.search(r'"([^"]*3rd Party Mac Developer Application[^"]*)"', line)
+                    match = re.search(
+                        r'"([^"]*3rd Party Mac Developer Application[^"]*)"', line
+                    )
                     if match:
-                        certificates['app_store'] = match.group(1)
+                        certificates["app_store"] = match.group(1)
 
         except subprocess.CalledProcessError:
             self.print_error("Failed to find certificates in keychain")
@@ -428,31 +448,47 @@ This will:
             # Generate a random password for export instead of using a hardcoded one
             import random
             import string
-            export_password = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(24))
+
+            export_password = "".join(
+                random.choice(string.ascii_letters + string.digits) for _ in range(24)
+            )
             temp_file = temp_dir / f"{cert_type}_cert.p12"
 
             try:
-                result = subprocess.run([
-                    "security", "export",
-                    "-k", "login.keychain",
-                    "-t", "identities",
-                    "-f", "pkcs12",
-                    "-o", str(temp_file),
-                    "-P", export_password
-                ], input=f'"{cert_name}"\n', text=True, capture_output=True)
+                result = subprocess.run(
+                    [
+                        "security",
+                        "export",
+                        "-k",
+                        "login.keychain",
+                        "-t",
+                        "identities",
+                        "-f",
+                        "pkcs12",
+                        "-o",
+                        str(temp_file),
+                        "-P",
+                        export_password,
+                    ],
+                    input=f'"{cert_name}"\n',
+                    text=True,
+                    capture_output=True,
+                )
 
                 if result.returncode == 0:
-                    with open(temp_file, 'rb') as f:
+                    with open(temp_file, "rb") as f:
                         cert_data = f.read()
 
-                    encoded_cert = base64.b64encode(cert_data).decode('utf-8')
+                    encoded_cert = base64.b64encode(cert_data).decode("utf-8")
 
-                    if cert_type == 'developer_id':
-                        exports['APPLE_CERTIFICATE_P12'] = encoded_cert
-                        exports['APPLE_CERTIFICATE_PASSWORD'] = export_password
-                    elif cert_type == 'app_store':
-                        exports['APPLE_APP_STORE_CERTIFICATE_P12'] = encoded_cert
-                        exports['APPLE_APP_STORE_CERTIFICATE_PASSWORD'] = export_password
+                    if cert_type == "developer_id":
+                        exports["APPLE_CERTIFICATE_P12"] = encoded_cert
+                        exports["APPLE_CERTIFICATE_PASSWORD"] = export_password
+                    elif cert_type == "app_store":
+                        exports["APPLE_APP_STORE_CERTIFICATE_P12"] = encoded_cert
+                        exports["APPLE_APP_STORE_CERTIFICATE_PASSWORD"] = (
+                            export_password
+                        )
 
                     temp_file.unlink()  # Clean up
                     self.print_success(f"Exported {cert_type} certificate")
@@ -476,23 +512,23 @@ This will:
         self.print_step("Processing App Store Connect API Key")
 
         # Check if config has API key information
-        if config and 'apple_developer' in config:
-            apple_dev = config['apple_developer']
-            key_id = apple_dev.get('app_store_connect_key_id')
-            api_key_path = apple_dev.get('app_store_connect_api_key_path')
+        if config and "apple_developer" in config:
+            apple_dev = config["apple_developer"]
+            key_id = apple_dev.get("app_store_connect_key_id")
+            api_key_path = apple_dev.get("app_store_connect_api_key_path")
 
             if key_id and api_key_path and os.path.exists(api_key_path):
                 self.print_info(f"Using API key from config: {api_key_path}")
                 try:
-                    with open(api_key_path, 'rb') as f:
+                    with open(api_key_path, "rb") as f:
                         api_key_data = f.read()
 
-                    encoded_key = base64.b64encode(api_key_data).decode('utf-8')
+                    encoded_key = base64.b64encode(api_key_data).decode("utf-8")
                     self.print_success(f"Processed API key: {key_id}")
 
                     return {
-                        'APP_STORE_CONNECT_API_KEY': encoded_key,
-                        'APP_STORE_CONNECT_KEY_ID': key_id
+                        "APP_STORE_CONNECT_API_KEY": encoded_key,
+                        "APP_STORE_CONNECT_KEY_ID": key_id,
                     }
                 except Exception as e:
                     self.print_error(f"Failed to process API key from config: {e}")
@@ -509,7 +545,7 @@ This will:
         p8_file = p8_files[0]
 
         # Extract Key ID from filename (AuthKey_XXXXXXXXXX.p8)
-        key_id_match = re.search(r'AuthKey_([^.]+)\.p8', p8_file.name)
+        key_id_match = re.search(r"AuthKey_([^.]+)\.p8", p8_file.name)
         if not key_id_match:
             self.print_error("Could not extract Key ID from filename")
             return {}
@@ -518,16 +554,16 @@ This will:
 
         # Read and encode the API key
         try:
-            with open(p8_file, 'rb') as f:
+            with open(p8_file, "rb") as f:
                 api_key_data = f.read()
 
-            encoded_key = base64.b64encode(api_key_data).decode('utf-8')
+            encoded_key = base64.b64encode(api_key_data).decode("utf-8")
 
             self.print_success(f"Processed API key: {key_id}")
 
             return {
-                'APP_STORE_CONNECT_API_KEY': encoded_key,
-                'APP_STORE_CONNECT_KEY_ID': key_id
+                "APP_STORE_CONNECT_API_KEY": encoded_key,
+                "APP_STORE_CONNECT_KEY_ID": key_id,
             }
 
         except Exception as e:
@@ -551,9 +587,9 @@ This will:
         self.print_step("Creating/Updating GitHub Secrets via API")
 
         headers = {
-            'Authorization': f'token {github_token}',
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
+            "Authorization": f"token {github_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
         }
 
         # Get repository public key for encryption
@@ -564,8 +600,8 @@ This will:
             response.raise_for_status()
             public_key_data = response.json()
 
-            public_key = public_key_data['key']
-            key_id = public_key_data['key_id']
+            public_key = public_key_data["key"]
+            key_id = public_key_data["key_id"]
 
         except Exception as e:
             self.print_error(f"Failed to get repository public key: {e}")
@@ -580,7 +616,9 @@ This will:
 
         def encrypt_secret(secret_value: str) -> str:
             """Encrypt a secret using the repository's public key."""
-            public_key_obj = public.PublicKey(public_key.encode("utf-8"), encoding.Base64Encoder())
+            public_key_obj = public.PublicKey(
+                public_key.encode("utf-8"), encoding.Base64Encoder()
+            )
             sealed_box = public.SealedBox(public_key_obj)
             encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
             return base64.b64encode(encrypted).decode("utf-8")
@@ -594,8 +632,8 @@ This will:
             response = requests.get(secrets_url, headers=headers)
             if response.status_code == 200:
                 secrets_data = response.json()
-                for secret in secrets_data.get('secrets', []):
-                    existing_secrets[secret['name']] = True
+                for secret in secrets_data.get("secrets", []):
+                    existing_secrets[secret["name"]] = True
         except Exception as e:
             self.print_warning(f"Could not retrieve existing secrets: {e}")
             # Continue anyway, we'll determine if secrets exist based on response codes
@@ -607,10 +645,7 @@ This will:
             try:
                 encrypted_value = encrypt_secret(str(secret_value))
 
-                secret_data = {
-                    'encrypted_value': encrypted_value,
-                    'key_id': key_id
-                }
+                secret_data = {"encrypted_value": encrypted_value, "key_id": key_id}
 
                 # Check if secret already exists before making the API call
                 secret_exists = secret_name in existing_secrets
@@ -618,9 +653,7 @@ This will:
                 self.print_info(f"{operation} secret: {secret_name}...")
 
                 response = requests.put(
-                    f"{secrets_url}/{secret_name}",
-                    headers=headers,
-                    json=secret_data
+                    f"{secrets_url}/{secret_name}", headers=headers, json=secret_data
                 )
 
                 if response.status_code == 201:
@@ -630,17 +663,23 @@ This will:
                     self.print_success(f"Updated existing secret: {secret_name}")
                     updated_count += 1
                 else:
-                    self.print_error(f"Failed to {operation.lower()} secret {secret_name}: {response.status_code}")
+                    self.print_error(
+                        f"Failed to {operation.lower()} secret {secret_name}: {response.status_code}"
+                    )
 
             except Exception as e:
                 self.print_error(f"Error creating/updating secret {secret_name}: {e}")
 
         success_count = created_count + updated_count
         if success_count == len(secrets):
-            self.print_success(f"All secrets processed successfully! Created: {created_count}, Updated: {updated_count}")
+            self.print_success(
+                f"All secrets processed successfully! Created: {created_count}, Updated: {updated_count}"
+            )
             return True
         else:
-            self.print_warning(f"Processed {success_count}/{len(secrets)} secrets. Created: {created_count}, Updated: {updated_count}")
+            self.print_warning(
+                f"Processed {success_count}/{len(secrets)} secrets. Created: {created_count}, Updated: {updated_count}"
+            )
             return False
 
     def cleanup_temp_files(self):
@@ -663,43 +702,47 @@ This will:
         config = self.load_config()
 
         # Set GitHub repository from config
-        self.github_repo = config['github']['repository']
+        self.github_repo = config["github"]["repository"]
 
         # Verify all files are present
         if not self.verify_files(config):
-            self.print_error("Missing required files or configuration. Check phase1 setup.")
+            self.print_error(
+                "Missing required files or configuration. Check phase1 setup."
+            )
             sys.exit(1)
 
         # Install certificates
         self.install_certificates()
 
         # Build secrets dictionary from configuration
-        app_info = config['app_info']
-        apple_dev = config['apple_developer']
-        build_opts = config['build_options']
+        app_info = config["app_info"]
+        apple_dev = config["apple_developer"]
+        build_opts = config["build_options"]
 
         secrets = {
             # App information
-            'APP_BUNDLE_ID_PREFIX': app_info['bundle_id_prefix'],
-            'APP_DISPLAY_NAME_SERVER': app_info['server_display_name'],
-            'APP_DISPLAY_NAME_CLIENT': app_info['client_display_name'],
-            'APP_AUTHOR_NAME': app_info['author_name'],
-            'APP_AUTHOR_EMAIL': app_info['author_email'],
-
+            "APP_BUNDLE_ID_PREFIX": app_info["bundle_id_prefix"],
+            "APP_DISPLAY_NAME_SERVER": app_info["server_display_name"],
+            "APP_DISPLAY_NAME_CLIENT": app_info["client_display_name"],
+            "APP_AUTHOR_NAME": app_info["author_name"],
+            "APP_AUTHOR_EMAIL": app_info["author_email"],
             # Apple Developer
-            'APPLE_ID': apple_dev['apple_id'],
-            'APPLE_TEAM_ID': apple_dev['team_id'],
-            'APPLE_ID_PASSWORD': apple_dev['app_specific_password'],
-
+            "APPLE_ID": apple_dev["apple_id"],
+            "APPLE_TEAM_ID": apple_dev["team_id"],
+            "APPLE_ID_PASSWORD": apple_dev["app_specific_password"],
             # Build options
-            'ENABLE_APP_STORE_BUILD': str(build_opts['enable_app_store_build']).lower(),
-            'ENABLE_APP_STORE_SUBMISSION': str(build_opts['enable_app_store_submission']).lower(),
-            'ENABLE_NOTARIZATION': str(build_opts['enable_notarization']).lower(),
+            "ENABLE_APP_STORE_BUILD": str(build_opts["enable_app_store_build"]).lower(),
+            "ENABLE_APP_STORE_SUBMISSION": str(
+                build_opts["enable_app_store_submission"]
+            ).lower(),
+            "ENABLE_NOTARIZATION": str(build_opts["enable_notarization"]).lower(),
         }
 
         # Add Issuer ID if provided in config
-        if 'app_store_connect_issuer_id' in config.get('apple_developer', {}):
-            secrets['APP_STORE_CONNECT_ISSUER_ID'] = apple_dev['app_store_connect_issuer_id']
+        if "app_store_connect_issuer_id" in config.get("apple_developer", {}):
+            secrets["APP_STORE_CONNECT_ISSUER_ID"] = apple_dev[
+                "app_store_connect_issuer_id"
+            ]
 
         # Export certificates
         cert_secrets = self.export_certificates()
@@ -710,23 +753,31 @@ This will:
         secrets.update(api_secrets)
 
         # Get GitHub token
-        github_token = config['github']['personal_access_token']
+        github_token = config["github"]["personal_access_token"]
 
-        if github_token.startswith('github'):
+        if github_token.startswith("github"):
             # Create or update GitHub secrets
             if self.create_github_secrets(secrets, github_token):
                 self.cleanup_temp_files()
 
                 self.print_header("Phase 2 Complete!")
 
-                print(f"\n{Colors.GREEN}✅ All GitHub secrets created or updated successfully!{Colors.ENDC}")
+                print(
+                    f"\n{Colors.GREEN}✅ All GitHub secrets created or updated successfully!{Colors.ENDC}"
+                )
                 print(f"\n🚀 Next steps:")
                 print(f"1. Test the workflow: Push to master branch")
-                print(f"2. Check GitHub Actions: https://github.com/{self.github_repo}/actions")
-                print(f"3. Look for signed releases in: https://github.com/{self.github_repo}/releases")
+                print(
+                    f"2. Check GitHub Actions: https://github.com/{self.github_repo}/actions"
+                )
+                print(
+                    f"3. Look for signed releases in: https://github.com/{self.github_repo}/releases"
+                )
 
                 print(f"\n🔒 Security reminder:")
-                print(f"- Local credentials remain in: {Colors.CYAN}{self.credentials_dir}{Colors.ENDC}")
+                print(
+                    f"- Local credentials remain in: {Colors.CYAN}{self.credentials_dir}{Colors.ENDC}"
+                )
                 print(f"- These files are git-ignored and stay on your machine")
                 print(f"- GitHub secrets are encrypted and secure")
             else:

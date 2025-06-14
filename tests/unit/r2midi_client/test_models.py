@@ -22,7 +22,7 @@ class TestClientModels(unittest.TestCase):
             manufacturer="Test Manufacturer",
             midi_port={"IN": "Port 1", "OUT": "Port 2"},
             midi_channel={"IN": 1, "OUT": 2},
-            community_folders=["folder1", "folder2"]
+            community_folders=["folder1", "folder2"],
         )
         self.assertEqual(device.name, "Test Device")
         self.assertEqual(device.manufacturer, "Test Manufacturer")
@@ -50,12 +50,14 @@ class TestClientModels(unittest.TestCase):
             sendmidi_command="sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0",
             cc_0=0,
             pgm=0,
-            source="default"
+            source="default",
         )
         self.assertEqual(preset.preset_name, "Test Preset")
         self.assertEqual(preset.category, "Test Category")
         self.assertEqual(preset.characters, ["Warm", "Bright"])
-        self.assertEqual(preset.sendmidi_command, "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0")
+        self.assertEqual(
+            preset.sendmidi_command, "sendmidi dev 'Port 1' ch 1 cc 0 0 pc 0"
+        )
         self.assertEqual(preset.cc_0, 0)
         self.assertEqual(preset.pgm, 0)
         self.assertEqual(preset.source, "default")
@@ -67,12 +69,20 @@ class TestClientModels(unittest.TestCase):
         self.assertEqual(preset.get_display_name(), "Test Preset (Test Category)")
 
         # Test with default source
-        preset = Preset(preset_name="Test Preset", category="Test Category", source="default")
+        preset = Preset(
+            preset_name="Test Preset", category="Test Category", source="default"
+        )
         self.assertEqual(preset.get_display_name(), "Test Preset (Test Category)")
 
         # Test with community folder source
-        preset = Preset(preset_name="Test Preset", category="Test Category", source="community_folder")
-        self.assertEqual(preset.get_display_name(), "Test Preset (Test Category) [community_folder]")
+        preset = Preset(
+            preset_name="Test Preset",
+            category="Test Category",
+            source="community_folder",
+        )
+        self.assertEqual(
+            preset.get_display_name(), "Test Preset (Test Category) [community_folder]"
+        )
 
     def test_preset_get_details(self):
         """Test the get_details method of the Preset model"""
@@ -86,7 +96,9 @@ class TestClientModels(unittest.TestCase):
         self.assertNotIn("CC 0:", details)
 
         # Test with source field
-        preset = Preset(preset_name="Test Preset", category="Test Category", source="default")
+        preset = Preset(
+            preset_name="Test Preset", category="Test Category", source="default"
+        )
         details = preset.get_details()
         self.assertIn("Name: Test Preset", details)
         self.assertIn("Category: Test Category", details)
@@ -99,7 +111,7 @@ class TestClientModels(unittest.TestCase):
             characters=["Warm", "Bright"],
             cc_0=0,
             pgm=1,
-            source="community_folder"
+            source="community_folder",
         )
         details = preset.get_details()
         self.assertIn("Name: Test Preset", details)
@@ -130,7 +142,7 @@ class TestClientModels(unittest.TestCase):
             midi_out_port="Out Port",
             sequencer_port="Seq Port",
             midi_channel=5,
-            sync_enabled=False
+            sync_enabled=False,
         )
         self.assertEqual(ui_state.manufacturer, "Test Manufacturer")
         self.assertEqual(ui_state.device, "Test Device")
@@ -140,6 +152,7 @@ class TestClientModels(unittest.TestCase):
         self.assertEqual(ui_state.sequencer_port, "Seq Port")
         self.assertEqual(ui_state.midi_channel, 5)
         self.assertFalse(ui_state.sync_enabled)
+
 
 if __name__ == "__main__":
     unittest.main()

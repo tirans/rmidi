@@ -104,20 +104,34 @@ try:
     from .device_manager import DeviceManager
     from .git_operations import git_sync as git_sync_operation
     from .midi_utils import MidiUtils
-    from .models import (Device, DeviceCreate, DirectoryStructureRequest,
-                         DirectoryStructureResponse, ManufacturerCreate,
-                         ManufacturerRequest, Preset, PresetCreate,
-                         PresetRequest)
+    from .models import (
+        Device,
+        DeviceCreate,
+        DirectoryStructureRequest,
+        DirectoryStructureResponse,
+        ManufacturerCreate,
+        ManufacturerRequest,
+        Preset,
+        PresetCreate,
+        PresetRequest,
+    )
     from .version import __version__
 except ImportError:
     # Fall back to absolute imports (when run directly)
     from server.device_manager import DeviceManager
     from server.git_operations import git_sync as git_sync_operation
     from server.midi_utils import MidiUtils
-    from server.models import (Device, DeviceCreate, DirectoryStructureRequest,
-                               DirectoryStructureResponse, ManufacturerCreate,
-                               ManufacturerRequest, Preset, PresetCreate,
-                               PresetRequest)
+    from server.models import (
+        Device,
+        DeviceCreate,
+        DirectoryStructureRequest,
+        DirectoryStructureResponse,
+        ManufacturerCreate,
+        ManufacturerRequest,
+        Preset,
+        PresetCreate,
+        PresetRequest,
+    )
     from server.version import __version__
 
 # Configure logging
@@ -1051,12 +1065,10 @@ async def git_remote_sync():
     """
     try:
         # Import the git_remote_sync function from the git_operations module
-        from server.git_operations import \
-            git_remote_sync as git_remote_sync_operation
+        from server.git_operations import git_remote_sync as git_remote_sync_operation
     except ImportError:
         # Fall back to absolute imports (when run directly)
-        from server.git_operations import \
-            git_remote_sync as git_remote_sync_operation
+        from server.git_operations import git_remote_sync as git_remote_sync_operation
 
     # Call the git_remote_sync function from the git_operations module
     success, message, status_code = git_remote_sync_operation()

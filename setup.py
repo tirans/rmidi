@@ -9,10 +9,10 @@ with open("server/version.py") as fp:
 
 setup(
     name="r2midi",
-    version=version['__version__'],
+    version=version["__version__"],
     packages=find_packages(),
     package_data={
-        'server': ['midi-presets/**/*'],
+        "server": ["midi-presets/**/*"],
     },
     install_requires=[
         "fastapi>=0.104.0",
@@ -28,7 +28,7 @@ setup(
         "psutil>=7.0.0",
     ],
     extras_require={
-        'test': [
+        "test": [
             "pytest>=7.4.0",
             "pytest-asyncio>=0.21.1",
             "pytest-mock>=3.11.1",

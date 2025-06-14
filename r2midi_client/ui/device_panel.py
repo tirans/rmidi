@@ -5,9 +5,18 @@ import os
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 from PyQt6.QtCore import QTimer, pyqtSignal
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QGroupBox,
-                             QHBoxLayout, QLabel, QMessageBox, QSpinBox,
-                             QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..models import Device, UIState
 

@@ -1,182 +1,115 @@
-# ✅ FIXED: GitHub Workflow & Action Reference Issues
+# GitHub Actions Workflow Reference Fixes
 
-## 🎯 **ROOT CAUSE & SOLUTION**
+## Summary of Issues Fixed
 
-GitHub Actions has **strict requirements** for referencing workflows and actions within the same repository:
+The GitHub Actions workflows were failing due to incorrect workflow reference syntax. The main issue was using invalid `@ref` syntax for local workflows and missing `./` prefixes.
 
-### **❌ The Problem**
-```
-Invalid workflow file: .github/workflows/ci.yml#L226
-invalid value workflow reference: no version specified
-```
+## Fixes Applied
 
-### **✅ The Solution**
-
-#### **For Reusable Workflows** (same repo):
+### 1. Fixed `ci.yml` (Line 174)
+**Before:**
 ```yaml
-# ❌ WRONG - Missing version
-uses: .github/workflows/reusable-build.yml
+uses: ./.github/workflows/reusable-build.yml@v1
+```
 
-# ✅ CORRECT - With version and ./ prefix
+**After:**
+```yaml
+uses: ./.github/workflows/reusable-build.yml
+```
+
+### 2. Fixed `release.yml` (Line 95)
+**Before:**
+```yaml
+uses: .github/workflows/reusable-test.yml@main
+```
+
+**After:**
+```yaml
+uses: ./.github/workflows/reusable-test.yml
+```
+
+### 3. Fixed `release.yml` (Line 159)
+**Before:**
+```yaml
 uses: .github/workflows/reusable-build.yml@main
 ```
 
-#### **For Actions** (same repo):
+**After:**
 ```yaml
-# ❌ WRONG - Missing ./ prefix  
-uses: .github/actions/build-apps
-
-# ✅ CORRECT - With ./ prefix (no version needed)
-uses: .github/actions/build-apps
+uses: ./.github/workflows/reusable-build.yml
 ```
 
----
+## GitHub Actions Reference Rules
 
-## 🔧 **ALL FIXES APPLIED**
+### ✅ Correct Syntax
 
-### **✅ Workflow Reference Fixes**
-1. **`.github/workflows/ci.yml`** 
-   - ✅ `uses: .github/workflows/reusable-build.yml@main`
-
-2. **`.github/workflows/release.yml`**
-   - ✅ `uses: .github/workflows/reusable-test.yml@main`
-   - ✅ `uses: .github/workflows/reusable-build.yml@main`
-
-### **✅ Action Reference Fixes**  
-3. **`.github/workflows/reusable-build.yml`** (5 fixes)
-   - ✅ `uses: .github/actions/setup-environment`
-   - ✅ `uses: .github/actions/setup-macos-signing`
-   - ✅ `uses: .github/actions/build-apps`
-   - ✅ `uses: .github/actions/package-apps`
-   - ✅ `uses: .github/actions/cleanup-signing`
-
-4. **`.github/workflows/macos-native.yml`** (6 fixes)
-   - ✅ `uses: .github/actions/install-system-deps`
-   - ✅ `uses: .github/actions/setup-macos-signing`
-   - ✅ `uses: .github/actions/configure-build`
-   - ✅ `uses: .github/actions/build-apps`
-   - ✅ `uses: .github/actions/package-apps`
-   - ✅ `uses: .github/actions/cleanup-signing`
-
-**Total References Fixed**: **14 fixes** across 4 workflow files
-
----
-
-## 📋 **Reference Format Rules**
-
-### **📚 GitHub Actions Reference Guide**
-
-| Type | Format | Example | Notes |
-|------|--------|---------|-------|
-| **External Action** | `owner/repo@version` | `actions/checkout@v4` | Standard format |
-| **Local Action** | `.github/actions/name` | `.github/actions/build-apps` | Requires `./` prefix |
-| **Reusable Workflow** | `.github/workflows/name.yml@ref` | `.github/workflows/reusable-build.yml@main` | Requires version |
-
-### **🔄 Why These Formats?**
-
-1. **Local Actions** need `./` to indicate same repository
-2. **Reusable Workflows** need `@version` for GitHub's security model  
-3. **External Actions** use `owner/repo@version` for external repositories
-
----
-
-## 🧪 **VERIFICATION CREATED**
-
-### **New Verification Script**: `verify-workflow-references.sh`
-
-**Features**:
-- ✅ Checks for missing workflow versions
-- ✅ Validates action path formats  
-- ✅ Verifies action existence
-- ✅ Tests YAML syntax
-- ✅ Provides clear format rules
-
-### **Quick Verification** (30 seconds)
-```bash
-cd /Users/tirane/Desktop/r2midi
-chmod +x verify-workflow-references.sh
-./verify-workflow-references.sh
+**Local Reusable Workflows:**
+```yaml
+uses: ./.github/workflows/workflow-name.yml  # NO @ref allowed
 ```
 
----
-
-## 🎯 **COMPLETE SOLUTION STATUS**
-
-### **✅ Infrastructure Issues (Fixed)**
-- ✅ **Workflow references**: Correct version specifications
-- ✅ **Action references**: Proper path formats
-- ✅ **YAML syntax**: All files validated
-- ✅ **Action existence**: All actions verified
-
-### **✅ Build System Issues (Previously Fixed)**
-- ✅ **macOS builds**: py2app conflict resolution
-- ✅ **Linux builds**: Broken pipe error fixes
-- ✅ **Windows builds**: Process management improvements
-- ✅ **Error handling**: Comprehensive retry mechanisms
-
----
-
-## 🚀 **READY FOR PRODUCTION**
-
-### **Expected Results**
-| Issue | Before | After |
-|-------|--------|-------|
-| **Workflow Loading** | ❌ "no version specified" | ✅ Loads successfully |
-| **Action Loading** | ❌ Path errors | ✅ 100% success |
-| **Build Success** | ~60% | >95% |
-| **Error Recovery** | Manual | Automatic |
-
-### **Confidence Level**: **VERY HIGH**
-- ✅ **14 reference fixes** verified
-- ✅ **All formats** follow GitHub standards
-- ✅ **Complete validation** script provided
-- ✅ **Comprehensive testing** performed
-
----
-
-## 🔄 **FINAL STEPS**
-
-### **1. Verify All Fixes** (1 minute)
-```bash
-cd /Users/tirane/Desktop/r2midi
-chmod +x verify-workflow-references.sh
-./verify-workflow-references.sh
+**Local Custom Actions:**
+```yaml
+uses: ./.github/actions/action-name
 ```
 
-### **2. Commit Complete Solution** (2 minutes)
-```bash
-git add .
-git commit -m "fix: resolve GitHub workflow/action references and implement resilient builds
-
-WORKFLOW FIXES:
-- Add required @main version to reusable workflow references
-- Restore ./ prefix for local action references
-- Fix 14 reference issues across 4 workflow files
-
-BUILD SYSTEM IMPROVEMENTS:  
-- Implement comprehensive error handling for all platforms
-- Add retry mechanisms with exponential backoff
-- Create validation and troubleshooting tools
-- Resolve macOS py2app conflicts, Linux broken pipes, Windows process issues
-
-All GitHub Actions workflows now load correctly and builds are resilient."
+**External Workflows/Actions:**
+```yaml
+uses: owner/repository@ref
+uses: owner/repository/path/to/workflow.yml@ref
+uses: actions/checkout@v4
 ```
 
-### **3. Test Complete System** (5-10 minutes)
-```bash
-git push
-# Monitor GitHub Actions - should see clean workflow loading and reliable builds
+### ❌ Incorrect Syntax
+
+**Local workflows with @ref (INVALID):**
+```yaml
+uses: ./.github/workflows/workflow.yml@main    # ❌ Invalid
+uses: .github/workflows/workflow.yml@v1        # ❌ Invalid
 ```
 
----
+**Local actions without ./ prefix:**
+```yaml
+uses: .github/actions/action-name              # ❌ Missing ./
+```
 
-## 🎉 **SUCCESS METRICS**
+## Verification
 
-- **Reference Loading**: 100% success (was 0% due to format errors)
-- **Workflow Execution**: Smooth action loading and execution  
-- **Build Reliability**: >95% success with intelligent error recovery
-- **Maintainability**: Clear documentation and validation tools
+1. **Run the updated verification script:**
+   ```bash
+   bash verify-workflow-references.sh
+   ```
 
-**🎯 BOTTOM LINE**: Your R2MIDI project now has **bulletproof GitHub Actions workflows** with **enterprise-grade build reliability**.
+2. **Test the workflows:**
+   ```bash
+   # Push changes to trigger CI
+   git add .github/
+   git commit -m "fix: correct GitHub workflow references"
+   git push
+   ```
 
-**▶️ STATUS**: Ready for immediate production use! 🚀
+3. **Check Actions tab** in GitHub to verify workflows run without reference errors.
+
+## Why These Fixes Work
+
+- **Local workflows** (in the same repository) cannot use `@ref` syntax - they must reference the current repository state
+- **Local workflows** must use `./` prefix to indicate they are local to the repository
+- **External workflows** require `owner/repo@ref` format to specify which version to use
+- GitHub Actions validates these references at runtime and fails with "invalid workflow reference" if the syntax is incorrect
+
+## Expected Outcomes
+
+After these fixes:
+1. ✅ No more "invalid workflow reference" errors
+2. ✅ No more "references to workflows must be prefixed with format" errors  
+3. ✅ CI workflows will run successfully
+4. ✅ Release workflows will be able to call reusable workflows
+5. ✅ All workflow references will follow GitHub Actions best practices
+
+## Files Modified
+
+1. `.github/workflows/ci.yml` - Fixed reusable workflow reference
+2. `.github/workflows/release.yml` - Fixed two reusable workflow references  
+3. `verify-workflow-references.sh` - Updated verification logic to catch these issues
+
+The workflows should now run without reference errors. Test by pushing these changes and monitoring the Actions tab for successful execution.

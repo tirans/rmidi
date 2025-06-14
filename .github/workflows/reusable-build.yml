@@ -137,7 +137,7 @@ jobs:
           ls -la server/
 
       - name: Setup build environment
-        uses: .github/actions/setup-environment
+        uses: ./.github/actions/setup-environment
         with:
           platform: ${{ inputs.platform }}
           python-version: ${{ inputs.python-version }}
@@ -172,7 +172,7 @@ jobs:
 
       - name: Setup code signing (macOS)
         if: inputs.sign-builds && inputs.platform == 'macOS'
-        uses: .github/actions/setup-macos-signing
+        uses: ./.github/actions/setup-macos-signing
         with:
           certificate-p12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -182,7 +182,7 @@ jobs:
 
       - name: Build applications
         id: build
-        uses: .github/actions/build-apps
+        uses: ./.github/actions/build-apps
         with:
           platform: ${{ inputs.platform }}
           build-type: ${{ inputs.build-type }}
@@ -191,7 +191,7 @@ jobs:
 
       - name: Create installers and packages
         if: inputs.build-type == 'production' || inputs.build-type == 'staging'
-        uses: .github/actions/package-apps
+        uses: ./.github/actions/package-apps
         with:
           platform: ${{ inputs.platform }}
           build-type: ${{ inputs.build-type }}
@@ -321,6 +321,6 @@ jobs:
 
       - name: Cleanup resources
         if: always()
-        uses: .github/actions/cleanup-signing
+        uses: ./.github/actions/cleanup-signing
         with:
           platform: ${{ inputs.platform }}

@@ -137,13 +137,21 @@ validate_pyproject_toml() {
     # Validate version consistency
     ((CHECKS++))
     if [ -f "server/version.py" ]; then
-        local pyproject_version=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
-        local server_version=$(grep '__version__ = ' server/version.py | cut -d'"' -f2)
+        # Extract version from pyproject.toml more carefully
+        local pyproject_version=$(grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2 | tr -d '\n\r')
+        local server_version=$(grep '__version__ = ' server/version.py | head -1 | cut -d'"' -f2 | tr -d '\n\r')
         
-        if [ "$pyproject_version" = "$server_version" ]; then
-            print_status "OK" "Version consistency between pyproject.toml and server/version.py"
+        # Debug output (remove if working)
+        # echo "DEBUG: pyproject_version='$pyproject_version'" >&2
+        # echo "DEBUG: server_version='$server_version'" >&2
+        
+        if [ "$pyproject_version" = "$server_version" ] && [ -n "$pyproject_version" ]; then
+            print_status "OK" "Version consistency between pyproject.toml and server/version.py ($pyproject_version)"
+        elif [ -z "$pyproject_version" ] || [ -z "$server_version" ]; then
+            print_status "WARNING" "Could not extract version from one or both files"
+            ((WARNINGS++))
         else
-            print_status "WARNING" "Version mismatch: pyproject.toml ($pyproject_version) vs server/version.py ($server_version)"
+            print_status "WARNING" "Version mismatch: pyproject.toml '$pyproject_version' vs server/version.py '$server_version'"
             ((WARNINGS++))
         fi
     fi
@@ -350,6 +358,8 @@ validate_permissions() {
         ".github/scripts/update-version.sh"
         ".github/scripts/validate-build-environment.sh"
         ".github/scripts/validate-project-structure.sh"
+        ".github/scripts/build-python-package.sh"
+        ".github/scripts/prepare-release-artifacts.sh"
     )
     
     for script in "${scripts[@]}"; do

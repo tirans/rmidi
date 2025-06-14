@@ -120,7 +120,7 @@ pytz==2025.2
 PyYAML==6.0.2
 pyzmq==27.0.0
 referencing==0.36.2
-requests==2.32.3
+requests==2.32.4
 rich==14.0.0
 rpds-py==0.25.1
 rtmidi==2.5.0

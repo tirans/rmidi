@@ -1,8 +1,21 @@
 from typing import Dict, List, Optional, Set, Tuple
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, 
-    QLabel, QTextEdit, QComboBox, QGroupBox, QLineEdit, QPushButton,
-    QCheckBox, QMenu, QStyledItemDelegate, QStyleOptionViewItem, QStyle
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QLabel,
+    QTextEdit,
+    QComboBox,
+    QGroupBox,
+    QLineEdit,
+    QPushButton,
+    QCheckBox,
+    QMenu,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QStyle,
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QRect
 from PyQt6.QtGui import QColor, QBrush, QIcon, QAction, QFont, QPainter, QPen
@@ -15,7 +28,7 @@ import os
 import logging
 
 # Configure logger
-logger = logging.getLogger('r2midi_client.ui.preset_panel')
+logger = logging.getLogger("r2midi_client.ui.preset_panel")
 
 
 class PresetItemDelegate(QStyledItemDelegate):
@@ -47,8 +60,16 @@ class PresetItemDelegate(QStyledItemDelegate):
         # Draw text with appropriate color
         if text:
             text_rect = option.rect.adjusted(5, 0, -5, 0)  # Add padding
-            painter.setPen(fg_color if fg_color and isinstance(fg_color, QColor) else QColor(0, 0, 0))
-            painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+            painter.setPen(
+                fg_color
+                if fg_color and isinstance(fg_color, QColor)
+                else QColor(0, 0, 0)
+            )
+            painter.drawText(
+                text_rect,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                text,
+            )
 
         # Restore painter state
         painter.restore()
@@ -107,7 +128,9 @@ class PresetPanel(QWidget):
         controls_box.setFont(self.larger_font)  # Set larger font for group box title
         controls_layout = QVBoxLayout()
         controls_layout.setSpacing(10)  # Increase spacing between controls
-        controls_layout.setContentsMargins(10, 10, 10, 10)  # Add margins inside the group box
+        controls_layout.setContentsMargins(
+            10, 10, 10, 10
+        )  # Add margins inside the group box
         controls_box.setLayout(controls_layout)
 
         # Search box
@@ -138,7 +161,9 @@ class PresetPanel(QWidget):
         self.category_combo.setFont(self.larger_font)  # Set larger font
         self.category_combo.addItem("All Categories", None)
         self.category_combo.currentIndexChanged.connect(self.on_category_changed)
-        self.category_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.category_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
         self.category_combo.setMinimumWidth(200)
 
         # Create label with larger font
@@ -151,7 +176,9 @@ class PresetPanel(QWidget):
         # Favorites checkbox
         if self.config.enable_favorites:
             self.favorites_checkbox = QCheckBox("Show Favorites Only")
-            self.favorites_checkbox.stateChanged.connect(self.on_favorites_filter_changed)
+            self.favorites_checkbox.stateChanged.connect(
+                self.on_favorites_filter_changed
+            )
             self.favorites_checkbox.setFont(self.larger_font)  # Set larger font
 
             # Add the checkbox with some spacing
@@ -165,7 +192,9 @@ class PresetPanel(QWidget):
         list_box.setFont(self.larger_font)  # Set larger font for group box title
         list_layout = QVBoxLayout()
         list_layout.setSpacing(10)  # Increase spacing between list components
-        list_layout.setContentsMargins(10, 10, 10, 10)  # Add margins inside the group box
+        list_layout.setContentsMargins(
+            10, 10, 10, 10
+        )  # Add margins inside the group box
         list_box.setLayout(list_layout)
 
         # Results count label
@@ -179,23 +208,29 @@ class PresetPanel(QWidget):
         self.preset_list.itemDoubleClicked.connect(self.on_preset_double_clicked)
 
         # Set list widget style to ensure background colors are visible
-        self.preset_list.setAlternatingRowColors(False)  # Disable alternating row colors
+        self.preset_list.setAlternatingRowColors(
+            False
+        )  # Disable alternating row colors
 
         # Use custom delegate to ensure colors are properly displayed
         self.preset_delegate = PresetItemDelegate()
         self.preset_list.setItemDelegate(self.preset_delegate)
 
         # Set minimal styling to avoid conflicts
-        self.preset_list.setStyleSheet("""
+        self.preset_list.setStyleSheet(
+            """
             QListWidget {
                 outline: none;
                 border: 1px solid #ccc;
             }
-        """)
+        """
+        )
 
         # Enable context menu for favorites
         if self.config.enable_favorites:
-            self.preset_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.preset_list.setContextMenuPolicy(
+                Qt.ContextMenuPolicy.CustomContextMenu
+            )
             self.preset_list.customContextMenuRequested.connect(self.show_context_menu)
 
         list_layout.addWidget(self.preset_list)
@@ -213,7 +248,9 @@ class PresetPanel(QWidget):
         self.legend_box.setFont(self.larger_font)  # Set larger font for group box title
         legend_layout = QVBoxLayout()
         legend_layout.setSpacing(5)  # Spacing between legend items
-        legend_layout.setContentsMargins(10, 10, 10, 10)  # Add margins inside the group box
+        legend_layout.setContentsMargins(
+            10, 10, 10, 10
+        )  # Add margins inside the group box
         self.legend_box.setLayout(legend_layout)
 
         # Legend will be populated when presets are loaded
@@ -225,7 +262,9 @@ class PresetPanel(QWidget):
         details_box.setFont(self.larger_font)  # Set larger font for group box title
         details_layout = QVBoxLayout()
         details_layout.setSpacing(10)  # Increase spacing between components
-        details_layout.setContentsMargins(10, 10, 10, 10)  # Add margins inside the group box
+        details_layout.setContentsMargins(
+            10, 10, 10, 10
+        )  # Add margins inside the group box
         details_box.setLayout(details_layout)
 
         self.details_text = QTextEdit()
@@ -261,26 +300,26 @@ class PresetPanel(QWidget):
             # Predefined color palette for better visual distinction
             # Using vibrant colors that are easy to distinguish
             predefined_colors = [
-                QColor(220, 53, 69),    # Red
-                QColor(0, 123, 255),    # Blue
-                QColor(40, 167, 69),    # Green
-                QColor(255, 140, 0),    # Orange
-                QColor(128, 0, 128),    # Purple
-                QColor(255, 193, 7),    # Yellow
-                QColor(32, 201, 151),   # Teal
-                QColor(232, 62, 140),   # Pink
+                QColor(220, 53, 69),  # Red
+                QColor(0, 123, 255),  # Blue
+                QColor(40, 167, 69),  # Green
+                QColor(255, 140, 0),  # Orange
+                QColor(128, 0, 128),  # Purple
+                QColor(255, 193, 7),  # Yellow
+                QColor(32, 201, 151),  # Teal
+                QColor(232, 62, 140),  # Pink
                 QColor(108, 117, 125),  # Gray
-                QColor(155, 89, 50),    # Brown
-                QColor(52, 58, 64),     # Dark gray
-                QColor(0, 188, 212),    # Cyan
-                QColor(156, 39, 176),   # Deep purple
-                QColor(76, 175, 80),    # Light green
-                QColor(255, 87, 34),    # Deep orange
-                QColor(96, 125, 139),   # Blue gray
-                QColor(121, 85, 72),    # Dark brown
-                QColor(63, 81, 181),    # Indigo
-                QColor(205, 220, 57),   # Lime
-                QColor(0, 150, 136),    # Dark teal
+                QColor(155, 89, 50),  # Brown
+                QColor(52, 58, 64),  # Dark gray
+                QColor(0, 188, 212),  # Cyan
+                QColor(156, 39, 176),  # Deep purple
+                QColor(76, 175, 80),  # Light green
+                QColor(255, 87, 34),  # Deep orange
+                QColor(96, 125, 139),  # Blue gray
+                QColor(121, 85, 72),  # Dark brown
+                QColor(63, 81, 181),  # Indigo
+                QColor(205, 220, 57),  # Lime
+                QColor(0, 150, 136),  # Dark teal
             ]
 
             # If we have more new categories than predefined colors, generate additional colors
@@ -290,14 +329,18 @@ class PresetPanel(QWidget):
                     # Create additional colors with varying saturation and value
                     hue = (i - len(predefined_colors)) * hue_step
                     saturation = 150 + (i % 3) * 40  # Vary saturation between 150-230
-                    value = 200 + (i % 2) * 55       # Vary value between 200-255
-                    predefined_colors.append(QColor.fromHsv(int(hue), saturation, value))
+                    value = 200 + (i % 2) * 55  # Vary value between 200-255
+                    predefined_colors.append(
+                        QColor.fromHsv(int(hue), saturation, value)
+                    )
 
             # Assign colors to new categories
             for i, category in enumerate(new_categories):
                 color = predefined_colors[i % len(predefined_colors)]
                 self.category_colors[category] = color
-                logger.info(f"Assigned color RGB({color.red()},{color.green()},{color.blue()}) to category '{category}'")
+                logger.info(
+                    f"Assigned color RGB({color.red()},{color.green()},{color.blue()}) to category '{category}'"
+                )
 
             # Save the updated category colors
             self._save_category_colors()
@@ -312,15 +355,20 @@ class PresetPanel(QWidget):
             # Create a colored square icon for the category
             pixmap_size = 16
             from PyQt6.QtGui import QPixmap, QPainter
+
             pixmap = QPixmap(pixmap_size, pixmap_size)
             color = self.category_colors.get(category)
             if color:
                 pixmap.fill(color)
-                logger.debug(f"Added category '{category}' with color RGB({color.red()},{color.green()},{color.blue()})")
+                logger.debug(
+                    f"Added category '{category}' with color RGB({color.red()},{color.green()},{color.blue()})"
+                )
             else:
                 # Fallback to a default color if for some reason we don't have a color for this category
                 pixmap.fill(QColor(200, 200, 200))
-                logger.warning(f"No color found for category '{category}', using default gray")
+                logger.warning(
+                    f"No color found for category '{category}', using default gray"
+                )
 
             # Add the category with its color icon
             self.category_combo.addItem(QIcon(pixmap), category, category)
@@ -370,10 +418,14 @@ class PresetPanel(QWidget):
         self.preset_list.clear()
 
         # Log the current state for debugging
-        logger.debug(f"Current state: {len(self.presets)} total presets, category filter: '{self.current_category}', search text: '{self.search_text}', favorites only: {self.show_favorites_only}")
+        logger.debug(
+            f"Current state: {len(self.presets)} total presets, category filter: '{self.current_category}', search text: '{self.search_text}', favorites only: {self.show_favorites_only}"
+        )
 
         # Apply filters
-        self.filtered_presets = self.presets.copy()  # Make a copy to avoid modifying the original
+        self.filtered_presets = (
+            self.presets.copy()
+        )  # Make a copy to avoid modifying the original
         logger.debug(f"Starting with {len(self.filtered_presets)} presets")
 
         # Apply filters one by one to log the effect of each filter
@@ -381,19 +433,29 @@ class PresetPanel(QWidget):
 
         # Category filter
         if self.current_category:
-            filtered_presets = [p for p in filtered_presets if p.category == self.current_category]
-            logger.debug(f"After category filter: {len(filtered_presets)} presets remaining")
+            filtered_presets = [
+                p for p in filtered_presets if p.category == self.current_category
+            ]
+            logger.debug(
+                f"After category filter: {len(filtered_presets)} presets remaining"
+            )
 
         # Search filter
         if self.search_text:
             search_lower = self.search_text.lower()
-            filtered_presets = [p for p in filtered_presets if search_lower in p.preset_name.lower()]
-            logger.debug(f"After search filter: {len(filtered_presets)} presets remaining")
+            filtered_presets = [
+                p for p in filtered_presets if search_lower in p.preset_name.lower()
+            ]
+            logger.debug(
+                f"After search filter: {len(filtered_presets)} presets remaining"
+            )
 
         # Favorites filter
         if self.show_favorites_only:
             filtered_presets = [p for p in filtered_presets if self._is_favorite(p)]
-            logger.debug(f"After favorites filter: {len(filtered_presets)} presets remaining")
+            logger.debug(
+                f"After favorites filter: {len(filtered_presets)} presets remaining"
+            )
 
         self.filtered_presets = filtered_presets
 
@@ -422,7 +484,11 @@ class PresetPanel(QWidget):
 
                     # Determine text color based on background brightness
                     # Using the standard formula for perceived luminance
-                    brightness = (bg_color.red() * 299 + bg_color.green() * 587 + bg_color.blue() * 114) / 1000
+                    brightness = (
+                        bg_color.red() * 299
+                        + bg_color.green() * 587
+                        + bg_color.blue() * 114
+                    ) / 1000
 
                     # Use black text for light backgrounds, white for dark backgrounds
                     if brightness > 128:
@@ -449,7 +515,10 @@ class PresetPanel(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, preset)
 
             # Add comprehensive tooltip with preset details
-            tooltip_parts = [f"Name: {preset.preset_name}", f"Category: {preset.category}"]
+            tooltip_parts = [
+                f"Name: {preset.preset_name}",
+                f"Category: {preset.category}",
+            ]
 
             if preset.source and preset.source != "default":
                 tooltip_parts.append(f"Source: {preset.source}")
@@ -472,7 +541,9 @@ class PresetPanel(QWidget):
                         self.preset_list.addItem(item)
                     except Exception as e:
                         logger.error(f"Error adding item {i} to preset list: {str(e)}")
-                        logger.error(f"Item type: {type(item)}, Item text: {item.text() if hasattr(item, 'text') else 'N/A'}")
+                        logger.error(
+                            f"Item type: {type(item)}, Item text: {item.text() if hasattr(item, 'text') else 'N/A'}"
+                        )
                         raise
                 logger.debug(f"Added {len(items_to_add)} items to preset list")
             except Exception as e:
@@ -594,7 +665,7 @@ class PresetPanel(QWidget):
         favorites_file = os.path.join(os.path.expanduser("~"), ".r2midi_favorites.json")
         if os.path.exists(favorites_file):
             try:
-                with open(favorites_file, 'r') as f:
+                with open(favorites_file, "r") as f:
                     return set(json.load(f))
             except Exception:
                 pass
@@ -604,7 +675,7 @@ class PresetPanel(QWidget):
         """Save favorites to file"""
         favorites_file = os.path.join(os.path.expanduser("~"), ".r2midi_favorites.json")
         try:
-            with open(favorites_file, 'w') as f:
+            with open(favorites_file, "w") as f:
                 json.dump(list(self.favorites), f)
         except Exception as e:
             logger.error(f"Error saving favorites: {str(e)}")
@@ -612,10 +683,12 @@ class PresetPanel(QWidget):
     def _load_category_colors(self) -> Dict[str, QColor]:
         """Load category colors from file"""
         logger.info("Loading category colors from file")
-        colors_file = os.path.join(os.path.expanduser("~"), ".r2midi_category_colors.json")
+        colors_file = os.path.join(
+            os.path.expanduser("~"), ".r2midi_category_colors.json"
+        )
         if os.path.exists(colors_file):
             try:
-                with open(colors_file, 'r') as f:
+                with open(colors_file, "r") as f:
                     color_data = json.load(f)
 
                 # Convert serialized color data back to QColor objects
@@ -624,7 +697,9 @@ class PresetPanel(QWidget):
                     r, g, b, a = color_tuple
                     color = QColor(r, g, b, a)
                     colors[category] = color
-                    logger.info(f"Loaded color for category '{category}': RGB({r},{g},{b},{a})")
+                    logger.info(
+                        f"Loaded color for category '{category}': RGB({r},{g},{b},{a})"
+                    )
                 return colors
             except Exception as e:
                 logger.error(f"Error loading category colors: {str(e)}")
@@ -635,7 +710,9 @@ class PresetPanel(QWidget):
     def _save_category_colors(self):
         """Save category colors to file"""
         logger.info(f"Saving {len(self.category_colors)} category colors to file")
-        colors_file = os.path.join(os.path.expanduser("~"), ".r2midi_category_colors.json")
+        colors_file = os.path.join(
+            os.path.expanduser("~"), ".r2midi_category_colors.json"
+        )
         try:
             # Convert QColor objects to serializable format (RGBA tuples)
             color_data = {}
@@ -644,7 +721,7 @@ class PresetPanel(QWidget):
                 color_data[category] = color_tuple
                 logger.info(f"Saving color for category '{category}': RGB{color_tuple}")
 
-            with open(colors_file, 'w') as f:
+            with open(colors_file, "w") as f:
                 json.dump(color_data, f)
             logger.info("Category colors saved successfully")
         except Exception as e:
@@ -668,9 +745,11 @@ class PresetPanel(QWidget):
 
         # Add a label for each category with its color
         from PyQt6.QtGui import QPixmap, QPainter
+
         for category in categories:
             # Create a horizontal layout for this legend item
             from PyQt6.QtWidgets import QHBoxLayout
+
             item_layout = QHBoxLayout()
 
             # Create a colored square
@@ -680,6 +759,7 @@ class PresetPanel(QWidget):
 
             # Create a label with the colored square
             from PyQt6.QtWidgets import QLabel
+
             color_label = QLabel()
             color_label.setPixmap(pixmap)
             color_label.setFixedSize(pixmap_size, pixmap_size)

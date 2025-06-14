@@ -1,6 +1,7 @@
 """
 Configuration management for R2MIDI application
 """
+
 import os
 import json
 import logging
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AppConfig:
     """Application configuration settings"""
+
     # Server settings
     server_url: str = "http://localhost:7777"
     server_check_timeout: int = 30
@@ -50,11 +52,11 @@ class AppConfig:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AppConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "AppConfig":
         """Create config from dictionary"""
         # Handle legacy config parameter names
-        if 'max_patches_display' in data:
-            data['max_presets_display'] = data.pop('max_patches_display')
+        if "max_patches_display" in data:
+            data["max_presets_display"] = data.pop("max_patches_display")
         return cls(**data)
 
 
@@ -73,8 +75,7 @@ class ConfigManager:
         """
         if config_path is None:
             config_path = os.path.join(
-                os.path.expanduser("~"), 
-                self.DEFAULT_CONFIG_FILENAME
+                os.path.expanduser("~"), self.DEFAULT_CONFIG_FILENAME
             )
 
         self.config_path = config_path
@@ -84,7 +85,7 @@ class ConfigManager:
         """Load configuration from file or create default"""
         if os.path.exists(self.config_path):
             try:
-                with open(self.config_path, 'r') as f:
+                with open(self.config_path, "r") as f:
                     data = json.load(f)
                     config = AppConfig.from_dict(data)
                     logger.info(f"Loaded configuration from {self.config_path}")
@@ -104,7 +105,7 @@ class ConfigManager:
             True if successful, False otherwise
         """
         try:
-            with open(self.config_path, 'w') as f:
+            with open(self.config_path, "w") as f:
                 json.dump(self.config.to_dict(), f, indent=2)
             logger.info(f"Saved configuration to {self.config_path}")
             return True
@@ -155,7 +156,7 @@ class ConfigManager:
             True if successful, False otherwise
         """
         try:
-            with open(export_path, 'w') as f:
+            with open(export_path, "w") as f:
                 json.dump(self.config.to_dict(), f, indent=2)
             logger.info(f"Exported configuration to {export_path}")
             return True
@@ -174,7 +175,7 @@ class ConfigManager:
             True if successful, False otherwise
         """
         try:
-            with open(import_path, 'r') as f:
+            with open(import_path, "r") as f:
                 data = json.load(f)
                 self.config = AppConfig.from_dict(data)
             logger.info(f"Imported configuration from {import_path}")

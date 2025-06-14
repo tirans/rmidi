@@ -8,4 +8,4 @@ from .main_window import MainWindow
 from .device_panel import DevicePanel
 from .preset_panel import PresetPanel
 
-__all__ = ['MainWindow', 'DevicePanel', 'PresetPanel']
+__all__ = ["MainWindow", "DevicePanel", "PresetPanel"]

@@ -1,9 +1,11 @@
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
+
 @dataclass
 class Device:
     """Client-side model for device information"""
+
     name: str
     manufacturer: str = ""
     midi_port: Optional[Dict[str, str]] = None
@@ -11,9 +13,11 @@ class Device:
     community_folders: Optional[List[str]] = None
     version: Optional[str] = None
 
+
 @dataclass
 class Preset:
     """Client-side model for preset information"""
+
     preset_name: str
     category: str
     characters: Optional[List[str]] = None
@@ -44,9 +48,11 @@ class Preset:
 
         return "\n".join(details)
 
+
 @dataclass
 class UIState:
     """Client-side model for UI state persistence"""
+
     manufacturer: Optional[str] = None
     device: Optional[str] = None
     community_folder: Optional[str] = None

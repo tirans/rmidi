@@ -8,6 +8,7 @@ import concurrent.futures
 import re
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
+
 # Import modules - handle both relative and absolute imports
 try:
     # Try relative imports first (when imported as package)
@@ -15,6 +16,7 @@ try:
 except ImportError:
     # Fall back to absolute imports (when run directly)
     from server.models import Device, Preset, DirectoryStructureResponse
+
 
 # Path validation utility functions
 def validate_path_component(component: str) -> bool:
@@ -32,11 +34,12 @@ def validate_path_component(component: str) -> bool:
         return False
 
     # Reject components with path traversal sequences
-    if '..' in component or '/' in component or '\\' in component:
+    if ".." in component or "/" in component or "\\" in component:
         return False
 
     # Only allow alphanumeric characters, underscores, hyphens, and spaces
-    return bool(re.match(r'^[a-zA-Z0-9_\-\s.]+$', component))
+    return bool(re.match(r"^[a-zA-Z0-9_\-\s.]+$", component))
+
 
 def sanitize_path_component(component: str) -> str:
     """
@@ -49,16 +52,17 @@ def sanitize_path_component(component: str) -> str:
         A sanitized version of the component
     """
     # Replace spaces with underscores
-    sanitized = component.replace(' ', '_')
+    sanitized = component.replace(" ", "_")
 
     # Remove any characters that aren't alphanumeric, underscore, hyphen, or period
-    sanitized = re.sub(r'[^a-zA-Z0-9_\-.]', '', sanitized)
+    sanitized = re.sub(r"[^a-zA-Z0-9_\-.]", "", sanitized)
 
     # Ensure the component doesn't start with a period (hidden file)
-    if sanitized.startswith('.'):
-        sanitized = 'x' + sanitized
+    if sanitized.startswith("."):
+        sanitized = "x" + sanitized
 
     return sanitized
+
 
 def safe_path_join(base_path: str, *components: str) -> Tuple[str, bool, bool]:
     """
@@ -94,8 +98,10 @@ def safe_path_join(base_path: str, *components: str) -> Tuple[str, bool, bool]:
 
     return joined_path, is_safe, was_sanitized
 
+
 # Get logger
 logger = logging.getLogger(__name__)
+
 
 class DeviceManager:
     """Handles scanning and managing device data"""
@@ -110,7 +116,9 @@ class DeviceManager:
         """
         if devices_folder is None:
             # Default to midi-presets/devices relative to this file
-            devices_folder = os.path.join(os.path.dirname(__file__), "midi-presets", "devices")
+            devices_folder = os.path.join(
+                os.path.dirname(__file__), "midi-presets", "devices"
+            )
         self.devices_folder = devices_folder
         self.devices = {}  # Map of device name to device data
         self.manufacturers = []  # List of manufacturer names
@@ -129,6 +137,7 @@ class DeviceManager:
         - If R2MIDI_ROLE=release (or unset): Use as cloned repository
         """
         import os
+
         try:
             from .git_operations import git_sync, get_midi_presets_mode
         except ImportError:
@@ -143,13 +152,17 @@ class DeviceManager:
             # Still check if the directory exists
             midi_presets_dir = os.path.join(os.path.dirname(__file__), "midi-presets")
             if not os.path.exists(midi_presets_dir):
-                logger.warning("midi-presets directory does not exist and sync is disabled")
+                logger.warning(
+                    "midi-presets directory does not exist and sync is disabled"
+                )
             return
 
         # Check if the midi-presets directory exists
         midi_presets_dir = os.path.join(os.path.dirname(__file__), "midi-presets")
         if not os.path.exists(midi_presets_dir):
-            logger.warning(f"midi-presets directory does not exist, attempting to initialize it in {mode} mode")
+            logger.warning(
+                f"midi-presets directory does not exist, attempting to initialize it in {mode} mode"
+            )
             success, message, _ = git_sync()
             if not success:
                 logger.error(f"Failed to initialize midi-presets: {message}")
@@ -157,7 +170,9 @@ class DeviceManager:
             logger.info(f"Successfully initialized midi-presets: {message}")
         else:
             # Always run git_sync to ensure we have the right type (clone vs submodule)
-            logger.info(f"Ensuring midi-presets is correctly configured for {mode} mode")
+            logger.info(
+                f"Ensuring midi-presets is correctly configured for {mode} mode"
+            )
             success, message, _ = git_sync()
             if not success:
                 logger.error(f"Failed to configure midi-presets: {message}")
@@ -194,7 +209,7 @@ class DeviceManager:
         # Load file and update cache
         try:
             start_time = time.time()
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 data = json.load(f)
             load_time = time.time() - start_time
             logger.debug(f"Loaded JSON file {file_path} in {load_time:.4f} seconds")
@@ -237,7 +252,9 @@ class DeviceManager:
 
         return success, message
 
-    def _process_manufacturer(self, manufacturer: str) -> Tuple[Dict[str, Dict], List[str]]:
+    def _process_manufacturer(
+        self, manufacturer: str
+    ) -> Tuple[Dict[str, Dict], List[str]]:
         """
         Process a single manufacturer directory
 
@@ -259,16 +276,27 @@ class DeviceManager:
             items = os.listdir(manufacturer_path)
 
             # Process device directories and JSON files
-            device_dirs = [d for d in items if os.path.isdir(os.path.join(manufacturer_path, d)) and d != 'community']
-            json_files = [f for f in items if f.endswith('.json')]
+            device_dirs = [
+                d
+                for d in items
+                if os.path.isdir(os.path.join(manufacturer_path, d))
+                and d != "community"
+            ]
+            json_files = [f for f in items if f.endswith(".json")]
 
-            logger.debug(f"Found {len(device_dirs)} device directories and {len(json_files)} JSON files in {manufacturer} directory")
+            logger.debug(
+                f"Found {len(device_dirs)} device directories and {len(json_files)} JSON files in {manufacturer} directory"
+            )
 
             # Use a thread pool to process JSON files in parallel
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count() * 2)) as executor:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=min(32, os.cpu_count() * 2)
+            ) as executor:
                 # Submit tasks for each JSON file
                 future_to_file = {
-                    executor.submit(self._load_json_file, os.path.join(manufacturer_path, filename)): filename
+                    executor.submit(
+                        self._load_json_file, os.path.join(manufacturer_path, filename)
+                    ): filename
                     for filename in json_files
                 }
 
@@ -279,31 +307,50 @@ class DeviceManager:
                         device_data = future.result()
 
                         # Check if device has device_info with a name
-                        if device_data and 'device_info' in device_data and 'name' in device_data['device_info']:
-                            device_name = device_data['device_info']['name']
+                        if (
+                            device_data
+                            and "device_info" in device_data
+                            and "name" in device_data["device_info"]
+                        ):
+                            device_name = device_data["device_info"]["name"]
 
                             # Add manufacturer information
-                            device_data['manufacturer'] = manufacturer
+                            device_data["manufacturer"] = manufacturer
 
                             # Check for community folders
-                            community_path = os.path.join(manufacturer_path, 'community')
+                            community_path = os.path.join(
+                                manufacturer_path, "community"
+                            )
                             community_folders = []
 
-                            if os.path.exists(community_path) and os.path.isdir(community_path):
-                                community_items = [f for f in os.listdir(community_path) 
-                                                 if f.endswith('.json')]
-                                community_folders = [os.path.splitext(f)[0] for f in community_items]
-                                logger.debug(f"Found {len(community_folders)} community folders for {device_name}")
+                            if os.path.exists(community_path) and os.path.isdir(
+                                community_path
+                            ):
+                                community_items = [
+                                    f
+                                    for f in os.listdir(community_path)
+                                    if f.endswith(".json")
+                                ]
+                                community_folders = [
+                                    os.path.splitext(f)[0] for f in community_items
+                                ]
+                                logger.debug(
+                                    f"Found {len(community_folders)} community folders for {device_name}"
+                                )
 
-                            device_data['community_folders'] = community_folders
+                            device_data["community_folders"] = community_folders
 
                             # Store the device data
                             manufacturer_devices[device_name] = device_data
                             manufacturer_device_structure.append(device_name)
 
-                            logger.debug(f"Loaded device: {device_name} from manufacturer {manufacturer}")
+                            logger.debug(
+                                f"Loaded device: {device_name} from manufacturer {manufacturer}"
+                            )
                         else:
-                            logger.warning(f"Device file '{filename}' does not have a device_info.name field")
+                            logger.warning(
+                                f"Device file '{filename}' does not have a device_info.name field"
+                            )
                     except Exception as e:
                         logger.error(f"Error processing JSON file {filename}: {str(e)}")
 
@@ -313,14 +360,21 @@ class DeviceManager:
                 logger.debug(f"Processing device directory: {device_dir}")
 
                 # Get JSON files in device directory
-                device_json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+                device_json_files = [
+                    f for f in os.listdir(device_path) if f.endswith(".json")
+                ]
 
                 if device_json_files:
                     # Use a thread pool to process JSON files in parallel
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count() * 2)) as executor:
+                    with concurrent.futures.ThreadPoolExecutor(
+                        max_workers=min(32, os.cpu_count() * 2)
+                    ) as executor:
                         # Submit tasks for each JSON file
                         future_to_file = {
-                            executor.submit(self._load_json_file, os.path.join(device_path, filename)): filename
+                            executor.submit(
+                                self._load_json_file,
+                                os.path.join(device_path, filename),
+                            ): filename
                             for filename in device_json_files
                         }
 
@@ -331,33 +385,55 @@ class DeviceManager:
                                 device_data = future.result()
 
                                 # Check if device has device_info with a name
-                                if device_data and 'device_info' in device_data and 'name' in device_data['device_info']:
-                                    device_name = device_data['device_info']['name']
+                                if (
+                                    device_data
+                                    and "device_info" in device_data
+                                    and "name" in device_data["device_info"]
+                                ):
+                                    device_name = device_data["device_info"]["name"]
 
                                     # Add manufacturer information
-                                    device_data['manufacturer'] = manufacturer
+                                    device_data["manufacturer"] = manufacturer
 
                                     # Check for community folders
-                                    community_path = os.path.join(manufacturer_path, 'community')
+                                    community_path = os.path.join(
+                                        manufacturer_path, "community"
+                                    )
                                     community_folders = []
 
-                                    if os.path.exists(community_path) and os.path.isdir(community_path):
-                                        community_items = [f for f in os.listdir(community_path) 
-                                                         if f.endswith('.json')]
-                                        community_folders = [os.path.splitext(f)[0] for f in community_items]
-                                        logger.debug(f"Found {len(community_folders)} community folders for {device_name}")
+                                    if os.path.exists(community_path) and os.path.isdir(
+                                        community_path
+                                    ):
+                                        community_items = [
+                                            f
+                                            for f in os.listdir(community_path)
+                                            if f.endswith(".json")
+                                        ]
+                                        community_folders = [
+                                            os.path.splitext(f)[0]
+                                            for f in community_items
+                                        ]
+                                        logger.debug(
+                                            f"Found {len(community_folders)} community folders for {device_name}"
+                                        )
 
-                                    device_data['community_folders'] = community_folders
+                                    device_data["community_folders"] = community_folders
 
                                     # Store the device data
                                     manufacturer_devices[device_name] = device_data
                                     manufacturer_device_structure.append(device_name)
 
-                                    logger.debug(f"Loaded device: {device_name} from manufacturer {manufacturer}")
+                                    logger.debug(
+                                        f"Loaded device: {device_name} from manufacturer {manufacturer}"
+                                    )
                                 else:
-                                    logger.warning(f"Device file '{filename}' does not have a device_info.name field")
+                                    logger.warning(
+                                        f"Device file '{filename}' does not have a device_info.name field"
+                                    )
                             except Exception as e:
-                                logger.error(f"Error processing JSON file {filename}: {str(e)}")
+                                logger.error(
+                                    f"Error processing JSON file {filename}: {str(e)}"
+                                )
 
             return manufacturer_devices, manufacturer_device_structure
 
@@ -387,16 +463,23 @@ class DeviceManager:
 
         try:
             # Get list of manufacturer directories
-            manufacturers = [d for d in os.listdir(self.devices_folder) 
-                            if os.path.isdir(os.path.join(self.devices_folder, d))]
+            manufacturers = [
+                d
+                for d in os.listdir(self.devices_folder)
+                if os.path.isdir(os.path.join(self.devices_folder, d))
+            ]
             logger.info(f"Found {len(manufacturers)} manufacturer directories")
             self.manufacturers = manufacturers
 
             # Use a thread pool to process manufacturers in parallel
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count() * 4)) as executor:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=min(32, os.cpu_count() * 4)
+            ) as executor:
                 # Submit tasks for each manufacturer
                 future_to_manufacturer = {
-                    executor.submit(self._process_manufacturer, manufacturer): manufacturer
+                    executor.submit(
+                        self._process_manufacturer, manufacturer
+                    ): manufacturer
                     for manufacturer in manufacturers
                 }
 
@@ -404,26 +487,41 @@ class DeviceManager:
                 for future in concurrent.futures.as_completed(future_to_manufacturer):
                     manufacturer = future_to_manufacturer[future]
                     try:
-                        manufacturer_devices, manufacturer_device_structure = future.result()
+                        manufacturer_devices, manufacturer_device_structure = (
+                            future.result()
+                        )
                         self.devices.update(manufacturer_devices)
-                        self.device_structure[manufacturer] = manufacturer_device_structure
-                        logger.info(f"Processed manufacturer {manufacturer} with {len(manufacturer_device_structure)} devices")
+                        self.device_structure[manufacturer] = (
+                            manufacturer_device_structure
+                        )
+                        logger.info(
+                            f"Processed manufacturer {manufacturer} with {len(manufacturer_device_structure)} devices"
+                        )
                     except Exception as e:
-                        logger.error(f"Error processing manufacturer {manufacturer}: {str(e)}")
+                        logger.error(
+                            f"Error processing manufacturer {manufacturer}: {str(e)}"
+                        )
 
             scan_time = time.time() - start_time
-            logger.info(f"Optimized scan completed in {scan_time:.4f} seconds, found {len(self.devices)} devices")
+            logger.info(
+                f"Optimized scan completed in {scan_time:.4f} seconds, found {len(self.devices)} devices"
+            )
 
             return self.devices
         except Exception as e:
             scan_time = time.time() - start_time
-            logger.error(f"Error during optimized scan: {str(e)} (failed in {scan_time:.4f} seconds)")
+            logger.error(
+                f"Error during optimized scan: {str(e)} (failed in {scan_time:.4f} seconds)"
+            )
             logger.warning("Falling back to standard implementation")
 
         try:
             # Get list of manufacturer directories
-            manufacturers = [d for d in os.listdir(self.devices_folder) 
-                            if os.path.isdir(os.path.join(self.devices_folder, d))]
+            manufacturers = [
+                d
+                for d in os.listdir(self.devices_folder)
+                if os.path.isdir(os.path.join(self.devices_folder, d))
+            ]
             logger.info(f"Found {len(manufacturers)} manufacturer directories")
             self.manufacturers = manufacturers
 
@@ -439,10 +537,17 @@ class DeviceManager:
                 items = os.listdir(manufacturer_path)
 
                 # Process device directories and JSON files
-                device_dirs = [d for d in items if os.path.isdir(os.path.join(manufacturer_path, d)) and d != 'community']
-                json_files = [f for f in items if f.endswith('.json')]
+                device_dirs = [
+                    d
+                    for d in items
+                    if os.path.isdir(os.path.join(manufacturer_path, d))
+                    and d != "community"
+                ]
+                json_files = [f for f in items if f.endswith(".json")]
 
-                logger.info(f"Found {len(device_dirs)} device directories and {len(json_files)} JSON files in {manufacturer} directory")
+                logger.info(
+                    f"Found {len(device_dirs)} device directories and {len(json_files)} JSON files in {manufacturer} directory"
+                )
 
                 # Process JSON files directly in manufacturer directory
                 for filename in json_files:
@@ -450,39 +555,61 @@ class DeviceManager:
                     logger.debug(f"Processing device file: {filename}")
 
                     try:
-                        with open(file_path, 'r') as f:
+                        with open(file_path, "r") as f:
                             device_data = json.load(f)
 
                             # Check if device has device_info with a name
-                            if 'device_info' in device_data and 'name' in device_data['device_info']:
-                                device_name = device_data['device_info']['name']
+                            if (
+                                "device_info" in device_data
+                                and "name" in device_data["device_info"]
+                            ):
+                                device_name = device_data["device_info"]["name"]
 
                                 # Add manufacturer information
-                                device_data['manufacturer'] = manufacturer
+                                device_data["manufacturer"] = manufacturer
 
                                 # Check for community folders
-                                community_path = os.path.join(manufacturer_path, 'community')
+                                community_path = os.path.join(
+                                    manufacturer_path, "community"
+                                )
                                 community_folders = []
 
-                                if os.path.exists(community_path) and os.path.isdir(community_path):
-                                    community_items = [f for f in os.listdir(community_path) 
-                                                     if f.endswith('.json')]
-                                    community_folders = [os.path.splitext(f)[0] for f in community_items]
-                                    logger.debug(f"Found {len(community_folders)} community folders for {device_name}")
+                                if os.path.exists(community_path) and os.path.isdir(
+                                    community_path
+                                ):
+                                    community_items = [
+                                        f
+                                        for f in os.listdir(community_path)
+                                        if f.endswith(".json")
+                                    ]
+                                    community_folders = [
+                                        os.path.splitext(f)[0] for f in community_items
+                                    ]
+                                    logger.debug(
+                                        f"Found {len(community_folders)} community folders for {device_name}"
+                                    )
 
-                                device_data['community_folders'] = community_folders
+                                device_data["community_folders"] = community_folders
 
                                 # Store the device data
                                 self.devices[device_name] = device_data
                                 self.device_structure[manufacturer].append(device_name)
 
-                                logger.info(f"Loaded device: {device_name} from manufacturer {manufacturer}")
+                                logger.info(
+                                    f"Loaded device: {device_name} from manufacturer {manufacturer}"
+                                )
                             else:
-                                logger.warning(f"Device file '{filename}' does not have a device_info.name field")
+                                logger.warning(
+                                    f"Device file '{filename}' does not have a device_info.name field"
+                                )
                     except json.JSONDecodeError as e:
-                        logger.error(f"Invalid JSON in device file '{filename}': {str(e)}")
+                        logger.error(
+                            f"Invalid JSON in device file '{filename}': {str(e)}"
+                        )
                     except Exception as e:
-                        logger.error(f"Error loading device file '{filename}': {str(e)}")
+                        logger.error(
+                            f"Error loading device file '{filename}': {str(e)}"
+                        )
 
                 # Process device directories
                 for device_dir in device_dirs:
@@ -490,49 +617,82 @@ class DeviceManager:
                     logger.debug(f"Processing device directory: {device_dir}")
 
                     # Look for JSON files in the device directory
-                    device_json_files = [f for f in os.listdir(device_dir_path) if f.endswith('.json')]
-                    logger.info(f"Found {len(device_json_files)} JSON files in {device_dir} directory")
+                    device_json_files = [
+                        f for f in os.listdir(device_dir_path) if f.endswith(".json")
+                    ]
+                    logger.info(
+                        f"Found {len(device_json_files)} JSON files in {device_dir} directory"
+                    )
 
                     for filename in device_json_files:
                         file_path = os.path.join(device_dir_path, filename)
-                        logger.debug(f"Processing device file: {filename} in directory {device_dir}")
+                        logger.debug(
+                            f"Processing device file: {filename} in directory {device_dir}"
+                        )
 
                         try:
-                            with open(file_path, 'r') as f:
+                            with open(file_path, "r") as f:
                                 device_data = json.load(f)
 
                                 # Check if device has device_info with a name
-                                if 'device_info' in device_data and 'name' in device_data['device_info']:
-                                    device_name = device_data['device_info']['name']
+                                if (
+                                    "device_info" in device_data
+                                    and "name" in device_data["device_info"]
+                                ):
+                                    device_name = device_data["device_info"]["name"]
 
                                     # Add manufacturer information
-                                    device_data['manufacturer'] = manufacturer
+                                    device_data["manufacturer"] = manufacturer
 
                                     # Check for community folders
-                                    community_path = os.path.join(device_dir_path, 'community')
+                                    community_path = os.path.join(
+                                        device_dir_path, "community"
+                                    )
                                     community_folders = []
 
-                                    if os.path.exists(community_path) and os.path.isdir(community_path):
-                                        community_items = [f for f in os.listdir(community_path) 
-                                                         if f.endswith('.json')]
-                                        community_folders = [os.path.splitext(f)[0] for f in community_items]
-                                        logger.debug(f"Found {len(community_folders)} community folders for {device_name}")
+                                    if os.path.exists(community_path) and os.path.isdir(
+                                        community_path
+                                    ):
+                                        community_items = [
+                                            f
+                                            for f in os.listdir(community_path)
+                                            if f.endswith(".json")
+                                        ]
+                                        community_folders = [
+                                            os.path.splitext(f)[0]
+                                            for f in community_items
+                                        ]
+                                        logger.debug(
+                                            f"Found {len(community_folders)} community folders for {device_name}"
+                                        )
 
-                                    device_data['community_folders'] = community_folders
+                                    device_data["community_folders"] = community_folders
 
                                     # Store the device data
                                     self.devices[device_name] = device_data
-                                    self.device_structure[manufacturer].append(device_name)
+                                    self.device_structure[manufacturer].append(
+                                        device_name
+                                    )
 
-                                    logger.info(f"Loaded device: {device_name} from manufacturer {manufacturer}")
+                                    logger.info(
+                                        f"Loaded device: {device_name} from manufacturer {manufacturer}"
+                                    )
                                 else:
-                                    logger.warning(f"Device file '{filename}' in directory {device_dir} does not have a device_info.name field")
+                                    logger.warning(
+                                        f"Device file '{filename}' in directory {device_dir} does not have a device_info.name field"
+                                    )
                         except json.JSONDecodeError as e:
-                            logger.error(f"Invalid JSON in device file '{filename}' in directory {device_dir}: {str(e)}")
+                            logger.error(
+                                f"Invalid JSON in device file '{filename}' in directory {device_dir}: {str(e)}"
+                            )
                         except Exception as e:
-                            logger.error(f"Error loading device file '{filename}' in directory {device_dir}: {str(e)}")
+                            logger.error(
+                                f"Error loading device file '{filename}' in directory {device_dir}: {str(e)}"
+                            )
 
-            logger.info(f"Loaded {len(self.devices)} devices from {len(self.manufacturers)} manufacturers")
+            logger.info(
+                f"Loaded {len(self.devices)} devices from {len(self.manufacturers)} manufacturers"
+            )
             return self.devices
 
         except Exception as e:
@@ -584,8 +744,8 @@ class DeviceManager:
         # Get device info for each device
         for device_name in device_names:
             device_data = self.devices.get(device_name)
-            if device_data and 'device_info' in device_data:
-                result.append(device_data['device_info'])
+            if device_data and "device_info" in device_data:
+                result.append(device_data["device_info"])
 
         logger.info(f"Found {len(result)} devices for manufacturer {manufacturer}")
         return result
@@ -598,7 +758,7 @@ class DeviceManager:
         logger.info(f"Getting community folders for device: {device_name}")
         device = self.devices.get(device_name)
         if device:
-            return device.get('community_folders', [])
+            return device.get("community_folders", [])
         return []
 
     def get_all_devices(self) -> List[Device]:
@@ -612,21 +772,23 @@ class DeviceManager:
         try:
             for name, data in self.devices.items():
                 try:
-                    device_info = data.get('device_info', {})
-                    midi_ports = device_info.get('midi_ports', {})
-                    midi_channels = device_info.get('midi_channels', {})
+                    device_info = data.get("device_info", {})
+                    midi_ports = device_info.get("midi_ports", {})
+                    midi_channels = device_info.get("midi_channels", {})
 
                     device = Device(
                         name=name,
-                        manufacturer=data.get('manufacturer', ''),
+                        manufacturer=data.get("manufacturer", ""),
                         midi_port=midi_ports,
                         midi_channel=midi_channels,
-                        community_folders=data.get('community_folders', [])
+                        community_folders=data.get("community_folders", []),
                     )
                     result.append(device)
-                    logger.debug(f"Added device: {name}, manufacturer: {data.get('manufacturer', '')}, "
-                                f"MIDI ports: {midi_ports}, MIDI channels: {midi_channels}, "
-                                f"community folders: {data.get('community_folders', [])}")
+                    logger.debug(
+                        f"Added device: {name}, manufacturer: {data.get('manufacturer', '')}, "
+                        f"MIDI ports: {midi_ports}, MIDI channels: {midi_channels}, "
+                        f"community folders: {data.get('community_folders', [])}"
+                    )
                 except Exception as e:
                     logger.error(f"Error creating Device object for {name}: {str(e)}")
 
@@ -641,7 +803,12 @@ class DeviceManager:
         self._json_cache = {}
         logger.info("JSON cache cleared")
 
-    def _optimized_get_all_presets(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Preset]:
+    def _optimized_get_all_presets(
+        self,
+        device_name: Optional[str] = None,
+        community_folder: Optional[str] = None,
+        manufacturer: Optional[str] = None,
+    ) -> List[Preset]:
         """
         Get all presets from all devices or a specific device with optimized JSON loading
 
@@ -654,7 +821,9 @@ class DeviceManager:
             A list of Preset objects
         """
         if manufacturer and device_name:
-            logger.info(f"Getting presets for manufacturer: {manufacturer}, device: {device_name}")
+            logger.info(
+                f"Getting presets for manufacturer: {manufacturer}, device: {device_name}"
+            )
         elif manufacturer:
             logger.info(f"Getting presets for manufacturer: {manufacturer}")
         elif device_name:
@@ -674,19 +843,21 @@ class DeviceManager:
             if manufacturer and device_name:
                 # Find the device with the matching name and manufacturer
                 for name, data in self.devices.items():
-                    if name == device_name and data.get('manufacturer') == manufacturer:
+                    if name == device_name and data.get("manufacturer") == manufacturer:
                         devices_to_process = {name: data}
                         break
 
                 if not devices_to_process:
-                    logger.warning(f"Device not found: {device_name} for manufacturer: {manufacturer}")
+                    logger.warning(
+                        f"Device not found: {device_name} for manufacturer: {manufacturer}"
+                    )
                     return []
 
             # If only manufacturer is provided
             elif manufacturer:
                 # Filter devices by manufacturer
                 for name, data in self.devices.items():
-                    if data.get('manufacturer') == manufacturer:
+                    if data.get("manufacturer") == manufacturer:
                         devices_to_process[name] = data
 
                 if not devices_to_process:
@@ -705,42 +876,50 @@ class DeviceManager:
 
             for device_name, device_data in devices_to_process.items():
                 logger.debug(f"Processing device: {device_name}")
-                manufacturer = device_data.get('manufacturer', '')
+                manufacturer = device_data.get("manufacturer", "")
 
                 # Process default presets
-                preset_collections = device_data.get('preset_collections', {})
+                preset_collections = device_data.get("preset_collections", {})
                 for collection_name, collection_data in preset_collections.items():
-                    presets = collection_data.get('presets', [])
-                    logger.debug(f"Device {device_name} collection {collection_name} has {len(presets)} presets")
+                    presets = collection_data.get("presets", [])
+                    logger.debug(
+                        f"Device {device_name} collection {collection_name} has {len(presets)} presets"
+                    )
 
                     for preset in presets:
                         try:
                             preset_obj = Preset(
-                                preset_name=preset.get('preset_name', ''),
-                                category=preset.get('category', ''),
-                                characters=preset.get('characters', []),
-                                sendmidi_command=preset.get('sendmidi_command', ''),
-                                cc_0=preset.get('cc_0'),
-                                pgm=preset.get('pgm'),
-                                source='default'
+                                preset_name=preset.get("preset_name", ""),
+                                category=preset.get("category", ""),
+                                characters=preset.get("characters", []),
+                                sendmidi_command=preset.get("sendmidi_command", ""),
+                                cc_0=preset.get("cc_0"),
+                                pgm=preset.get("pgm"),
+                                source="default",
                             )
                             result.append(preset_obj)
                             preset_count += 1
-                            logger.debug(f"Added preset: {preset_obj.preset_name} ({preset_obj.category})")
+                            logger.debug(
+                                f"Added preset: {preset_obj.preset_name} ({preset_obj.category})"
+                            )
                         except Exception as e:
-                            preset_name = preset.get('preset_name', 'unknown')
-                            logger.error(f"Error creating Preset object for {preset_name}: {str(e)}")
+                            preset_name = preset.get("preset_name", "unknown")
+                            logger.error(
+                                f"Error creating Preset object for {preset_name}: {str(e)}"
+                            )
 
                 # Process community presets if requested
                 if community_folder:
-                    logger.debug(f"Processing community folder: {community_folder} for device: {device_name}")
+                    logger.debug(
+                        f"Processing community folder: {community_folder} for device: {device_name}"
+                    )
 
                     # Construct path to community folder
                     community_path = os.path.join(
                         self.devices_folder,
                         manufacturer,
-                        'community',
-                        f"{community_folder}.json"
+                        "community",
+                        f"{community_folder}.json",
                     )
 
                     if os.path.exists(community_path):
@@ -749,31 +928,42 @@ class DeviceManager:
                             community_data = self._load_json_file(community_path)
 
                             # Process presets from community folder
-                            community_presets = community_data.get('presets', [])
-                            logger.debug(f"Community folder {community_folder} has {len(community_presets)} presets")
+                            community_presets = community_data.get("presets", [])
+                            logger.debug(
+                                f"Community folder {community_folder} has {len(community_presets)} presets"
+                            )
 
                             for preset in community_presets:
                                 try:
                                     preset_obj = Preset(
-                                        preset_name=preset.get('preset_name', ''),
-                                        category=preset.get('category', ''),
-                                        characters=preset.get('characters', []),
-                                        sendmidi_command=preset.get('sendmidi_command', ''),
-                                        cc_0=preset.get('cc_0'),
-                                        pgm=preset.get('pgm'),
-                                        source=community_folder
+                                        preset_name=preset.get("preset_name", ""),
+                                        category=preset.get("category", ""),
+                                        characters=preset.get("characters", []),
+                                        sendmidi_command=preset.get(
+                                            "sendmidi_command", ""
+                                        ),
+                                        cc_0=preset.get("cc_0"),
+                                        pgm=preset.get("pgm"),
+                                        source=community_folder,
                                     )
                                     result.append(preset_obj)
                                     preset_count += 1
-                                    logger.debug(f"Added community preset: {preset_obj.preset_name} ({preset_obj.category})")
+                                    logger.debug(
+                                        f"Added community preset: {preset_obj.preset_name} ({preset_obj.category})"
+                                    )
                                 except Exception as e:
-                                    preset_name = preset.get('preset_name', 'unknown')
+                                    preset_name = preset.get("preset_name", "unknown")
                                     logger.error(
-                                        f"Error creating Preset object for community preset {preset_name}: {str(e)}")
+                                        f"Error creating Preset object for community preset {preset_name}: {str(e)}"
+                                    )
                         except json.JSONDecodeError as e:
-                            logger.error(f"Invalid JSON in community file '{community_path}': {str(e)}")
+                            logger.error(
+                                f"Invalid JSON in community file '{community_path}': {str(e)}"
+                            )
                         except Exception as e:
-                            logger.error(f"Error loading community file '{community_path}': {str(e)}")
+                            logger.error(
+                                f"Error loading community file '{community_path}': {str(e)}"
+                            )
                     else:
                         logger.warning(f"Community folder not found: {community_path}")
 
@@ -783,7 +973,12 @@ class DeviceManager:
             logger.error(f"Error getting presets: {str(e)}")
             return result
 
-    def get_all_presets(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, manufacturer: Optional[str] = None) -> List[Preset]:
+    def get_all_presets(
+        self,
+        device_name: Optional[str] = None,
+        community_folder: Optional[str] = None,
+        manufacturer: Optional[str] = None,
+    ) -> List[Preset]:
         """
         Get all presets from all devices or a specific device
 
@@ -802,16 +997,20 @@ class DeviceManager:
             result = self._optimized_get_all_presets(
                 device_name=device_name,
                 community_folder=community_folder,
-                manufacturer=manufacturer
+                manufacturer=manufacturer,
             )
 
             # Log performance metrics
             load_time = time.time() - start_time
-            logger.info(f"Returning {len(result)} presets (loaded in {load_time:.4f} seconds using optimized version)")
+            logger.info(
+                f"Returning {len(result)} presets (loaded in {load_time:.4f} seconds using optimized version)"
+            )
             return result
         except Exception as e:
             load_time = time.time() - start_time
-            logger.error(f"Error getting presets: {str(e)} (failed in {load_time:.4f} seconds)")
+            logger.error(
+                f"Error getting presets: {str(e)} (failed in {load_time:.4f} seconds)"
+            )
             return []
 
     def get_preset_by_name(self, preset_name: str) -> Optional[Dict]:
@@ -820,46 +1019,53 @@ class DeviceManager:
 
         for device_name, device_data in self.devices.items():
             # Check in preset collections
-            preset_collections = device_data.get('preset_collections', {})
+            preset_collections = device_data.get("preset_collections", {})
             for collection_name, collection_data in preset_collections.items():
-                presets = collection_data.get('presets', [])
+                presets = collection_data.get("presets", [])
                 for preset in presets:
-                    if preset.get('preset_name') == preset_name:
+                    if preset.get("preset_name") == preset_name:
                         load_time = time.time() - start_time
-                        logger.debug(f"Found preset {preset_name} in device {device_name} collection {collection_name} in {load_time:.4f} seconds")
+                        logger.debug(
+                            f"Found preset {preset_name} in device {device_name} collection {collection_name} in {load_time:.4f} seconds"
+                        )
                         return preset
 
             # Check in community folders
-            manufacturer = device_data.get('manufacturer', '')
-            community_folders = device_data.get('community_folders', [])
+            manufacturer = device_data.get("manufacturer", "")
+            community_folders = device_data.get("community_folders", [])
 
             for folder in community_folders:
                 community_path = os.path.join(
-                    self.devices_folder, 
-                    manufacturer, 
-                    'community', 
-                    f"{folder}.json"
+                    self.devices_folder, manufacturer, "community", f"{folder}.json"
                 )
 
                 if os.path.exists(community_path):
                     try:
                         # Use cached JSON loading for better performance
                         community_data = self._load_json_file(community_path)
-                        community_presets = community_data.get('presets', [])
+                        community_presets = community_data.get("presets", [])
 
                         for preset in community_presets:
-                            if preset.get('preset_name') == preset_name:
+                            if preset.get("preset_name") == preset_name:
                                 load_time = time.time() - start_time
-                                logger.debug(f"Found preset {preset_name} in community folder {folder} in {load_time:.4f} seconds")
+                                logger.debug(
+                                    f"Found preset {preset_name} in community folder {folder} in {load_time:.4f} seconds"
+                                )
                                 return preset
                     except Exception as e:
-                        logger.error(f"Error loading community file '{community_path}': {str(e)}")
+                        logger.error(
+                            f"Error loading community file '{community_path}': {str(e)}"
+                        )
 
         load_time = time.time() - start_time
-        logger.debug(f"Preset {preset_name} not found (searched in {load_time:.4f} seconds)")
+        logger.debug(
+            f"Preset {preset_name} not found (searched in {load_time:.4f} seconds)"
+        )
         return None
 
-    def check_directory_structure(self, manufacturer: str, device: str, create_if_missing: bool = True) -> DirectoryStructureResponse:
+    def check_directory_structure(
+        self, manufacturer: str, device: str, create_if_missing: bool = True
+    ) -> DirectoryStructureResponse:
         """
         Check if the manufacturer and device directories exist, and if the device JSON file exists.
         Optionally create them if they don't exist.
@@ -873,16 +1079,20 @@ class DeviceManager:
             DirectoryStructureResponse object with information about the directory structure
         """
         # Normalize names to avoid path issues
-        manufacturer_safe = manufacturer.replace(' ', '_')
-        device_safe = device.replace(' ', '_')
+        manufacturer_safe = manufacturer.replace(" ", "_")
+        device_safe = device.replace(" ", "_")
 
         # Construct paths
         manufacturer_path = os.path.join(self.devices_folder, manufacturer_safe)
         device_path = os.path.join(manufacturer_path, device_safe)
-        json_path = os.path.join(device_path, f"{manufacturer_safe.lower()}_{device_safe.lower()}.json")
+        json_path = os.path.join(
+            device_path, f"{manufacturer_safe.lower()}_{device_safe.lower()}.json"
+        )
 
         # Check if they exist
-        manufacturer_exists = os.path.exists(manufacturer_path) and os.path.isdir(manufacturer_path)
+        manufacturer_exists = os.path.exists(manufacturer_path) and os.path.isdir(
+            manufacturer_path
+        )
         device_exists = os.path.exists(device_path) and os.path.isdir(device_path)
         json_exists = os.path.exists(json_path)
 
@@ -890,7 +1100,7 @@ class DeviceManager:
             manufacturer_exists=manufacturer_exists,
             device_exists=device_exists,
             json_exists=json_exists,
-            json_path=json_path
+            json_path=json_path,
         )
 
         # Create if requested and missing
@@ -904,7 +1114,9 @@ class DeviceManager:
                     response.manufacturer_exists = True
                     logger.info(f"Created manufacturer directory: {manufacturer_path}")
                 except Exception as e:
-                    logger.error(f"Error creating manufacturer directory {manufacturer_path}: {str(e)}")
+                    logger.error(
+                        f"Error creating manufacturer directory {manufacturer_path}: {str(e)}"
+                    )
                     return response
 
             # Create device directory if it doesn't exist
@@ -916,7 +1128,9 @@ class DeviceManager:
                     response.device_exists = True
                     logger.info(f"Created device directory: {device_path}")
                 except Exception as e:
-                    logger.error(f"Error creating device directory {device_path}: {str(e)}")
+                    logger.error(
+                        f"Error creating device directory {device_path}: {str(e)}"
+                    )
                     return response
 
             # Create JSON file if it doesn't exist
@@ -932,7 +1146,7 @@ class DeviceManager:
                             "created_at": datetime.now().isoformat(),
                             "modified_at": datetime.now().isoformat(),
                             "migration_path": [],
-                            "compatibility": {}
+                            "compatibility": {},
                         },
                         "device_info": {
                             "name": device,
@@ -942,7 +1156,7 @@ class DeviceManager:
                             "device_id": 0,
                             "ports": ["IN", "OUT"],
                             "midi_channels": {"IN": 1, "OUT": 1},
-                            "midi_ports": {"IN": "", "OUT": ""}
+                            "midi_ports": {"IN": "", "OUT": ""},
                         },
                         "capabilities": {},
                         "preset_collections": {
@@ -958,22 +1172,24 @@ class DeviceManager:
                                     "parent_collections": [],
                                     "sync_status": "synced",
                                     "created_at": datetime.now().isoformat(),
-                                    "modified_at": datetime.now().isoformat()
+                                    "modified_at": datetime.now().isoformat(),
                                 },
                                 "presets": [],
-                                "preset_metadata": {}
+                                "preset_metadata": {},
                             }
-                        }
+                        },
                     }
 
-                    with open(json_path, 'w') as f:
+                    with open(json_path, "w") as f:
                         json.dump(device_data, f, indent=2)
 
                     response.created_json = True
                     response.json_exists = True
                     logger.info(f"Created device JSON file: {json_path}")
                 except Exception as e:
-                    logger.error(f"Error creating device JSON file {json_path}: {str(e)}")
+                    logger.error(
+                        f"Error creating device JSON file {json_path}: {str(e)}"
+                    )
                     return response
 
         return response
@@ -994,10 +1210,12 @@ class DeviceManager:
             name_safe = sanitize_path_component(name)
             logger.info(f"Sanitized manufacturer name from '{name}' to '{name_safe}'")
         else:
-            name_safe = name.replace(' ', '_')  # Still normalize spaces
+            name_safe = name.replace(" ", "_")  # Still normalize spaces
 
         # Construct path safely
-        manufacturer_path, is_safe, was_sanitized = safe_path_join(self.devices_folder, name_safe)
+        manufacturer_path, is_safe, was_sanitized = safe_path_join(
+            self.devices_folder, name_safe
+        )
 
         if not is_safe:
             logger.error(f"Path traversal attempt detected for manufacturer: '{name}'")
@@ -1017,7 +1235,9 @@ class DeviceManager:
 
             return True, f"Manufacturer '{name}' created successfully"
         except Exception as e:
-            logger.error(f"Error creating manufacturer directory {manufacturer_path}: {str(e)}")
+            logger.error(
+                f"Error creating manufacturer directory {manufacturer_path}: {str(e)}"
+            )
             return False, f"Error creating manufacturer: {str(e)}"
 
     def delete_manufacturer(self, name: str) -> Tuple[bool, str]:
@@ -1035,7 +1255,9 @@ class DeviceManager:
             return False, f"Manufacturer '{name}' does not exist"
 
         # Construct path safely
-        manufacturer_path, is_safe, was_sanitized = safe_path_join(self.devices_folder, name)
+        manufacturer_path, is_safe, was_sanitized = safe_path_join(
+            self.devices_folder, name
+        )
 
         if not is_safe:
             logger.error(f"Path traversal attempt detected for manufacturer: '{name}'")
@@ -1058,10 +1280,14 @@ class DeviceManager:
 
             return True, f"Manufacturer '{name}' deleted successfully"
         except Exception as e:
-            logger.error(f"Error deleting manufacturer directory {manufacturer_path}: {str(e)}")
+            logger.error(
+                f"Error deleting manufacturer directory {manufacturer_path}: {str(e)}"
+            )
             return False, f"Error deleting manufacturer: {str(e)}"
 
-    def create_device(self, device_data: Dict[str, Any]) -> Tuple[bool, str, Optional[str]]:
+    def create_device(
+        self, device_data: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[str]]:
         """
         Create a new device with the given data
 
@@ -1071,8 +1297,8 @@ class DeviceManager:
         Returns:
             Tuple of (success, message, json_path)
         """
-        manufacturer = device_data.get('manufacturer')
-        name = device_data.get('name')
+        manufacturer = device_data.get("manufacturer")
+        name = device_data.get("name")
 
         if not manufacturer or not name:
             return False, "Manufacturer and name are required", None
@@ -1085,7 +1311,9 @@ class DeviceManager:
                 return False, f"Error creating manufacturer: {message}", None
 
         # Check and create directory structure
-        response = self.check_directory_structure(manufacturer, name, create_if_missing=True)
+        response = self.check_directory_structure(
+            manufacturer, name, create_if_missing=True
+        )
 
         if not response.manufacturer_exists or not response.device_exists:
             return False, "Failed to create directory structure", None
@@ -1093,15 +1321,15 @@ class DeviceManager:
         # Create or update the device JSON file
         try:
             # Normalize names for file paths
-            manufacturer_safe = manufacturer.replace(' ', '_')
-            device_safe = name.replace(' ', '_')
+            manufacturer_safe = manufacturer.replace(" ", "_")
+            device_safe = name.replace(" ", "_")
 
             # Construct the JSON file path
             json_path = os.path.join(
                 self.devices_folder,
                 manufacturer_safe,
                 device_safe,
-                f"{manufacturer_safe.lower()}_{device_safe.lower()}.json"
+                f"{manufacturer_safe.lower()}_{device_safe.lower()}.json",
             )
 
             # Create a basic device JSON file
@@ -1114,17 +1342,19 @@ class DeviceManager:
                     "created_at": datetime.now().isoformat(),
                     "modified_at": datetime.now().isoformat(),
                     "migration_path": [],
-                    "compatibility": {}
+                    "compatibility": {},
                 },
                 "device_info": {
                     "name": name,
-                    "version": device_data.get('version', "1.0.0"),
+                    "version": device_data.get("version", "1.0.0"),
                     "manufacturer": manufacturer,
-                    "manufacturer_id": device_data.get('manufacturer_id', 0),
-                    "device_id": device_data.get('device_id', 0),
+                    "manufacturer_id": device_data.get("manufacturer_id", 0),
+                    "device_id": device_data.get("device_id", 0),
                     "ports": ["IN", "OUT"],
-                    "midi_channels": device_data.get('midi_channels', {"IN": 1, "OUT": 1}),
-                    "midi_ports": device_data.get('midi_ports', {"IN": "", "OUT": ""})
+                    "midi_channels": device_data.get(
+                        "midi_channels", {"IN": 1, "OUT": 1}
+                    ),
+                    "midi_ports": device_data.get("midi_ports", {"IN": "", "OUT": ""}),
                 },
                 "capabilities": {},
                 "preset_collections": {
@@ -1140,15 +1370,15 @@ class DeviceManager:
                             "parent_collections": [],
                             "sync_status": "synced",
                             "created_at": datetime.now().isoformat(),
-                            "modified_at": datetime.now().isoformat()
+                            "modified_at": datetime.now().isoformat(),
                         },
                         "presets": [],
-                        "preset_metadata": {}
+                        "preset_metadata": {},
                     }
-                }
+                },
             }
 
-            with open(json_path, 'w') as f:
+            with open(json_path, "w") as f:
                 json.dump(device_json, f, indent=2)
 
             logger.info(f"Created device JSON file: {json_path}")
@@ -1179,7 +1409,10 @@ class DeviceManager:
         # Check if device exists
         devices = self.get_devices_by_manufacturer(manufacturer)
         if device not in devices:
-            return False, f"Device '{device}' does not exist for manufacturer '{manufacturer}'"
+            return (
+                False,
+                f"Device '{device}' does not exist for manufacturer '{manufacturer}'",
+            )
 
         # Construct path
         device_path = os.path.join(self.devices_folder, manufacturer, device)
@@ -1211,13 +1444,21 @@ class DeviceManager:
         Returns:
             Tuple of (success, message)
         """
-        manufacturer = preset_data.get('manufacturer')
-        device_name = preset_data.get('device')
-        collection_name = preset_data.get('collection')
-        preset_name = preset_data.get('preset_name')
+        manufacturer = preset_data.get("manufacturer")
+        device_name = preset_data.get("device")
+        collection_name = preset_data.get("collection")
+        preset_name = preset_data.get("preset_name")
 
-        if not manufacturer or not device_name or not collection_name or not preset_name:
-            return False, "Manufacturer, device, collection, and preset_name are required"
+        if (
+            not manufacturer
+            or not device_name
+            or not collection_name
+            or not preset_name
+        ):
+            return (
+                False,
+                "Manufacturer, device, collection, and preset_name are required",
+            )
 
         # Check if manufacturer exists
         if manufacturer not in self.manufacturers:
@@ -1226,7 +1467,10 @@ class DeviceManager:
         # Check if device exists
         devices = self.get_devices_by_manufacturer(manufacturer)
         if device_name not in devices:
-            return False, f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'"
+            return (
+                False,
+                f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'",
+            )
 
         # Get the device data
         device = self.get_device_by_name(device_name)
@@ -1234,15 +1478,19 @@ class DeviceManager:
             return False, f"Device '{device_name}' not found"
 
         # Check if preset_collections exists, create it if it doesn't
-        if 'preset_collections' not in device:
-            device['preset_collections'] = {}
+        if "preset_collections" not in device:
+            device["preset_collections"] = {}
             logger.info(f"Created preset_collections for device '{device_name}'")
 
         # Check if collection exists, create it if it doesn't
-        preset_collections = device.get('preset_collections', {})
+        preset_collections = device.get("preset_collections", {})
         if collection_name not in preset_collections:
             # Create the collection
-            collection_display_name = "Factory Presets" if collection_name == "factory_presets" else collection_name
+            collection_display_name = (
+                "Factory Presets"
+                if collection_name == "factory_presets"
+                else collection_name
+            )
             preset_collections[collection_name] = {
                 "metadata": {
                     "name": collection_display_name,
@@ -1255,25 +1503,30 @@ class DeviceManager:
                     "parent_collections": [],
                     "sync_status": "synced",
                     "created_at": datetime.now().isoformat(),
-                    "modified_at": datetime.now().isoformat()
+                    "modified_at": datetime.now().isoformat(),
                 },
                 "presets": [],
-                "preset_metadata": {}
+                "preset_metadata": {},
             }
-            logger.info(f"Created collection '{collection_name}' for device '{device_name}'")
+            logger.info(
+                f"Created collection '{collection_name}' for device '{device_name}'"
+            )
 
             # Update the device data
-            device['preset_collections'] = preset_collections
+            device["preset_collections"] = preset_collections
 
         # Get the collection data
         collection = preset_collections[collection_name]
-        presets = collection.get('presets', [])
-        preset_metadata = collection.get('preset_metadata', {})
+        presets = collection.get("presets", [])
+        preset_metadata = collection.get("preset_metadata", {})
 
         # Check if preset already exists
         for preset in presets:
-            if preset.get('preset_name') == preset_name:
-                return False, f"Preset '{preset_name}' already exists in collection '{collection_name}'"
+            if preset.get("preset_name") == preset_name:
+                return (
+                    False,
+                    f"Preset '{preset_name}' already exists in collection '{collection_name}'",
+                )
 
         # Create the preset
         try:
@@ -1284,11 +1537,14 @@ class DeviceManager:
             new_preset = {
                 "preset_id": preset_id,
                 "preset_name": preset_name,
-                "category": preset_data.get('category', ""),
-                "cc_0": preset_data.get('cc_0'),
-                "pgm": preset_data.get('pgm', 0),
-                "characters": preset_data.get('characters', []),
-                "sendmidi_command": preset_data.get('sendmidi_command', f"sendmidi dev \"{device_name}\" cc 0 {preset_data.get('cc_0', 0)} pc {preset_data.get('pgm', 0)}")
+                "category": preset_data.get("category", ""),
+                "cc_0": preset_data.get("cc_0"),
+                "pgm": preset_data.get("pgm", 0),
+                "characters": preset_data.get("characters", []),
+                "sendmidi_command": preset_data.get(
+                    "sendmidi_command",
+                    f"sendmidi dev \"{device_name}\" cc 0 {preset_data.get('cc_0', 0)} pc {preset_data.get('pgm', 0)}",
+                ),
             }
 
             # Create the preset metadata
@@ -1297,7 +1553,7 @@ class DeviceManager:
                 "validation_status": "validated",
                 "source": "user",
                 "created_at": datetime.now().isoformat(),
-                "modified_at": datetime.now().isoformat()
+                "modified_at": datetime.now().isoformat(),
             }
 
             # Add the preset to the collection
@@ -1305,27 +1561,33 @@ class DeviceManager:
             preset_metadata[preset_id] = new_preset_metadata
 
             # Update the collection metadata
-            collection['metadata']['preset_count'] = len(presets)
-            collection['metadata']['modified_at'] = datetime.now().isoformat()
+            collection["metadata"]["preset_count"] = len(presets)
+            collection["metadata"]["modified_at"] = datetime.now().isoformat()
 
             # Update the device data
-            device['preset_collections'][collection_name]['presets'] = presets
-            device['preset_collections'][collection_name]['preset_metadata'] = preset_metadata
-            device['preset_collections'][collection_name]['metadata'] = collection['metadata']
+            device["preset_collections"][collection_name]["presets"] = presets
+            device["preset_collections"][collection_name][
+                "preset_metadata"
+            ] = preset_metadata
+            device["preset_collections"][collection_name]["metadata"] = collection[
+                "metadata"
+            ]
 
             # Save the device data
             device_path = os.path.join(self.devices_folder, manufacturer, device_name)
-            json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+            json_files = [f for f in os.listdir(device_path) if f.endswith(".json")]
 
             if not json_files:
                 return False, f"No JSON file found for device '{device_name}'"
 
             json_path = os.path.join(device_path, json_files[0])
 
-            with open(json_path, 'w') as f:
+            with open(json_path, "w") as f:
                 json.dump(device, f, indent=2)
 
-            logger.info(f"Created preset '{preset_name}' in collection '{collection_name}' for device '{device_name}'")
+            logger.info(
+                f"Created preset '{preset_name}' in collection '{collection_name}' for device '{device_name}'"
+            )
 
             return True, f"Preset '{preset_name}' created successfully"
         except Exception as e:
@@ -1342,13 +1604,21 @@ class DeviceManager:
         Returns:
             Tuple of (success, message)
         """
-        manufacturer = preset_data.get('manufacturer')
-        device_name = preset_data.get('device')
-        collection_name = preset_data.get('collection')
-        preset_name = preset_data.get('preset_name')
+        manufacturer = preset_data.get("manufacturer")
+        device_name = preset_data.get("device")
+        collection_name = preset_data.get("collection")
+        preset_name = preset_data.get("preset_name")
 
-        if not manufacturer or not device_name or not collection_name or not preset_name:
-            return False, "Manufacturer, device, collection, and preset_name are required"
+        if (
+            not manufacturer
+            or not device_name
+            or not collection_name
+            or not preset_name
+        ):
+            return (
+                False,
+                "Manufacturer, device, collection, and preset_name are required",
+            )
 
         # Check if manufacturer exists
         if manufacturer not in self.manufacturers:
@@ -1357,7 +1627,10 @@ class DeviceManager:
         # Check if device exists
         devices = self.get_devices_by_manufacturer(manufacturer)
         if device_name not in devices:
-            return False, f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'"
+            return (
+                False,
+                f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'",
+            )
 
         # Get the device data
         device = self.get_device_by_name(device_name)
@@ -1365,27 +1638,33 @@ class DeviceManager:
             return False, f"Device '{device_name}' not found"
 
         # Check if collection exists
-        preset_collections = device.get('preset_collections', {})
+        preset_collections = device.get("preset_collections", {})
         if collection_name not in preset_collections:
-            return False, f"Collection '{collection_name}' does not exist for device '{device_name}'"
+            return (
+                False,
+                f"Collection '{collection_name}' does not exist for device '{device_name}'",
+            )
 
         # Get the collection data
         collection = preset_collections[collection_name]
-        presets = collection.get('presets', [])
-        preset_metadata = collection.get('preset_metadata', {})
+        presets = collection.get("presets", [])
+        preset_metadata = collection.get("preset_metadata", {})
 
         # Find the preset
         preset_index = None
         preset_id = None
 
         for i, preset in enumerate(presets):
-            if preset.get('preset_name') == preset_name:
+            if preset.get("preset_name") == preset_name:
                 preset_index = i
-                preset_id = preset.get('preset_id')
+                preset_id = preset.get("preset_id")
                 break
 
         if preset_index is None:
-            return False, f"Preset '{preset_name}' not found in collection '{collection_name}'"
+            return (
+                False,
+                f"Preset '{preset_name}' not found in collection '{collection_name}'",
+            )
 
         # Update the preset
         try:
@@ -1393,11 +1672,14 @@ class DeviceManager:
             updated_preset = {
                 "preset_id": preset_id,
                 "preset_name": preset_name,
-                "category": preset_data.get('category', ""),
-                "cc_0": preset_data.get('cc_0'),
-                "pgm": preset_data.get('pgm', 0),
-                "characters": preset_data.get('characters', []),
-                "sendmidi_command": preset_data.get('sendmidi_command', f"sendmidi dev \"{device_name}\" cc 0 {preset_data.get('cc_0', 0)} pc {preset_data.get('pgm', 0)}")
+                "category": preset_data.get("category", ""),
+                "cc_0": preset_data.get("cc_0"),
+                "pgm": preset_data.get("pgm", 0),
+                "characters": preset_data.get("characters", []),
+                "sendmidi_command": preset_data.get(
+                    "sendmidi_command",
+                    f"sendmidi dev \"{device_name}\" cc 0 {preset_data.get('cc_0', 0)} pc {preset_data.get('pgm', 0)}",
+                ),
             }
 
             # Update the preset metadata
@@ -1408,33 +1690,45 @@ class DeviceManager:
             presets[preset_index] = updated_preset
 
             # Update the collection metadata
-            collection['metadata']['modified_at'] = datetime.now().isoformat()
+            collection["metadata"]["modified_at"] = datetime.now().isoformat()
 
             # Update the device data
-            device['preset_collections'][collection_name]['presets'] = presets
-            device['preset_collections'][collection_name]['preset_metadata'] = preset_metadata
-            device['preset_collections'][collection_name]['metadata'] = collection['metadata']
+            device["preset_collections"][collection_name]["presets"] = presets
+            device["preset_collections"][collection_name][
+                "preset_metadata"
+            ] = preset_metadata
+            device["preset_collections"][collection_name]["metadata"] = collection[
+                "metadata"
+            ]
 
             # Save the device data
             device_path = os.path.join(self.devices_folder, manufacturer, device_name)
-            json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+            json_files = [f for f in os.listdir(device_path) if f.endswith(".json")]
 
             if not json_files:
                 return False, f"No JSON file found for device '{device_name}'"
 
             json_path = os.path.join(device_path, json_files[0])
 
-            with open(json_path, 'w') as f:
+            with open(json_path, "w") as f:
                 json.dump(device, f, indent=2)
 
-            logger.info(f"Updated preset '{preset_name}' in collection '{collection_name}' for device '{device_name}'")
+            logger.info(
+                f"Updated preset '{preset_name}' in collection '{collection_name}' for device '{device_name}'"
+            )
 
             return True, f"Preset '{preset_name}' updated successfully"
         except Exception as e:
             logger.error(f"Error updating preset: {str(e)}")
             return False, f"Error updating preset: {str(e)}"
 
-    def delete_preset(self, manufacturer: str, device_name: str, collection_name: str, preset_name: str) -> Tuple[bool, str]:
+    def delete_preset(
+        self,
+        manufacturer: str,
+        device_name: str,
+        collection_name: str,
+        preset_name: str,
+    ) -> Tuple[bool, str]:
         """
         Delete a preset from the specified collection
 
@@ -1454,7 +1748,10 @@ class DeviceManager:
         # Check if device exists
         devices = self.get_devices_by_manufacturer(manufacturer)
         if device_name not in devices:
-            return False, f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'"
+            return (
+                False,
+                f"Device '{device_name}' does not exist for manufacturer '{manufacturer}'",
+            )
 
         # Get the device data
         device = self.get_device_by_name(device_name)
@@ -1462,27 +1759,33 @@ class DeviceManager:
             return False, f"Device '{device_name}' not found"
 
         # Check if collection exists
-        preset_collections = device.get('preset_collections', {})
+        preset_collections = device.get("preset_collections", {})
         if collection_name not in preset_collections:
-            return False, f"Collection '{collection_name}' does not exist for device '{device_name}'"
+            return (
+                False,
+                f"Collection '{collection_name}' does not exist for device '{device_name}'",
+            )
 
         # Get the collection data
         collection = preset_collections[collection_name]
-        presets = collection.get('presets', [])
-        preset_metadata = collection.get('preset_metadata', {})
+        presets = collection.get("presets", [])
+        preset_metadata = collection.get("preset_metadata", {})
 
         # Find the preset
         preset_index = None
         preset_id = None
 
         for i, preset in enumerate(presets):
-            if preset.get('preset_name') == preset_name:
+            if preset.get("preset_name") == preset_name:
                 preset_index = i
-                preset_id = preset.get('preset_id')
+                preset_id = preset.get("preset_id")
                 break
 
         if preset_index is None:
-            return False, f"Preset '{preset_name}' not found in collection '{collection_name}'"
+            return (
+                False,
+                f"Preset '{preset_name}' not found in collection '{collection_name}'",
+            )
 
         # Delete the preset
         try:
@@ -1494,27 +1797,33 @@ class DeviceManager:
                 del preset_metadata[preset_id]
 
             # Update the collection metadata
-            collection['metadata']['preset_count'] = len(presets)
-            collection['metadata']['modified_at'] = datetime.now().isoformat()
+            collection["metadata"]["preset_count"] = len(presets)
+            collection["metadata"]["modified_at"] = datetime.now().isoformat()
 
             # Update the device data
-            device['preset_collections'][collection_name]['presets'] = presets
-            device['preset_collections'][collection_name]['preset_metadata'] = preset_metadata
-            device['preset_collections'][collection_name]['metadata'] = collection['metadata']
+            device["preset_collections"][collection_name]["presets"] = presets
+            device["preset_collections"][collection_name][
+                "preset_metadata"
+            ] = preset_metadata
+            device["preset_collections"][collection_name]["metadata"] = collection[
+                "metadata"
+            ]
 
             # Save the device data
             device_path = os.path.join(self.devices_folder, manufacturer, device_name)
-            json_files = [f for f in os.listdir(device_path) if f.endswith('.json')]
+            json_files = [f for f in os.listdir(device_path) if f.endswith(".json")]
 
             if not json_files:
                 return False, f"No JSON file found for device '{device_name}'"
 
             json_path = os.path.join(device_path, json_files[0])
 
-            with open(json_path, 'w') as f:
+            with open(json_path, "w") as f:
                 json.dump(device, f, indent=2)
 
-            logger.info(f"Deleted preset '{preset_name}' from collection '{collection_name}' for device '{device_name}'")
+            logger.info(
+                f"Deleted preset '{preset_name}' from collection '{collection_name}' for device '{device_name}'"
+            )
 
             return True, f"Preset '{preset_name}' deleted successfully"
         except Exception as e:

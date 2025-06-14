@@ -5,11 +5,32 @@ import time
 import traceback
 from typing import Optional, Callable, Any, Coroutine
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QStatusBar, QMessageBox, QSplitter, QPushButton,
-    QProgressBar, QLabel, QApplication, QGraphicsOpacityEffect
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QStatusBar,
+    QMessageBox,
+    QSplitter,
+    QPushButton,
+    QProgressBar,
+    QLabel,
+    QApplication,
+    QGraphicsOpacityEffect,
 )
-from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSlot, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve, QSize, QPoint, pyqtProperty
+from PyQt6.QtCore import (
+    Qt,
+    QTimer,
+    QObject,
+    pyqtSlot,
+    QThread,
+    pyqtSignal,
+    QPropertyAnimation,
+    QEasingCurve,
+    QSize,
+    QPoint,
+    pyqtProperty,
+)
 import threading
 import concurrent.futures
 
@@ -25,7 +46,7 @@ from ..themes import ThemeManager
 from ..performance import get_monitor, PerformanceContext
 
 # Configure logger
-logger = logging.getLogger('r2midi_client.ui.main_window')
+logger = logging.getLogger("r2midi_client.ui.main_window")
 
 
 class WIPAnimation(QLabel):
@@ -34,13 +55,15 @@ class WIPAnimation(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setText("WIP")
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             background-color: rgba(255, 204, 204, 180);
             color: #990000;
             border-radius: 5px;
             padding: 5px;
             font-weight: bold;
-        """)
+        """
+        )
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFixedSize(50, 30)
         self.setVisible(False)
@@ -87,6 +110,7 @@ class WIPAnimation(QLabel):
 
 class AsyncWorker(QThread):
     """Worker thread for running async operations"""
+
     result_ready = pyqtSignal(object)
     error_occurred = pyqtSignal(str)
 
@@ -106,8 +130,12 @@ class AsyncWorker(QThread):
         # Connect signals to UI update methods if main_window is provided
         if main_window:
             # Use Qt.ConnectionType.QueuedConnection to ensure thread safety
-            self.start_loading_signal.connect(main_window._start_loading_direct, Qt.ConnectionType.QueuedConnection)
-            self.stop_loading_signal.connect(main_window._stop_loading_direct, Qt.ConnectionType.QueuedConnection)
+            self.start_loading_signal.connect(
+                main_window._start_loading_direct, Qt.ConnectionType.QueuedConnection
+            )
+            self.stop_loading_signal.connect(
+                main_window._stop_loading_direct, Qt.ConnectionType.QueuedConnection
+            )
 
     def emit_start_loading(self, message: str = "Loading..."):
         """Emit signal to start loading indicator"""
@@ -124,7 +152,7 @@ class AsyncWorker(QThread):
 
             # Get the main event loop from the main window
             main_window = self.main_window or QApplication.instance().activeWindow()
-            if main_window and hasattr(main_window, '_async_loop'):
+            if main_window and hasattr(main_window, "_async_loop"):
                 loop = main_window._async_loop
                 try:
                     # Run the coroutine directly in the main async loop
@@ -134,7 +162,9 @@ class AsyncWorker(QThread):
                     # Wait for the future to complete with a timeout
                     # This prevents blocking indefinitely if the coroutine hangs
                     try:
-                        self.result = self.future.result(timeout=60.0)  # 60 second timeout
+                        self.result = self.future.result(
+                            timeout=60.0
+                        )  # 60 second timeout
                         self.result_ready.emit(self.result)
                     except concurrent.futures.TimeoutError:
                         logger.error("Async operation timed out after 60 seconds")
@@ -190,7 +220,9 @@ class MainWindow(QMainWindow):
             server_url = self.config.server_url
 
         self.server_url = server_url
-        self.api_client = CachedApiClient(server_url, cache_timeout=self.config.cache_timeout)
+        self.api_client = CachedApiClient(
+            server_url, cache_timeout=self.config.cache_timeout
+        )
         self.loading_count = 0
         self.selected_preset: Optional[Preset] = None
         self.selected_midi_out_port: Optional[str] = None
@@ -269,13 +301,17 @@ class MainWindow(QMainWindow):
                 logger.info("Async loop thread exiting")
 
         # Create and start the thread
-        self._async_thread = threading.Thread(target=run_loop, daemon=True, name="AsyncLoopThread")
+        self._async_thread = threading.Thread(
+            target=run_loop, daemon=True, name="AsyncLoopThread"
+        )
         self._async_thread.start()
 
         # Wait for the loop to be ready, with a timeout
         # This ensures that the async loop is properly initialized before it's used
         # which prevents Qt threading violations
-        if not loop_ready.wait(timeout=5.0):  # Increased timeout for even slower systems
+        if not loop_ready.wait(
+            timeout=5.0
+        ):  # Increased timeout for even slower systems
             logger.warning("Async loop thread may not have started properly")
 
         logger.info("Async loop thread started")
@@ -284,9 +320,17 @@ class MainWindow(QMainWindow):
         """Remove a worker from the active workers list"""
         if worker in self._active_workers:
             self._active_workers.remove(worker)
-            logger.debug(f"Worker removed, {len(self._active_workers)} workers remaining")
+            logger.debug(
+                f"Worker removed, {len(self._active_workers)} workers remaining"
+            )
 
-    def run_async_task(self, coro: Coroutine, callback=None, error_callback=None, loading_message="Loading data...") -> None:
+    def run_async_task(
+        self,
+        coro: Coroutine,
+        callback=None,
+        error_callback=None,
+        loading_message="Loading data...",
+    ) -> None:
         """
         Run an async coroutine in the dedicated async thread
 
@@ -308,31 +352,52 @@ class MainWindow(QMainWindow):
 
         # Limit the number of concurrent workers to prevent overload
         if len(self._active_workers) > 10:  # Arbitrary limit, adjust as needed
-            logger.warning(f"Too many active workers ({len(self._active_workers)}), delaying new task")
+            logger.warning(
+                f"Too many active workers ({len(self._active_workers)}), delaying new task"
+            )
             # Use a timer to retry after a short delay
-            QTimer.singleShot(500, lambda: self.run_async_task(coro, callback, error_callback, loading_message))
+            QTimer.singleShot(
+                500,
+                lambda: self.run_async_task(
+                    coro, callback, error_callback, loading_message
+                ),
+            )
             return
 
         try:
             # Create a worker using QThread instead of a regular Python thread
-            worker = AsyncWorker(coro, main_window=self, loading_message=loading_message)
+            worker = AsyncWorker(
+                coro, main_window=self, loading_message=loading_message
+            )
 
             # Connect signals with QueuedConnection to ensure thread safety
             if callback:
-                worker.result_ready.connect(lambda result: callback(result), Qt.ConnectionType.QueuedConnection)
+                worker.result_ready.connect(
+                    lambda result: callback(result), Qt.ConnectionType.QueuedConnection
+                )
 
             # Connect error signal with QueuedConnection
             if error_callback:
-                worker.error_occurred.connect(lambda error: error_callback(error), Qt.ConnectionType.QueuedConnection)
+                worker.error_occurred.connect(
+                    lambda error: error_callback(error),
+                    Qt.ConnectionType.QueuedConnection,
+                )
             else:
-                worker.error_occurred.connect(lambda error: self.show_error(f"Error: {error}"), Qt.ConnectionType.QueuedConnection)
+                worker.error_occurred.connect(
+                    lambda error: self.show_error(f"Error: {error}"),
+                    Qt.ConnectionType.QueuedConnection,
+                )
 
             # Connect finished signal to remove worker from active workers list
-            worker.finished.connect(lambda: self._remove_worker(worker), Qt.ConnectionType.QueuedConnection)
+            worker.finished.connect(
+                lambda: self._remove_worker(worker), Qt.ConnectionType.QueuedConnection
+            )
 
             # Add to active workers list to prevent garbage collection
             self._active_workers.append(worker)
-            logger.debug(f"Added worker, now {len(self._active_workers)} active workers")
+            logger.debug(
+                f"Added worker, now {len(self._active_workers)} active workers"
+            )
 
             # Start the worker thread
             worker.start()
@@ -417,7 +482,9 @@ class MainWindow(QMainWindow):
         # Connect device panel signals
         self.device_panel.manufacturer_changed.connect(self.on_manufacturer_changed)
         self.device_panel.device_changed.connect(self.on_device_changed)
-        self.device_panel.community_folder_changed.connect(self.on_community_folder_changed)
+        self.device_panel.community_folder_changed.connect(
+            self.on_community_folder_changed
+        )
         self.device_panel.midi_out_port_changed.connect(self.on_midi_out_port_changed)
         self.device_panel.sequencer_port_changed.connect(self.on_sequencer_port_changed)
         self.device_panel.midi_channel_changed.connect(self.on_midi_channel_changed)
@@ -439,7 +506,9 @@ class MainWindow(QMainWindow):
 
         # Send button
         self.send_button = QPushButton("Send MIDI")
-        self.send_button.setToolTip("Send the selected preset to the MIDI device (Enter)")
+        self.send_button.setToolTip(
+            "Send the selected preset to the MIDI device (Enter)"
+        )
         self.send_button.clicked.connect(self.on_send_button_clicked)
         button_layout.addWidget(self.send_button)
 
@@ -463,8 +532,12 @@ class MainWindow(QMainWindow):
 
         # Devices Remote GitHub Sync button
         self.git_remote_sync_button = QPushButton("Pull Presets from GitHub")
-        self.git_remote_sync_button.setToolTip("Pull the latest changes from the midi-presets GitHub repo")
-        self.git_remote_sync_button.clicked.connect(self.on_git_remote_sync_button_clicked)
+        self.git_remote_sync_button.setToolTip(
+            "Pull the latest changes from the midi-presets GitHub repo"
+        )
+        self.git_remote_sync_button.clicked.connect(
+            self.on_git_remote_sync_button_clicked
+        )
         button_layout.addWidget(self.git_remote_sync_button)
 
         button_layout.addStretch()
@@ -552,18 +625,18 @@ class MainWindow(QMainWindow):
     # Shortcut actions
     def focus_search(self):
         """Focus the search input"""
-        if hasattr(self.preset_panel, 'search_input'):
+        if hasattr(self.preset_panel, "search_input"):
             self.preset_panel.search_input.setFocus()
             self.preset_panel.search_input.selectAll()
 
     def clear_search(self):
         """Clear the search input"""
-        if hasattr(self.preset_panel, 'clear_search'):
+        if hasattr(self.preset_panel, "clear_search"):
             self.preset_panel.clear_search()
 
     def toggle_favorites_filter(self):
         """Toggle favorites filter"""
-        if hasattr(self.preset_panel, 'favorites_checkbox'):
+        if hasattr(self.preset_panel, "favorites_checkbox"):
             current = self.preset_panel.favorites_checkbox.isChecked()
             self.preset_panel.favorites_checkbox.setChecked(not current)
 
@@ -572,7 +645,9 @@ class MainWindow(QMainWindow):
         # Check if a refresh operation is already in progress
         if self._refresh_in_progress:
             logger.info("Refresh operation already in progress, ignoring request")
-            self.status_bar.showMessage("Refresh already in progress, please wait...", 3000)
+            self.status_bar.showMessage(
+                "Refresh already in progress, please wait...", 3000
+            )
             return
 
         logger.info("Refreshing all data...")
@@ -581,7 +656,7 @@ class MainWindow(QMainWindow):
         self._refresh_in_progress = True
 
         # Disable the refresh button to prevent multiple clicks
-        if hasattr(self, 'refresh_button'):
+        if hasattr(self, "refresh_button"):
             self.refresh_button.setEnabled(False)
 
         # Clear cache
@@ -592,14 +667,14 @@ class MainWindow(QMainWindow):
             logger.info("Refresh operation completed")
             self._refresh_in_progress = False
             # Re-enable the refresh button
-            if hasattr(self, 'refresh_button'):
+            if hasattr(self, "refresh_button"):
                 self.refresh_button.setEnabled(True)
 
         def on_refresh_error(error):
             logger.error(f"Error during refresh: {error}")
             self._refresh_in_progress = False
             # Re-enable the refresh button
-            if hasattr(self, 'refresh_button'):
+            if hasattr(self, "refresh_button"):
                 self.refresh_button.setEnabled(True)
             self.status_bar.showMessage(f"Refresh failed: {error}", 5000)
 
@@ -610,13 +685,13 @@ class MainWindow(QMainWindow):
                 self._load_data_async(),
                 callback=on_refresh_complete,
                 error_callback=on_refresh_error,
-                loading_message="Refreshing data from server..."
+                loading_message="Refreshing data from server...",
             )
         except Exception as e:
             logger.error(f"Error starting refresh: {str(e)}")
             self._refresh_in_progress = False
             # Re-enable the refresh button
-            if hasattr(self, 'refresh_button'):
+            if hasattr(self, "refresh_button"):
                 self.refresh_button.setEnabled(True)
             self.status_bar.showMessage(f"Refresh failed: {str(e)}", 5000)
 
@@ -641,7 +716,7 @@ class MainWindow(QMainWindow):
         self.api_client._cache_timeout = self.config.cache_timeout
 
         # Update shortcuts
-        if hasattr(self, 'shortcut_manager'):
+        if hasattr(self, "shortcut_manager"):
             self.shortcut_manager.set_enabled(self.config.enable_keyboard_shortcuts)
 
         # Apply theme change
@@ -657,7 +732,7 @@ class MainWindow(QMainWindow):
 
     def select_next_preset(self):
         """Select next preset in list"""
-        if hasattr(self.preset_panel, 'preset_list'):
+        if hasattr(self.preset_panel, "preset_list"):
             current = self.preset_panel.preset_list.currentRow()
             if current < self.preset_panel.preset_list.count() - 1:
                 self.preset_panel.preset_list.setCurrentRow(current + 1)
@@ -667,7 +742,7 @@ class MainWindow(QMainWindow):
 
     def select_previous_preset(self):
         """Select previous preset in list"""
-        if hasattr(self.preset_panel, 'preset_list'):
+        if hasattr(self.preset_panel, "preset_list"):
             current = self.preset_panel.preset_list.currentRow()
             if current > 0:
                 self.preset_panel.preset_list.setCurrentRow(current - 1)
@@ -677,14 +752,14 @@ class MainWindow(QMainWindow):
 
     def select_next_category(self):
         """Select next category"""
-        if hasattr(self.preset_panel, 'category_combo'):
+        if hasattr(self.preset_panel, "category_combo"):
             current = self.preset_panel.category_combo.currentIndex()
             if current < self.preset_panel.category_combo.count() - 1:
                 self.preset_panel.category_combo.setCurrentIndex(current + 1)
 
     def select_previous_category(self):
         """Select previous category"""
-        if hasattr(self.preset_panel, 'category_combo'):
+        if hasattr(self.preset_panel, "category_combo"):
             current = self.preset_panel.category_combo.currentIndex()
             if current > 0:
                 self.preset_panel.category_combo.setCurrentIndex(current - 1)
@@ -716,24 +791,34 @@ class MainWindow(QMainWindow):
                 available = await self.check_server_availability()
                 if not available:
                     logger.error("Server is still not available, aborting data loading")
-                    self.status_bar.showMessage("Server is not available, aborting data loading")
-                    self.show_error("Server is not available. Please check your connection and try again.")
+                    self.status_bar.showMessage(
+                        "Server is not available, aborting data loading"
+                    )
+                    self.show_error(
+                        "Server is not available. Please check your connection and try again."
+                    )
                     self._stop_loading()
                     return
                 else:
                     # Server is now available, update flag
                     self.server_available = True
                     logger.info("Server is now available, continuing with data loading")
-                    self.status_bar.showMessage("Server is now available, continuing with data loading")
+                    self.status_bar.showMessage(
+                        "Server is now available, continuing with data loading"
+                    )
 
             try:
                 # Load manufacturers first
                 logger.info("Loading manufacturers from server...")
                 manufacturers = await self.api_client.get_manufacturers()
-                logger.info(f"Loaded {len(manufacturers)} manufacturers: {manufacturers}")
+                logger.info(
+                    f"Loaded {len(manufacturers)} manufacturers: {manufacturers}"
+                )
 
                 if not manufacturers:
-                    logger.warning("No manufacturers found, UI dropdowns may not display correctly")
+                    logger.warning(
+                        "No manufacturers found, UI dropdowns may not display correctly"
+                    )
                     self.status_bar.showMessage("Warning: No manufacturers found")
                     self._stop_loading()
                     return
@@ -746,7 +831,9 @@ class MainWindow(QMainWindow):
                 # Load MIDI ports
                 logger.info("Loading MIDI ports from server...")
                 midi_ports = await self.api_client.get_midi_ports()
-                logger.info(f"Loaded MIDI ports: in={len(midi_ports.get('in', []))}, out={len(midi_ports.get('out', []))}")
+                logger.info(
+                    f"Loaded MIDI ports: in={len(midi_ports.get('in', []))}, out={len(midi_ports.get('out', []))}"
+                )
 
                 # Set MIDI ports in the device panel immediately
                 self.device_panel.set_midi_ports(midi_ports)
@@ -757,7 +844,9 @@ class MainWindow(QMainWindow):
                 logger.info(f"Selected manufacturer after loading: {manufacturer}")
 
                 if manufacturer:
-                    logger.info(f"Triggering device load for manufacturer: {manufacturer}")
+                    logger.info(
+                        f"Triggering device load for manufacturer: {manufacturer}"
+                    )
                     # Trigger manufacturer changed to load devices
                     # Use a proper async approach instead of sleep
                     await self.load_devices_for_manufacturer(manufacturer)
@@ -768,7 +857,9 @@ class MainWindow(QMainWindow):
                 logger.info("UI state loaded successfully")
 
                 # Load presets based on selected device and community folder
-                logger.info("Loading presets based on selected device and community folder...")
+                logger.info(
+                    "Loading presets based on selected device and community folder..."
+                )
                 await self.load_presets()
 
                 # Update status
@@ -791,12 +882,18 @@ class MainWindow(QMainWindow):
             # Check if server is available
             if not self.server_available:
                 logger.warning("Server is not available, cannot load presets")
-                self.status_bar.showMessage("Server is not available, cannot load presets")
+                self.status_bar.showMessage(
+                    "Server is not available, cannot load presets"
+                )
                 # Try to check server availability again
                 available = await self.check_server_availability()
                 if not available:
-                    logger.error("Server is still not available, aborting preset loading")
-                    self.status_bar.showMessage("Server is not available, aborting preset loading")
+                    logger.error(
+                        "Server is still not available, aborting preset loading"
+                    )
+                    self.status_bar.showMessage(
+                        "Server is not available, aborting preset loading"
+                    )
                     # Still set empty presets to clear any previous data
                     self.preset_panel.set_presets([])
                     self._stop_loading()
@@ -804,24 +901,36 @@ class MainWindow(QMainWindow):
                 else:
                     # Server is now available, update flag
                     self.server_available = True
-                    logger.info("Server is now available, continuing with preset loading")
-                    self.status_bar.showMessage("Server is now available, continuing with preset loading")
+                    logger.info(
+                        "Server is now available, continuing with preset loading"
+                    )
+                    self.status_bar.showMessage(
+                        "Server is now available, continuing with preset loading"
+                    )
 
             try:
                 manufacturer = self.device_panel.get_selected_manufacturer()
                 device = self.device_panel.get_selected_device()
                 community_folder = self.device_panel.get_selected_community_folder()
 
-                logger.info(f"Loading presets for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
+                logger.info(
+                    f"Loading presets for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}"
+                )
 
                 if not manufacturer or not device:
-                    logger.info("No manufacturer or device selected, showing empty preset list")
-                    self.status_bar.showMessage("Please select a manufacturer and device to load presets")
+                    logger.info(
+                        "No manufacturer or device selected, showing empty preset list"
+                    )
+                    self.status_bar.showMessage(
+                        "Please select a manufacturer and device to load presets"
+                    )
                     # Set empty presets to clear any previous data
                     presets = []
                 else:
                     # Load presets based on selected manufacturer, device, and community folder
-                    presets = await self.api_client.get_presets(device, community_folder, manufacturer)
+                    presets = await self.api_client.get_presets(
+                        device, community_folder, manufacturer
+                    )
 
                 logger.info(f"Loaded {len(presets)} presets")
 
@@ -830,13 +939,21 @@ class MainWindow(QMainWindow):
 
                 # Update status
                 if manufacturer and device:
-                    self.status_bar.showMessage(f"Loaded {len(presets)} presets for {manufacturer} {device}")
+                    self.status_bar.showMessage(
+                        f"Loaded {len(presets)} presets for {manufacturer} {device}"
+                    )
                 elif manufacturer:
-                    self.status_bar.showMessage(f"Loaded {len(presets)} presets for {manufacturer}")
+                    self.status_bar.showMessage(
+                        f"Loaded {len(presets)} presets for {manufacturer}"
+                    )
                 elif device:
-                    self.status_bar.showMessage(f"Loaded {len(presets)} presets for {device}")
+                    self.status_bar.showMessage(
+                        f"Loaded {len(presets)} presets for {device}"
+                    )
                 else:
-                    self.status_bar.showMessage("Please select a manufacturer and device to load presets")
+                    self.status_bar.showMessage(
+                        "Please select a manufacturer and device to load presets"
+                    )
             except Exception as e:
                 logger.error(f"Error loading presets: {str(e)}")
                 self.status_bar.showMessage(f"Error loading presets: {str(e)}")
@@ -860,7 +977,9 @@ class MainWindow(QMainWindow):
             # Check if server is available
             if not self.server_available:
                 logger.info("Server is not available, skipping git sync")
-                self.status_bar.showMessage("Server is not available, skipping git sync")
+                self.status_bar.showMessage(
+                    "Server is not available, skipping git sync"
+                )
                 # Don't show an error, just quietly skip the git sync
                 self._stop_loading()
                 return
@@ -870,7 +989,9 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage("Running git sync...")
 
                 # Pass the sync_enabled parameter to the API client
-                success, message = await self.api_client.run_git_sync(sync_enabled=self.sync_enabled)
+                success, message = await self.api_client.run_git_sync(
+                    sync_enabled=self.sync_enabled
+                )
 
                 # Update status bar with result
                 if success:
@@ -895,7 +1016,11 @@ class MainWindow(QMainWindow):
             # Check if sync is enabled
             if not self.sync_enabled:
                 logger.info("Sync is disabled, skipping git sync")
-                QMessageBox.information(self, "Sync Disabled", "Sync is disabled. Please disable off-line mode to use this feature.")
+                QMessageBox.information(
+                    self,
+                    "Sync Disabled",
+                    "Sync is disabled. Please disable off-line mode to use this feature.",
+                )
                 return
 
             # Log at INFO level to ensure it's captured
@@ -928,7 +1053,7 @@ class MainWindow(QMainWindow):
             self.run_async_task(
                 self.api_client.run_git_sync(sync_enabled=self.sync_enabled),
                 callback=on_sync_complete,
-                loading_message="Pulling presets from GitHub..."
+                loading_message="Pulling presets from GitHub...",
             )
 
         except Exception as e:
@@ -974,7 +1099,9 @@ class MainWindow(QMainWindow):
                 return True
             else:
                 logger.info("Server is not available (no manufacturers returned)")
-                self.status_bar.showMessage("Server is not available (no manufacturers returned)")
+                self.status_bar.showMessage(
+                    "Server is not available (no manufacturers returned)"
+                )
                 return False
 
         except Exception as e:
@@ -1007,7 +1134,9 @@ class MainWindow(QMainWindow):
             return []
 
         except Exception as e:
-            logger.error(f"Error loading devices for manufacturer {manufacturer}: {str(e)}")
+            logger.error(
+                f"Error loading devices for manufacturer {manufacturer}: {str(e)}"
+            )
             return []
 
     def wait_for_server(self):
@@ -1023,9 +1152,13 @@ class MainWindow(QMainWindow):
 
         # Check if we've exceeded the maximum number of retries
         if self.server_check_retries >= self.max_server_check_retries:
-            logger.error(f"Server not available after {self.server_check_retries} retries, giving up")
+            logger.error(
+                f"Server not available after {self.server_check_retries} retries, giving up"
+            )
             self.status_bar.showMessage("Server not available, giving up")
-            self.show_error(f"Server not available after {self.server_check_retries} retries. Please check your connection and restart the application.")
+            self.show_error(
+                f"Server not available after {self.server_check_retries} retries. Please check your connection and restart the application."
+            )
             # Even if server is not available, proceed with loading UI
             # This allows the user to see the UI and potentially retry later
             self.server_available = False
@@ -1046,13 +1179,19 @@ class MainWindow(QMainWindow):
                 # Now that the server is available, load data
                 self.load_data()
             else:
-                logger.info(f"Server is not available (retry {self.server_check_retries}/{self.max_server_check_retries}), retrying in 1 second...")
-                self.status_bar.showMessage(f"Server is not available (retry {self.server_check_retries}/{self.max_server_check_retries}), retrying in 1 second...")
+                logger.info(
+                    f"Server is not available (retry {self.server_check_retries}/{self.max_server_check_retries}), retrying in 1 second..."
+                )
+                self.status_bar.showMessage(
+                    f"Server is not available (retry {self.server_check_retries}/{self.max_server_check_retries}), retrying in 1 second..."
+                )
                 # Retry after 1 second
                 QTimer.singleShot(1000, self.wait_for_server)
 
         # Run the check asynchronously
-        self.run_async_task(self.check_server_availability(), callback=on_check_complete)
+        self.run_async_task(
+            self.check_server_availability(), callback=on_check_complete
+        )
 
     def load_data(self):
         """Load data from the server"""
@@ -1067,7 +1206,7 @@ class MainWindow(QMainWindow):
         self.run_async_task(
             self._load_data_async(),
             error_callback=on_load_error,
-            loading_message="Loading data from server..."
+            loading_message="Loading data from server...",
         )
 
     def on_manufacturer_changed(self, manufacturer: str):
@@ -1109,21 +1248,32 @@ class MainWindow(QMainWindow):
         # Check if server is available
         if not self.server_available:
             logger.warning("Server is not available, cannot reload presets")
-            self.status_bar.showMessage("Server is not available, cannot reload presets")
+            self.status_bar.showMessage(
+                "Server is not available, cannot reload presets"
+            )
+
             # Try to check server availability again
             def on_check_complete(available):
                 if available:
                     logger.info("Server is now available, reloading presets...")
                     self.server_available = True
-                    self.status_bar.showMessage("Server is now available, reloading presets...")
+                    self.status_bar.showMessage(
+                        "Server is now available, reloading presets..."
+                    )
                     # Now that the server is available, reload presets
                     self._do_reload_presets()
                 else:
-                    logger.error("Server is still not available, aborting preset reload")
-                    self.status_bar.showMessage("Server is not available, aborting preset reload")
+                    logger.error(
+                        "Server is still not available, aborting preset reload"
+                    )
+                    self.status_bar.showMessage(
+                        "Server is not available, aborting preset reload"
+                    )
 
             # Run the check asynchronously
-            self.run_async_task(self.check_server_availability(), callback=on_check_complete)
+            self.run_async_task(
+                self.check_server_availability(), callback=on_check_complete
+            )
         else:
             # Server is available, proceed with reloading presets
             self._do_reload_presets()
@@ -1135,7 +1285,9 @@ class MainWindow(QMainWindow):
             device = self.device_panel.get_selected_device()
             community_folder = self.device_panel.get_selected_community_folder()
 
-            logger.info(f"Reloading presets for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}")
+            logger.info(
+                f"Reloading presets for manufacturer: {manufacturer}, device: {device}, community folder: {community_folder}"
+            )
             self.status_bar.showMessage(f"Reloading presets...")
 
             # Run the load_presets method asynchronously
@@ -1153,7 +1305,9 @@ class MainWindow(QMainWindow):
         """Handle preset double-click - same action as Send MIDI button"""
         # First make sure we have the necessary selections
         if not self.selected_midi_out_port:
-            self.show_error("No MIDI output port selected. Please select a MIDI output port first.")
+            self.show_error(
+                "No MIDI output port selected. Please select a MIDI output port first."
+            )
             return
 
         # Call the send_preset method directly
@@ -1186,7 +1340,9 @@ class MainWindow(QMainWindow):
             return
 
         if not self.selected_midi_out_port:
-            self.show_error("No MIDI output port selected. Please select a MIDI output port first.")
+            self.show_error(
+                "No MIDI output port selected. Please select a MIDI output port first."
+            )
             return
 
         self.send_preset()
@@ -1199,31 +1355,45 @@ class MainWindow(QMainWindow):
         # Monitor performance
         with PerformanceContext(get_monitor(), "send_preset"):
             # Start loading indicator immediately
-            self._start_loading(f"Sending preset: {self.selected_preset.get_display_name()}...")
+            self._start_loading(
+                f"Sending preset: {self.selected_preset.get_display_name()}..."
+            )
 
             # Check if server is available
             if not self.server_available:
                 logger.warning("Server is not available, cannot send preset")
-                self.status_bar.showMessage("Server is not available, cannot send preset")
+                self.status_bar.showMessage(
+                    "Server is not available, cannot send preset"
+                )
                 # Try to check server availability again
                 available = await self.check_server_availability()
                 if not available:
                     logger.error("Server is still not available, aborting preset send")
-                    self.status_bar.showMessage("Server is not available, aborting preset send")
-                    self.show_error("Server is not available. Please check your connection and try again.")
+                    self.status_bar.showMessage(
+                        "Server is not available, aborting preset send"
+                    )
+                    self.show_error(
+                        "Server is not available. Please check your connection and try again."
+                    )
                     self._stop_loading()
                     return
                 else:
                     # Server is now available, update flag
                     self.server_available = True
                     logger.info("Server is now available, continuing with preset send")
-                    self.status_bar.showMessage("Server is now available, continuing with preset send")
+                    self.status_bar.showMessage(
+                        "Server is now available, continuing with preset send"
+                    )
 
             try:
-                self.status_bar.showMessage(f"Sending preset: {self.selected_preset.get_display_name()}...")
+                self.status_bar.showMessage(
+                    f"Sending preset: {self.selected_preset.get_display_name()}..."
+                )
 
                 # Log debug information
-                logger.info(f"Sending preset: {self.selected_preset.get_display_name()}")
+                logger.info(
+                    f"Sending preset: {self.selected_preset.get_display_name()}"
+                )
                 logger.info(f"MIDI out port: {self.selected_midi_out_port}")
                 logger.info(f"MIDI channel: {self.selected_midi_channel}")
                 logger.info(f"Sequencer port: {self.selected_sequencer_port}")
@@ -1232,13 +1402,17 @@ class MainWindow(QMainWindow):
                     self.selected_preset.preset_name,
                     self.selected_midi_out_port,
                     self.selected_midi_channel,
-                    self.selected_sequencer_port
+                    self.selected_sequencer_port,
                 )
 
                 if result.get("status") == "success":
-                    self.status_bar.showMessage(f"Preset sent: {self.selected_preset.get_display_name()}")
+                    self.status_bar.showMessage(
+                        f"Preset sent: {self.selected_preset.get_display_name()}"
+                    )
                 else:
-                    self.show_error(f"Error sending preset: {result.get('message', 'Unknown error')}")
+                    self.show_error(
+                        f"Error sending preset: {result.get('message', 'Unknown error')}"
+                    )
 
             except Exception as e:
                 self.show_error(f"Error sending preset: {str(e)}")
@@ -1301,7 +1475,9 @@ class MainWindow(QMainWindow):
                         handler.flush()
 
             # Use QTimer.singleShot to run on the main thread
-            logger.error("SHOW_ERROR: Scheduling QMessageBox creation with QTimer.singleShot")
+            logger.error(
+                "SHOW_ERROR: Scheduling QMessageBox creation with QTimer.singleShot"
+            )
             for handler in logging.getLogger().handlers:
                 handler.flush()
 
@@ -1336,7 +1512,9 @@ class MainWindow(QMainWindow):
             if self._async_loop and self._async_loop.is_running():
                 try:
                     # Try to close the API client
-                    future = asyncio.run_coroutine_threadsafe(self.api_client.close(), self._async_loop)
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.api_client.close(), self._async_loop
+                    )
                     # Wait for a short time to allow the client to close
                     future.result(timeout=1.0)
                 except Exception as e:

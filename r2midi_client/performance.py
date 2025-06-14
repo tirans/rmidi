@@ -1,6 +1,7 @@
 """
 Performance monitoring for R2MIDI application
 """
+
 import time
 import logging
 import psutil
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PerformanceMetric:
     """Performance metric data"""
+
     name: str
     value: float
     unit: str
@@ -25,6 +27,7 @@ class PerformanceMetric:
 @dataclass
 class PerformanceSnapshot:
     """Snapshot of system performance"""
+
     cpu_percent: float
     memory_percent: float
     memory_mb: float
@@ -58,7 +61,9 @@ class PerformanceMonitor:
 
         self._monitoring = True
         self._monitor_task = asyncio.create_task(self._monitor_loop(interval))
-        logger.info(f"Performance monitoring started asynchronously (interval: {interval}s)")
+        logger.info(
+            f"Performance monitoring started asynchronously (interval: {interval}s)"
+        )
 
     def stop_monitoring(self):
         """Stop performance monitoring"""
@@ -91,7 +96,7 @@ class PerformanceMonitor:
                 cpu_percent=cpu_percent,
                 memory_percent=memory_percent,
                 memory_mb=memory_mb,
-                thread_count=thread_count
+                thread_count=thread_count,
             )
 
             self.snapshots.append(snapshot)
@@ -157,7 +162,7 @@ class PerformanceMonitor:
             "max": max(values),
             "mean": statistics.mean(values),
             "median": statistics.median(values),
-            "stdev": statistics.stdev(values) if len(values) > 1 else 0
+            "stdev": statistics.stdev(values) if len(values) > 1 else 0,
         }
 
     def get_performance_summary(self) -> Dict[str, any]:
@@ -171,10 +176,14 @@ class PerformanceMonitor:
             "current": {
                 "cpu_percent": self.snapshots[-1].cpu_percent if self.snapshots else 0,
                 "memory_mb": self.snapshots[-1].memory_mb if self.snapshots else 0,
-                "thread_count": self.snapshots[-1].thread_count if self.snapshots else 0
+                "thread_count": (
+                    self.snapshots[-1].thread_count if self.snapshots else 0
+                ),
             },
             "average": {
-                "cpu_percent": statistics.mean([s.cpu_percent for s in recent_snapshots]),
+                "cpu_percent": statistics.mean(
+                    [s.cpu_percent for s in recent_snapshots]
+                ),
                 "memory_mb": statistics.mean([s.memory_mb for s in recent_snapshots]),
             },
             "peak": {
@@ -185,7 +194,7 @@ class PerformanceMonitor:
                 name: self.get_metric_stats(name)
                 for name in self.metrics
                 if name.endswith("_duration")
-            }
+            },
         }
 
     def log_summary(self):
@@ -200,12 +209,14 @@ class PerformanceMonitor:
         logger.info(f"  Average CPU: {summary['average']['cpu_percent']:.1f}%")
         logger.info(f"  Peak Memory: {summary['peak']['memory_mb']:.1f} MB")
 
-        if summary.get('operation_stats'):
+        if summary.get("operation_stats"):
             logger.info("  Operation timings:")
-            for op, stats in summary['operation_stats'].items():
+            for op, stats in summary["operation_stats"].items():
                 if stats:
-                    logger.info(f"    {op}: avg={stats['mean']:.3f}s, "
-                              f"min={stats['min']:.3f}s, max={stats['max']:.3f}s")
+                    logger.info(
+                        f"    {op}: avg={stats['mean']:.3f}s, "
+                        f"min={stats['min']:.3f}s, max={stats['max']:.3f}s"
+                    )
 
 
 class PerformanceContext:
@@ -222,7 +233,9 @@ class PerformanceContext:
     def __exit__(self, exc_type, exc_val, exc_tb):
         duration = self.monitor.end_operation(self.operation_name)
         if duration and duration > 1.0:  # Log slow operations
-            logger.warning(f"Slow operation: {self.operation_name} took {duration:.2f}s")
+            logger.warning(
+                f"Slow operation: {self.operation_name} took {duration:.2f}s"
+            )
 
 
 # Global performance monitor instance
@@ -239,16 +252,20 @@ def get_monitor() -> PerformanceMonitor:
 
 def monitor_operation(operation_name: str):
     """Decorator to monitor operation performance"""
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             with PerformanceContext(get_monitor(), operation_name):
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 def monitor_async_operation(operation_name: str):
     """Decorator to monitor async operation performance"""
+
     def decorator(func):
         async def wrapper(*args, **kwargs):
             monitor = get_monitor()
@@ -258,5 +275,7 @@ def monitor_async_operation(operation_name: str):
                 return result
             finally:
                 monitor.end_operation(operation_name)
+
         return wrapper
+
     return decorator

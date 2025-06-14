@@ -1,11 +1,24 @@
 """
 Preferences dialog for R2MIDI application
 """
+
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
-    QGroupBox, QFormLayout, QSpinBox, QCheckBox, QComboBox,
-    QLineEdit, QPushButton, QLabel, QMessageBox, QTextEdit,
-    QDialogButtonBox
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QTabWidget,
+    QWidget,
+    QGroupBox,
+    QFormLayout,
+    QSpinBox,
+    QCheckBox,
+    QComboBox,
+    QLineEdit,
+    QPushButton,
+    QLabel,
+    QMessageBox,
+    QTextEdit,
+    QDialogButtonBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIntValidator
@@ -50,16 +63,20 @@ class PreferencesDialog(QDialog):
 
         # Dialog buttons
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok |
-            QDialogButtonBox.StandardButton.Cancel |
-            QDialogButtonBox.StandardButton.Apply |
-            QDialogButtonBox.StandardButton.RestoreDefaults
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.Apply
+            | QDialogButtonBox.StandardButton.RestoreDefaults
         )
 
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        button_box.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply_changes)
-        button_box.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.restore_defaults)
+        button_box.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(
+            self.apply_changes
+        )
+        button_box.button(
+            QDialogButtonBox.StandardButton.RestoreDefaults
+        ).clicked.connect(self.restore_defaults)
 
         layout.addWidget(button_box)
 
@@ -79,13 +96,17 @@ class PreferencesDialog(QDialog):
 
         self.server_timeout_spin = QSpinBox()
         self.server_timeout_spin.setRange(5, 300)
-        self.server_timeout_spin.setValue(self.config_manager.config.server_check_timeout)
+        self.server_timeout_spin.setValue(
+            self.config_manager.config.server_check_timeout
+        )
         self.server_timeout_spin.setSuffix(" seconds")
         server_layout.addRow("Connection Timeout:", self.server_timeout_spin)
 
         self.server_retries_spin = QSpinBox()
         self.server_retries_spin.setRange(1, 100)
-        self.server_retries_spin.setValue(self.config_manager.config.server_check_retries)
+        self.server_retries_spin.setValue(
+            self.config_manager.config.server_check_retries
+        )
         server_layout.addRow("Max Retries:", self.server_retries_spin)
 
         layout.addWidget(server_group)
@@ -122,11 +143,15 @@ class PreferencesDialog(QDialog):
 
         self.default_channel_spin = QSpinBox()
         self.default_channel_spin.setRange(1, 16)
-        self.default_channel_spin.setValue(self.config_manager.config.default_midi_channel)
+        self.default_channel_spin.setValue(
+            self.config_manager.config.default_midi_channel
+        )
         midi_layout.addRow("Default MIDI Channel:", self.default_channel_spin)
 
         self.auto_select_ports_check = QCheckBox()
-        self.auto_select_ports_check.setChecked(self.config_manager.config.auto_select_midi_ports)
+        self.auto_select_ports_check.setChecked(
+            self.config_manager.config.auto_select_midi_ports
+        )
         midi_layout.addRow("Auto-select MIDI Ports:", self.auto_select_ports_check)
 
         layout.addWidget(midi_group)
@@ -184,12 +209,18 @@ class PreferencesDialog(QDialog):
         features_layout.addRow("Enable Search:", self.enable_search_check)
 
         self.enable_favorites_check = QCheckBox()
-        self.enable_favorites_check.setChecked(self.config_manager.config.enable_favorites)
+        self.enable_favorites_check.setChecked(
+            self.config_manager.config.enable_favorites
+        )
         features_layout.addRow("Enable Favorites:", self.enable_favorites_check)
 
         self.enable_shortcuts_check = QCheckBox()
-        self.enable_shortcuts_check.setChecked(self.config_manager.config.enable_keyboard_shortcuts)
-        features_layout.addRow("Enable Keyboard Shortcuts:", self.enable_shortcuts_check)
+        self.enable_shortcuts_check.setChecked(
+            self.config_manager.config.enable_keyboard_shortcuts
+        )
+        features_layout.addRow(
+            "Enable Keyboard Shortcuts:", self.enable_shortcuts_check
+        )
 
         layout.addWidget(features_group)
         layout.addStretch()
@@ -212,7 +243,9 @@ class PreferencesDialog(QDialog):
         performance_layout.addRow("Max Presets to Display:", self.max_presets_spin)
 
         self.lazy_loading_check = QCheckBox()
-        self.lazy_loading_check.setChecked(self.config_manager.config.enable_lazy_loading)
+        self.lazy_loading_check.setChecked(
+            self.config_manager.config.enable_lazy_loading
+        )
         performance_layout.addRow("Enable Lazy Loading:", self.lazy_loading_check)
 
         layout.addWidget(performance_group)
@@ -233,7 +266,9 @@ class PreferencesDialog(QDialog):
         layout.addWidget(shortcuts_text)
 
         # Note about customization
-        note_label = QLabel("Note: Keyboard shortcut customization will be available in a future update.")
+        note_label = QLabel(
+            "Note: Keyboard shortcut customization will be available in a future update."
+        )
         note_label.setWordWrap(True)
         layout.addWidget(note_label)
 
@@ -289,11 +324,9 @@ class PreferencesDialog(QDialog):
             server_check_retries=self.server_retries_spin.value(),
             cache_enabled=self.cache_enabled_check.isChecked(),
             cache_timeout=self.cache_timeout_spin.value(),
-
             # MIDI
             default_midi_channel=self.default_channel_spin.value(),
             auto_select_midi_ports=self.auto_select_ports_check.isChecked(),
-
             # UI
             window_width=self.window_width_spin.value(),
             window_height=self.window_height_spin.value(),
@@ -302,14 +335,12 @@ class PreferencesDialog(QDialog):
             enable_search=self.enable_search_check.isChecked(),
             enable_favorites=self.enable_favorites_check.isChecked(),
             enable_keyboard_shortcuts=self.enable_shortcuts_check.isChecked(),
-
             # Performance
             max_presets_display=self.max_presets_spin.value(),
             enable_lazy_loading=self.lazy_loading_check.isChecked(),
-
             # Advanced
             debug_mode=self.debug_mode_check.isChecked(),
-            log_level=self.log_level_combo.currentText()
+            log_level=self.log_level_combo.currentText(),
         )
 
         # Save configuration
@@ -336,7 +367,7 @@ class PreferencesDialog(QDialog):
             self,
             "Restore Defaults",
             "Are you sure you want to restore all settings to their default values?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
@@ -381,15 +412,14 @@ class PreferencesDialog(QDialog):
         from PyQt6.QtWidgets import QFileDialog
 
         filename, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Configuration",
-            "r2midi_config.json",
-            "JSON Files (*.json)"
+            self, "Export Configuration", "r2midi_config.json", "JSON Files (*.json)"
         )
 
         if filename:
             if self.config_manager.export_config(filename):
-                QMessageBox.information(self, "Success", "Configuration exported successfully")
+                QMessageBox.information(
+                    self, "Success", "Configuration exported successfully"
+                )
             else:
                 QMessageBox.warning(self, "Error", "Failed to export configuration")
 
@@ -398,15 +428,14 @@ class PreferencesDialog(QDialog):
         from PyQt6.QtWidgets import QFileDialog
 
         filename, _ = QFileDialog.getOpenFileName(
-            self,
-            "Import Configuration",
-            "",
-            "JSON Files (*.json)"
+            self, "Import Configuration", "", "JSON Files (*.json)"
         )
 
         if filename:
             if self.config_manager.import_config(filename):
                 self._update_ui_from_config()
-                QMessageBox.information(self, "Success", "Configuration imported successfully")
+                QMessageBox.information(
+                    self, "Success", "Configuration imported successfully"
+                )
             else:
                 QMessageBox.warning(self, "Error", "Failed to import configuration")

@@ -8,10 +8,13 @@ from typing import Optional
 # Get logger
 logger = logging.getLogger(__name__)
 
+
 class UILauncher:
     """Responsible for launching the UI client"""
 
-    def __init__(self, client_path: str = None, server_url: str = "http://localhost:7777"):
+    def __init__(
+        self, client_path: str = None, server_url: str = "http://localhost:7777"
+    ):
         """
         Initialize the UI launcher
 
@@ -24,7 +27,7 @@ class UILauncher:
             server_dir = os.path.dirname(__file__)
             project_root = os.path.dirname(server_dir)
             client_path = os.path.join(project_root, "r2midi_client")
-        
+
         self.client_path = os.path.abspath(client_path)
         self.server_url = server_url
         self.client_process = None
@@ -61,11 +64,7 @@ class UILauncher:
 
             # Use subprocess.Popen to avoid blocking the server
             self.client_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
             )
 
             # Give the process a moment to start
@@ -73,19 +72,26 @@ class UILauncher:
 
             # Check if the process is still running
             if self.client_process.poll() is None:
-                logger.info(f"Client UI launched successfully with PID {self.client_process.pid}")
+                logger.info(
+                    f"Client UI launched successfully with PID {self.client_process.pid}"
+                )
 
                 # Set a timeout for the client process to start
                 start_time = time.time()
                 timeout = 10  # 10 seconds timeout
 
                 # Wait for the client process to start or timeout
-                while self.client_process.poll() is None and time.time() - start_time < timeout:
+                while (
+                    self.client_process.poll() is None
+                    and time.time() - start_time < timeout
+                ):
                     time.sleep(0.1)
 
                 # Check if the process is still running after the timeout
                 if self.client_process.poll() is None:
-                    logger.info("Client UI is still running after timeout, assuming it started successfully")
+                    logger.info(
+                        "Client UI is still running after timeout, assuming it started successfully"
+                    )
                     return True
                 else:
                     stdout, stderr = self.client_process.communicate()

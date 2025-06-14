@@ -8,4 +8,4 @@ from .api_client import CachedApiClient
 from .models import Device, Preset, UIState
 
 __version__ = "0.1.0"
-__all__ = ['CachedApiClient', 'Device', 'Preset', 'UIState']
+__all__ = ["CachedApiClient", "Device", "Preset", "UIState"]

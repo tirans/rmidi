@@ -8,6 +8,7 @@ from git import Repo, GitCommandError
 # Configure logger
 logger = logging.getLogger(__name__)
 
+
 def get_midi_presets_mode():
     """
     Determine the mode for handling midi-presets based on R2MIDI_ROLE environment variable
@@ -15,14 +16,15 @@ def get_midi_presets_mode():
     Returns:
         str: 'clone' for release mode (default), 'submodule' for dev mode
     """
-    role = os.environ.get('R2MIDI_ROLE', 'release').lower()
+    role = os.environ.get("R2MIDI_ROLE", "release").lower()
 
-    if role == 'dev':
+    if role == "dev":
         logger.info("R2MIDI_ROLE=dev: Using submodule mode for midi-presets")
-        return 'submodule'
+        return "submodule"
     else:
         logger.info(f"R2MIDI_ROLE={role}: Using clone mode for midi-presets")
-        return 'clone'
+        return "clone"
+
 
 def ensure_midi_presets_clone():
     """
@@ -48,7 +50,9 @@ def ensure_midi_presets_clone():
                 # Check if it's a submodule (has .git file instead of directory)
                 git_path = os.path.join(midi_presets_dir, ".git")
                 if os.path.isfile(git_path):
-                    logger.info("Found submodule, converting to regular clone for release mode")
+                    logger.info(
+                        "Found submodule, converting to regular clone for release mode"
+                    )
 
                     # Remove the submodule
                     shutil.rmtree(midi_presets_dir)
@@ -64,7 +68,9 @@ def ensure_midi_presets_clone():
                     # Check if there are unstaged changes
                     status_output = repo.git.status(porcelain=True)
                     if status_output.strip():
-                        logger.info("Found unstaged changes, committing them before pulling")
+                        logger.info(
+                            "Found unstaged changes, committing them before pulling"
+                        )
                         # Add all changes
                         repo.git.add(".")
                         # Commit changes with a message
@@ -73,14 +79,18 @@ def ensure_midi_presets_clone():
 
                     # Now pull latest changes
                     logger.info("Pulling latest changes")
-                    origin = repo.remote('origin')
+                    origin = repo.remote("origin")
                     try:
                         origin.pull()
                         logger.info("Successfully updated midi-presets repository")
                     except GitCommandError as e:
                         # If pull fails with rebase conflicts, try to continue the rebase
-                        if "You have unstaged changes" in str(e) or "cannot pull with rebase" in str(e):
-                            logger.warning(f"Pull failed due to rebase conflicts: {str(e)}")
+                        if "You have unstaged changes" in str(
+                            e
+                        ) or "cannot pull with rebase" in str(e):
+                            logger.warning(
+                                f"Pull failed due to rebase conflicts: {str(e)}"
+                            )
                             # Try to stash changes and then pull
                             repo.git.stash()
                             logger.info("Stashed changes")
@@ -95,7 +105,9 @@ def ensure_midi_presets_clone():
                 return True, "midi-presets repository ready", 200
 
             except git.InvalidGitRepositoryError:
-                logger.warning("Directory exists but is not a git repository, removing and cloning fresh")
+                logger.warning(
+                    "Directory exists but is not a git repository, removing and cloning fresh"
+                )
                 shutil.rmtree(midi_presets_dir)
 
         # Clone the repository
@@ -110,6 +122,7 @@ def ensure_midi_presets_clone():
         error_msg = f"Error ensuring midi-presets clone: {str(e)}"
         logger.error(error_msg)
         return False, error_msg, 500
+
 
 def ensure_midi_presets_submodule():
     """
@@ -139,9 +152,9 @@ def ensure_midi_presets_submodule():
         has_submodule_config = False
 
         if os.path.exists(gitmodules_path):
-            with open(gitmodules_path, 'r') as f:
+            with open(gitmodules_path, "r") as f:
                 content = f.read()
-                if 'server/midi-presets' in content:
+                if "server/midi-presets" in content:
                     has_submodule_config = True
 
         # If submodule is not configured, add it
@@ -153,7 +166,11 @@ def ensure_midi_presets_submodule():
                 shutil.rmtree(midi_presets_dir)
 
             # Add submodule
-            repo.git.submodule("add", "https://github.com/tirans/midi-presets.git", "server/midi-presets")
+            repo.git.submodule(
+                "add",
+                "https://github.com/tirans/midi-presets.git",
+                "server/midi-presets",
+            )
             logger.info("Added midi-presets as submodule")
 
         # Update submodule
@@ -167,6 +184,7 @@ def ensure_midi_presets_submodule():
         logger.error(error_msg)
         return False, error_msg, 500
 
+
 def git_sync():
     """
     Sync midi-presets based on R2MIDI_ROLE environment variable
@@ -179,12 +197,13 @@ def git_sync():
     """
     mode = get_midi_presets_mode()
 
-    if mode == 'submodule':
+    if mode == "submodule":
         # Development mode - use the existing submodule sync logic
         return git_sync_submodule()
     else:
         # Release mode - ensure it's a regular clone
         return ensure_midi_presets_clone()
+
 
 def git_remote_sync():
     """
@@ -275,21 +294,29 @@ def git_remote_sync():
             # Push changes
             logger.info("Pushing changes in midi-presets...")
             push_output = repo.git.push()
-            logger.info(f"Git push output: {push_output if push_output else 'No output'}")
+            logger.info(
+                f"Git push output: {push_output if push_output else 'No output'}"
+            )
 
             # Return to the original directory
             os.chdir(current_dir)
             logger.info(f"Returned to original directory: {current_dir}")
 
             # If in submodule mode, update the submodule reference in the parent repository
-            if mode == 'submodule':
+            if mode == "submodule":
                 logger.info("Updating submodule reference in parent repository...")
                 parent_repo = Repo(project_root)
                 parent_add_output = parent_repo.git.add("server/midi-presets")
-                logger.info(f"Git add output: {parent_add_output if parent_add_output else 'No output'}")
+                logger.info(
+                    f"Git add output: {parent_add_output if parent_add_output else 'No output'}"
+                )
 
             logger.info("Git remote sync completed successfully")
-            return True, "Successfully added, committed, and pushed changes to midi-presets repository", 200
+            return (
+                True,
+                "Successfully added, committed, and pushed changes to midi-presets repository",
+                200,
+            )
         except GitCommandError as e:
             error_msg = f"Git remote sync failed: {e.stderr}"
             logger.error(error_msg)
@@ -317,6 +344,7 @@ def git_remote_sync():
             logger.error(f"Error returning to original directory: {str(chdir_error)}")
 
         return False, error_msg, 500
+
 
 def git_sync_submodule():
     """
@@ -363,7 +391,9 @@ def git_sync_submodule():
                     status_output = submodule_repo.git.status(porcelain=True)
 
                     if status_output.strip():
-                        logger.info("Found unstaged changes in submodule, committing them before update")
+                        logger.info(
+                            "Found unstaged changes in submodule, committing them before update"
+                        )
                         # Save current directory
                         current_dir = os.getcwd()
                         try:
@@ -373,8 +403,12 @@ def git_sync_submodule():
                             # Add all changes
                             submodule_repo.git.add(".")
                             # Commit changes with a message
-                            submodule_repo.git.commit(m="Auto-commit of local changes before submodule update")
-                            logger.info("Successfully committed local changes in submodule")
+                            submodule_repo.git.commit(
+                                m="Auto-commit of local changes before submodule update"
+                            )
+                            logger.info(
+                                "Successfully committed local changes in submodule"
+                            )
                         finally:
                             # Return to original directory
                             os.chdir(current_dir)
@@ -390,12 +424,18 @@ def git_sync_submodule():
                 # Update the submodule
                 logger.info("Updating git submodule...")
                 try:
-                    update_output = repo.git.submodule("update", "--init", "--recursive")
+                    update_output = repo.git.submodule(
+                        "update", "--init", "--recursive"
+                    )
                     logger.info(f"Git submodule update output: {update_output}")
                 except GitCommandError as e:
                     # If update fails with unstaged changes error, try to stash and update
-                    if "You have unstaged changes" in str(e) or "cannot pull with rebase" in str(e):
-                        logger.warning(f"Submodule update failed due to unstaged changes: {str(e)}")
+                    if "You have unstaged changes" in str(
+                        e
+                    ) or "cannot pull with rebase" in str(e):
+                        logger.warning(
+                            f"Submodule update failed due to unstaged changes: {str(e)}"
+                        )
 
                         # Try to stash changes in the submodule
                         current_dir = os.getcwd()
@@ -410,8 +450,12 @@ def git_sync_submodule():
 
                             # Return to original directory and retry update
                             os.chdir(current_dir)
-                            update_output = repo.git.submodule("update", "--init", "--recursive")
-                            logger.info(f"Git submodule update output after stashing: {update_output}")
+                            update_output = repo.git.submodule(
+                                "update", "--init", "--recursive"
+                            )
+                            logger.info(
+                                f"Git submodule update output after stashing: {update_output}"
+                            )
 
                             # Apply stash if needed
                             os.chdir(midi_presets_dir)
@@ -425,7 +469,9 @@ def git_sync_submodule():
                         raise
 
             # If we get here, it worked!
-            logger.info("Git submodule sync completed successfully with standard approach")
+            logger.info(
+                "Git submodule sync completed successfully with standard approach"
+            )
             return True, "Git submodule sync completed successfully", 200
 
         except GitCommandError as e:
@@ -438,11 +484,15 @@ def git_sync_submodule():
 
             # Reset the submodule state
             with repo.git.custom_environment(GIT_TERMINAL_PROMPT="0"):
-                reset_output = repo.git.submodule("deinit", "-f", "--", "server/midi-presets")
+                reset_output = repo.git.submodule(
+                    "deinit", "-f", "--", "server/midi-presets"
+                )
                 logger.info(f"Git submodule deinit output: {reset_output}")
 
                 # Re-initialize and update with force
-                reinit_output = repo.git.submodule("update", "--init", "--recursive", "--force")
+                reinit_output = repo.git.submodule(
+                    "update", "--init", "--recursive", "--force"
+                )
                 logger.info(f"Git submodule force update output: {reinit_output}")
 
             # If we get here, it worked!
@@ -471,31 +521,43 @@ def git_sync_submodule():
                 if not submodule_url:
                     gitmodules_path = os.path.join(project_root, ".gitmodules")
                     if not os.path.exists(gitmodules_path):
-                        raise FileNotFoundError(f".gitmodules file not found at {gitmodules_path}")
+                        raise FileNotFoundError(
+                            f".gitmodules file not found at {gitmodules_path}"
+                        )
 
                     # Parse .gitmodules to get the URL
-                    with open(gitmodules_path, 'r') as f:
+                    with open(gitmodules_path, "r") as f:
                         content = f.read()
-                        url_match = re.search(r'\[submodule\s+"server/midi-presets"\].*?\s+url\s+=\s+(.+)', content, re.DOTALL)
+                        url_match = re.search(
+                            r'\[submodule\s+"server/midi-presets"\].*?\s+url\s+=\s+(.+)',
+                            content,
+                            re.DOTALL,
+                        )
                         if url_match:
                             submodule_url = url_match.group(1).strip()
 
                 if not submodule_url:
                     # Use the default URL if not found
                     submodule_url = "https://github.com/tirans/midi-presets.git"
-                    logger.warning(f"Could not find midi-presets URL in configuration, using default: {submodule_url}")
+                    logger.warning(
+                        f"Could not find midi-presets URL in configuration, using default: {submodule_url}"
+                    )
                 else:
                     logger.info(f"Found submodule URL: {submodule_url}")
 
                 # Verify that the URL is the expected one
                 expected_url = "https://github.com/tirans/midi-presets.git"
                 if submodule_url != expected_url:
-                    logger.warning(f"Submodule URL {submodule_url} doesn't match expected URL {expected_url}")
+                    logger.warning(
+                        f"Submodule URL {submodule_url} doesn't match expected URL {expected_url}"
+                    )
                     submodule_url = expected_url
                     logger.info(f"Using expected URL: {submodule_url}")
 
             except Exception as e:
-                logger.warning(f"Error getting submodule URL from configuration: {str(e)}")
+                logger.warning(
+                    f"Error getting submodule URL from configuration: {str(e)}"
+                )
                 # Use the default URL if there was an error
                 submodule_url = "https://github.com/tirans/midi-presets.git"
                 logger.info(f"Using default submodule URL: {submodule_url}")
@@ -507,7 +569,9 @@ def git_sync_submodule():
                 # Check if it's a regular git repository (not a submodule)
                 git_dir = os.path.join(midi_presets_dir, ".git")
                 if os.path.exists(git_dir) and os.path.isdir(git_dir):
-                    logger.info("Detected regular git repository instead of submodule. Converting to submodule...")
+                    logger.info(
+                        "Detected regular git repository instead of submodule. Converting to submodule..."
+                    )
 
                     # Get the current commit hash to preserve it
                     try:
@@ -527,7 +591,9 @@ def git_sync_submodule():
 
                         # Copy the content to the temporary directory
                         shutil.copytree(midi_presets_dir, temp_dir, symlinks=True)
-                        logger.info(f"Copied midi-presets content to temporary directory: {temp_dir}")
+                        logger.info(
+                            f"Copied midi-presets content to temporary directory: {temp_dir}"
+                        )
 
                         # Remove the original directory
                         shutil.rmtree(midi_presets_dir)
@@ -542,7 +608,9 @@ def git_sync_submodule():
                             # First try git clean to remove untracked files
                             repo.git.clean("-ffdx", "--", "server/midi-presets")
                         except Exception as e:
-                            logger.warning(f"Git clean failed, will try manual removal: {str(e)}")
+                            logger.warning(
+                                f"Git clean failed, will try manual removal: {str(e)}"
+                            )
 
                         # Then try to remove the directory manually
                         try:
@@ -552,11 +620,13 @@ def git_sync_submodule():
                             logger.warning(f"Error removing directory: {str(e)}")
                             # Try with os.system as a last resort
                             if os.path.exists(midi_presets_dir):
-                                if os.name == 'nt':  # Windows
+                                if os.name == "nt":  # Windows
                                     os.system(f'rmdir /S /Q "{midi_presets_dir}"')
                                 else:  # Unix/Linux/MacOS
                                     os.system(f'rm -rf "{midi_presets_dir}"')
-                                logger.info("Used system command to remove midi-presets directory")
+                                logger.info(
+                                    "Used system command to remove midi-presets directory"
+                                )
                 else:
                     # It's not a regular git repository, so just remove it
                     logger.info("Removing existing midi-presets directory...")
@@ -564,7 +634,9 @@ def git_sync_submodule():
                         # First try git clean to remove untracked files
                         repo.git.clean("-ffdx", "--", "server/midi-presets")
                     except Exception as e:
-                        logger.warning(f"Git clean failed, will try manual removal: {str(e)}")
+                        logger.warning(
+                            f"Git clean failed, will try manual removal: {str(e)}"
+                        )
 
                     # Then try to remove the directory manually
                     try:
@@ -574,11 +646,13 @@ def git_sync_submodule():
                         logger.warning(f"Error removing directory: {str(e)}")
                         # Try with os.system as a last resort
                         if os.path.exists(midi_presets_dir):
-                            if os.name == 'nt':  # Windows
+                            if os.name == "nt":  # Windows
                                 os.system(f'rmdir /S /Q "{midi_presets_dir}"')
                             else:  # Unix/Linux/MacOS
                                 os.system(f'rm -rf "{midi_presets_dir}"')
-                            logger.info("Used system command to remove midi-presets directory")
+                            logger.info(
+                                "Used system command to remove midi-presets directory"
+                            )
 
             # Remove from git's index
             try:
@@ -600,7 +674,9 @@ def git_sync_submodule():
 
             # Verify the submodule was cloned successfully
             if os.path.exists(midi_presets_dir) and os.path.isdir(midi_presets_dir):
-                logger.info("Git submodule sync completed successfully with complete re-initialization")
+                logger.info(
+                    "Git submodule sync completed successfully with complete re-initialization"
+                )
 
                 # Check if we have a temporary directory with content to restore
                 temp_dir = os.path.join(project_root, "midi-presets-temp")
@@ -630,11 +706,19 @@ def git_sync_submodule():
                         shutil.rmtree(temp_dir)
                         logger.info("Removed temporary directory")
                     except Exception as e:
-                        logger.warning(f"Error restoring content from temporary directory: {str(e)}")
+                        logger.warning(
+                            f"Error restoring content from temporary directory: {str(e)}"
+                        )
 
-                return True, "Git submodule sync completed successfully with complete re-initialization", 200
+                return (
+                    True,
+                    "Git submodule sync completed successfully with complete re-initialization",
+                    200,
+                )
             else:
-                raise Exception(f"Submodule directory not found after re-initialization: {midi_presets_dir}")
+                raise Exception(
+                    f"Submodule directory not found after re-initialization: {midi_presets_dir}"
+                )
 
         except Exception as e:
             logger.error(f"Complete re-initialization failed: {str(e)}")

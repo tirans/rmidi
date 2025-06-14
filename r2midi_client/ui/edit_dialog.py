@@ -2,16 +2,30 @@ from typing import Dict, List, Optional, Any, Callable
 import logging
 import asyncio
 from PyQt6.QtWidgets import (
-    QDialog, QTabWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, 
-    QLineEdit, QSpinBox, QPushButton, QMessageBox, QFormLayout, QWidget,
-    QListWidget, QListWidgetItem, QTextEdit, QGroupBox
+    QDialog,
+    QTabWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QComboBox,
+    QLineEdit,
+    QSpinBox,
+    QPushButton,
+    QMessageBox,
+    QFormLayout,
+    QWidget,
+    QListWidget,
+    QListWidgetItem,
+    QTextEdit,
+    QGroupBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
 from ..api_client import CachedApiClient
 
 # Configure logger
-logger = logging.getLogger('r2midi_client.ui.edit_dialog')
+logger = logging.getLogger("r2midi_client.ui.edit_dialog")
+
 
 class EditDialog(QDialog):
     """Dialog for editing manufacturers, devices, and presets"""
@@ -114,7 +128,9 @@ class EditDialog(QDialog):
         manufacturer_layout = QHBoxLayout()
         manufacturer_layout.addWidget(QLabel("Manufacturer:"))
         self.device_manufacturer_combo = QComboBox()
-        self.device_manufacturer_combo.currentTextChanged.connect(self.on_device_manufacturer_changed)
+        self.device_manufacturer_combo.currentTextChanged.connect(
+            self.on_device_manufacturer_changed
+        )
         manufacturer_layout.addWidget(self.device_manufacturer_combo)
         layout.addLayout(manufacturer_layout)
 
@@ -180,15 +196,21 @@ class EditDialog(QDialog):
         selection_layout = QFormLayout()
 
         self.preset_manufacturer_combo = QComboBox()
-        self.preset_manufacturer_combo.currentTextChanged.connect(self.on_preset_manufacturer_changed)
+        self.preset_manufacturer_combo.currentTextChanged.connect(
+            self.on_preset_manufacturer_changed
+        )
         selection_layout.addRow("Manufacturer:", self.preset_manufacturer_combo)
 
         self.preset_device_combo = QComboBox()
-        self.preset_device_combo.currentTextChanged.connect(self.on_preset_device_changed)
+        self.preset_device_combo.currentTextChanged.connect(
+            self.on_preset_device_changed
+        )
         selection_layout.addRow("Device:", self.preset_device_combo)
 
         self.preset_collection_combo = QComboBox()
-        self.preset_collection_combo.currentTextChanged.connect(self.on_preset_collection_changed)
+        self.preset_collection_combo.currentTextChanged.connect(
+            self.on_preset_collection_changed
+        )
         selection_layout.addRow("Collection:", self.preset_collection_combo)
 
         # Collection name edit field
@@ -318,7 +340,13 @@ class EditDialog(QDialog):
                         self.load_presets(manufacturer, device)
 
                 # Always force refresh to ensure we get fresh data from the server
-                self.run_async(self.api_client.get_devices_by_manufacturer(manufacturer, force_refresh=True), on_devices_loaded, loading_message=f"Loading devices for {manufacturer}...")
+                self.run_async(
+                    self.api_client.get_devices_by_manufacturer(
+                        manufacturer, force_refresh=True
+                    ),
+                    on_devices_loaded,
+                    loading_message=f"Loading devices for {manufacturer}...",
+                )
 
     def on_tab_changed(self, index):
         """Handle tab changes"""
@@ -342,15 +370,27 @@ class EditDialog(QDialog):
                 key = f"{manufacturer}/{device}"
                 if key not in self.presets:
                     # If we don't have presets for this manufacturer/device, load them
-                    logger.info(f"Loading presets for {manufacturer}/{device} on tab change")
+                    logger.info(
+                        f"Loading presets for {manufacturer}/{device} on tab change"
+                    )
                     # Use a timer to delay loading to ensure the UI is fully updated
-                    QTimer.singleShot(100, lambda: self.load_presets(manufacturer, device))
+                    QTimer.singleShot(
+                        100, lambda: self.load_presets(manufacturer, device)
+                    )
                 else:
                     # If we already have presets, just update the list
-                    logger.info(f"Updating preset list for {manufacturer}/{device} on tab change")
+                    logger.info(
+                        f"Updating preset list for {manufacturer}/{device} on tab change"
+                    )
                     self.update_preset_list()
 
-    def run_async(self, coro, callback=None, error_callback=None, loading_message="Loading data..."):
+    def run_async(
+        self,
+        coro,
+        callback=None,
+        error_callback=None,
+        loading_message="Loading data...",
+    ):
         """Run an async coroutine and call the callback with the result
 
         Args:
@@ -359,7 +399,7 @@ class EditDialog(QDialog):
             error_callback: Optional callback to run on error
             loading_message: Optional message to display in the loading indicator
         """
-        if self.main_window and hasattr(self.main_window, 'run_async_task'):
+        if self.main_window and hasattr(self.main_window, "run_async_task"):
             # Use a try-except block to catch and log any asyncio errors
             try:
                 # If no error callback is provided, use a default one that logs the error
@@ -367,10 +407,14 @@ class EditDialog(QDialog):
                     error_callback = lambda error: logger.error(f"Async error: {error}")
 
                 # Run the async task in the main window's event loop
-                self.main_window.run_async_task(coro, callback, error_callback, loading_message)
+                self.main_window.run_async_task(
+                    coro, callback, error_callback, loading_message
+                )
             except Exception as e:
                 logger.error(f"Error running async task: {str(e)}")
-                QMessageBox.warning(self, "Error", f"Error running async task: {str(e)}")
+                QMessageBox.warning(
+                    self, "Error", f"Error running async task: {str(e)}"
+                )
                 # If an error callback was provided, call it
                 if error_callback:
                     error_callback(str(e))
@@ -418,7 +462,9 @@ class EditDialog(QDialog):
         def on_error(error_msg):
             logger.error(f"Error loading manufacturers: {error_msg}")
             # Show error message to the user
-            QMessageBox.warning(self, "Error", f"Error loading manufacturers: {error_msg}")
+            QMessageBox.warning(
+                self, "Error", f"Error loading manufacturers: {error_msg}"
+            )
             # Mark as no longer loading
             self._loading_manufacturers = False
 
@@ -426,10 +472,10 @@ class EditDialog(QDialog):
             # Always force refresh to ensure we get fresh data from the server
             logger.info("Loading manufacturers")
             self.run_async(
-                self.api_client.get_manufacturers(force_refresh=True), 
+                self.api_client.get_manufacturers(force_refresh=True),
                 on_manufacturers_loaded,
                 on_error,
-                loading_message="Loading manufacturers..."
+                loading_message="Loading manufacturers...",
             )
         except Exception as e:
             logger.error(f"Error starting manufacturer load: {str(e)}")
@@ -445,7 +491,9 @@ class EditDialog(QDialog):
         """Load devices for a manufacturer from the server"""
         # Check if we're already loading devices for this manufacturer
         if manufacturer in self._loading_devices:
-            logger.info(f"Already loading devices for {manufacturer}, skipping duplicate request")
+            logger.info(
+                f"Already loading devices for {manufacturer}, skipping duplicate request"
+            )
             return
 
         # Mark as loading
@@ -468,7 +516,9 @@ class EditDialog(QDialog):
                     for device in devices:
                         self.preset_device_combo.addItem(device)
 
-                logger.info(f"Successfully loaded {len(devices)} devices for {manufacturer}")
+                logger.info(
+                    f"Successfully loaded {len(devices)} devices for {manufacturer}"
+                )
             except Exception as e:
                 logger.error(f"Error processing devices: {str(e)}")
             finally:
@@ -488,10 +538,12 @@ class EditDialog(QDialog):
             # Always force refresh to ensure we get fresh data from the server
             logger.info(f"Loading devices for {manufacturer}")
             self.run_async(
-                self.api_client.get_devices_by_manufacturer(manufacturer, force_refresh=True), 
+                self.api_client.get_devices_by_manufacturer(
+                    manufacturer, force_refresh=True
+                ),
                 on_devices_loaded,
                 on_error,
-                loading_message=f"Loading devices for {manufacturer}..."
+                loading_message=f"Loading devices for {manufacturer}...",
             )
         except Exception as e:
             logger.error(f"Error starting device load: {str(e)}")
@@ -511,7 +563,9 @@ class EditDialog(QDialog):
 
         # Check if we're already loading these collections
         if load_key in self._loading_collections:
-            logger.info(f"Already loading collections for {load_key}, skipping duplicate request")
+            logger.info(
+                f"Already loading collections for {load_key}, skipping duplicate request"
+            )
             return
 
         # Mark as loading
@@ -531,7 +585,9 @@ class EditDialog(QDialog):
                 if not collections:
                     self.preset_collection_combo.addItem("default")
 
-                logger.info(f"Successfully loaded {len(collections)} collections for {manufacturer}/{device}")
+                logger.info(
+                    f"Successfully loaded {len(collections)} collections for {manufacturer}/{device}"
+                )
             except Exception as e:
                 logger.error(f"Error processing collections: {str(e)}")
                 # Add default collection on error
@@ -545,7 +601,9 @@ class EditDialog(QDialog):
         def on_error(error_msg):
             logger.error(f"Error loading collections for {load_key}: {error_msg}")
             # Show error message to the user
-            QMessageBox.warning(self, "Error", f"Error loading collections: {error_msg}")
+            QMessageBox.warning(
+                self, "Error", f"Error loading collections: {error_msg}"
+            )
             # Add default collection on error
             self.preset_collection_combo.clear()
             self.preset_collection_combo.addItem("default")
@@ -557,10 +615,12 @@ class EditDialog(QDialog):
             # Always force refresh to ensure we get fresh data from the server
             logger.info(f"Loading collections for {load_key}")
             self.run_async(
-                self.api_client.get_collections(manufacturer, device, force_refresh=True), 
+                self.api_client.get_collections(
+                    manufacturer, device, force_refresh=True
+                ),
                 on_collections_loaded,
                 on_error,
-                loading_message=f"Loading collections for {manufacturer}/{device}..."
+                loading_message=f"Loading collections for {manufacturer}/{device}...",
             )
         except Exception as e:
             logger.error(f"Error starting collection load: {str(e)}")
@@ -583,7 +643,9 @@ class EditDialog(QDialog):
 
         # Check if we're already loading these presets
         if load_key in self._loading_presets:
-            logger.info(f"Already loading presets for {load_key}, skipping duplicate request")
+            logger.info(
+                f"Already loading presets for {load_key}, skipping duplicate request"
+            )
             return
 
         # Mark as loading
@@ -603,11 +665,15 @@ class EditDialog(QDialog):
                 self.presets[f"{manufacturer}/{device}"] = preset_by_collection
 
                 # Update preset list if the current selection matches
-                if (self.preset_manufacturer_combo.currentText() == manufacturer and 
-                    self.preset_device_combo.currentText() == device):
+                if (
+                    self.preset_manufacturer_combo.currentText() == manufacturer
+                    and self.preset_device_combo.currentText() == device
+                ):
                     self.update_preset_list()
 
-                logger.info(f"Successfully loaded {sum(len(presets) for presets in preset_by_collection.values())} presets for {manufacturer}/{device}")
+                logger.info(
+                    f"Successfully loaded {sum(len(presets) for presets in preset_by_collection.values())} presets for {manufacturer}/{device}"
+                )
             except Exception as e:
                 logger.error(f"Error processing presets: {str(e)}")
             finally:
@@ -627,10 +693,12 @@ class EditDialog(QDialog):
             # Always force refresh to ensure we get fresh data from the server
             logger.info(f"Loading presets for {load_key}")
             self.run_async(
-                self.api_client.get_presets(device, collection, manufacturer, force_refresh=True), 
+                self.api_client.get_presets(
+                    device, collection, manufacturer, force_refresh=True
+                ),
                 on_presets_loaded,
                 on_error,
-                loading_message=f"Loading presets for {manufacturer}/{device}..."
+                loading_message=f"Loading presets for {manufacturer}/{device}...",
             )
         except Exception as e:
             logger.error(f"Error starting preset load: {str(e)}")
@@ -677,16 +745,23 @@ class EditDialog(QDialog):
             # Try to get device info
             manufacturer = self.device_manufacturer_combo.currentText()
             if manufacturer:
+
                 def on_device_info_loaded(device_info):
                     for info in device_info:
-                        if info.get('name') == item.text():
-                            self.device_version.setText(info.get('version', '1.0.0'))
-                            self.device_manufacturer_id.setValue(info.get('manufacturer_id', 0))
-                            self.device_id.setValue(info.get('device_id', 0))
+                        if info.get("name") == item.text():
+                            self.device_version.setText(info.get("version", "1.0.0"))
+                            self.device_manufacturer_id.setValue(
+                                info.get("manufacturer_id", 0)
+                            )
+                            self.device_id.setValue(info.get("device_id", 0))
                             break
 
                 # Always force refresh to ensure we get fresh data from the server
-                self.run_async(self.api_client.get_device_info(manufacturer, force_refresh=True), on_device_info_loaded, loading_message=f"Loading device info for {manufacturer}...")
+                self.run_async(
+                    self.api_client.get_device_info(manufacturer, force_refresh=True),
+                    on_device_info_loaded,
+                    loading_message=f"Loading device info for {manufacturer}...",
+                )
 
     def on_preset_manufacturer_changed(self, manufacturer):
         """Handle manufacturer selection change in the preset tab"""
@@ -702,12 +777,16 @@ class EditDialog(QDialog):
                     key = f"{manufacturer}/{device}"
                     if key not in self.presets:
                         # If we don't have presets for this manufacturer/device, load them
-                        logger.info(f"Loading presets for {manufacturer}/{device} on manufacturer change")
+                        logger.info(
+                            f"Loading presets for {manufacturer}/{device} on manufacturer change"
+                        )
                         # Load presets for the selected device
                         self.load_presets(manufacturer, device)
                     else:
                         # If we already have presets, just update the list
-                        logger.info(f"Updating preset list for {manufacturer}/{device} on manufacturer change")
+                        logger.info(
+                            f"Updating preset list for {manufacturer}/{device} on manufacturer change"
+                        )
                         self.update_preset_list()
 
             # Use a timer to ensure devices are loaded first
@@ -724,12 +803,16 @@ class EditDialog(QDialog):
             key = f"{manufacturer}/{device}"
             if key not in self.presets:
                 # If we don't have presets for this manufacturer/device, load them
-                logger.info(f"Loading presets for {manufacturer}/{device} on device change")
+                logger.info(
+                    f"Loading presets for {manufacturer}/{device} on device change"
+                )
                 # Load presets for the selected device
                 self.load_presets(manufacturer, device)
             else:
                 # If we already have presets, just update the list
-                logger.info(f"Updating preset list for {manufacturer}/{device} on device change")
+                logger.info(
+                    f"Updating preset list for {manufacturer}/{device} on device change"
+                )
                 self.update_preset_list()
 
     def on_preset_collection_changed(self, collection):
@@ -745,12 +828,16 @@ class EditDialog(QDialog):
                 key = f"{manufacturer}/{device}"
                 if key not in self.presets:
                     # If we don't have presets for this manufacturer/device, load them
-                    logger.info(f"Loading presets for {manufacturer}/{device} on collection change")
+                    logger.info(
+                        f"Loading presets for {manufacturer}/{device} on collection change"
+                    )
                     # Load presets for the selected device and collection
                     self.load_presets(manufacturer, device, collection)
                 else:
                     # If we already have presets, just update the list
-                    logger.info(f"Updating preset list for {manufacturer}/{device} on collection change")
+                    logger.info(
+                        f"Updating preset list for {manufacturer}/{device} on collection change"
+                    )
                     self.update_preset_list()
             else:
                 # If no manufacturer or device selected, just update the list from cache
@@ -779,18 +866,28 @@ class EditDialog(QDialog):
             if current_collection and current_collection != "default":
                 # Rename the current collection
                 def on_collection_updated(result):
-                    if result.get('status') == 'success':
-                        QMessageBox.information(self, "Success", result.get('message', "Collection renamed successfully"))
+                    if result.get("status") == "success":
+                        QMessageBox.information(
+                            self,
+                            "Success",
+                            result.get("message", "Collection renamed successfully"),
+                        )
                         # Reload collections
                         self.load_collections(manufacturer, device)
                         self.changes_made.emit()
                     else:
-                        QMessageBox.warning(self, "Error", result.get('message', "Failed to rename collection"))
+                        QMessageBox.warning(
+                            self,
+                            "Error",
+                            result.get("message", "Failed to rename collection"),
+                        )
 
                 self.run_async(
-                    self.api_client.update_collection(manufacturer, device, current_collection, new_collection_name),
+                    self.api_client.update_collection(
+                        manufacturer, device, current_collection, new_collection_name
+                    ),
                     on_collection_updated,
-                    loading_message=f"Renaming collection {current_collection} to {new_collection_name}..."
+                    loading_message=f"Renaming collection {current_collection} to {new_collection_name}...",
                 )
             else:
                 # Just select the existing collection
@@ -800,18 +897,28 @@ class EditDialog(QDialog):
         else:
             # Collection doesn't exist, create it
             def on_collection_created(result):
-                if result.get('status') == 'success':
-                    QMessageBox.information(self, "Success", result.get('message', "Collection created successfully"))
+                if result.get("status") == "success":
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        result.get("message", "Collection created successfully"),
+                    )
                     # Reload collections
                     self.load_collections(manufacturer, device)
                     self.changes_made.emit()
                 else:
-                    QMessageBox.warning(self, "Error", result.get('message', "Failed to create collection"))
+                    QMessageBox.warning(
+                        self,
+                        "Error",
+                        result.get("message", "Failed to create collection"),
+                    )
 
             self.run_async(
-                self.api_client.create_collection(manufacturer, device, new_collection_name),
+                self.api_client.create_collection(
+                    manufacturer, device, new_collection_name
+                ),
                 on_collection_created,
-                loading_message=f"Creating collection {new_collection_name}..."
+                loading_message=f"Creating collection {new_collection_name}...",
             )
 
     def remove_collection(self):
@@ -830,27 +937,36 @@ class EditDialog(QDialog):
 
         # Confirm deletion
         reply = QMessageBox.question(
-            self, 
-            "Confirm Deletion", 
+            self,
+            "Confirm Deletion",
             f"Are you sure you want to delete collection '{collection}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
+
             def on_collection_deleted(result):
-                if result.get('status') == 'success':
-                    QMessageBox.information(self, "Success", result.get('message', "Collection deleted successfully"))
+                if result.get("status") == "success":
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        result.get("message", "Collection deleted successfully"),
+                    )
                     # Reload collections
                     self.load_collections(manufacturer, device)
                     self.changes_made.emit()
                 else:
-                    QMessageBox.warning(self, "Error", result.get('message', "Failed to delete collection"))
+                    QMessageBox.warning(
+                        self,
+                        "Error",
+                        result.get("message", "Failed to delete collection"),
+                    )
 
             self.run_async(
                 self.api_client.delete_collection(manufacturer, device, collection),
                 on_collection_deleted,
-                loading_message=f"Deleting collection {collection}..."
+                loading_message=f"Deleting collection {collection}...",
             )
 
     def on_preset_selected(self, item):
@@ -872,7 +988,9 @@ class EditDialog(QDialog):
                         self.preset_category.setText(preset.category)
                         self.preset_cc0.setValue(preset.cc_0 or 0)
                         self.preset_pgm.setValue(preset.pgm or 0)
-                        self.preset_characters.setText(", ".join(preset.characters or []))
+                        self.preset_characters.setText(
+                            ", ".join(preset.characters or [])
+                        )
                         break
 
     def add_manufacturer(self):
@@ -883,14 +1001,26 @@ class EditDialog(QDialog):
             return
 
         def on_manufacturer_created(result):
-            if result.get('status') == 'success':
-                QMessageBox.information(self, "Success", result.get('message', "Manufacturer created successfully"))
+            if result.get("status") == "success":
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    result.get("message", "Manufacturer created successfully"),
+                )
                 self.load_manufacturers()
                 self.changes_made.emit()
             else:
-                QMessageBox.warning(self, "Error", result.get('message', "Failed to create manufacturer"))
+                QMessageBox.warning(
+                    self,
+                    "Error",
+                    result.get("message", "Failed to create manufacturer"),
+                )
 
-        self.run_async(self.api_client.create_manufacturer(name), on_manufacturer_created, loading_message=f"Creating manufacturer {name}...")
+        self.run_async(
+            self.api_client.create_manufacturer(name),
+            on_manufacturer_created,
+            loading_message=f"Creating manufacturer {name}...",
+        )
 
     def remove_manufacturer(self):
         """Remove a manufacturer"""
@@ -903,23 +1033,36 @@ class EditDialog(QDialog):
 
         # Confirm deletion
         reply = QMessageBox.question(
-            self, 
-            "Confirm Deletion", 
+            self,
+            "Confirm Deletion",
             f"Are you sure you want to delete manufacturer '{name}' and all its devices?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
+
             def on_manufacturer_deleted(result):
-                if result.get('status') == 'success':
-                    QMessageBox.information(self, "Success", result.get('message', "Manufacturer deleted successfully"))
+                if result.get("status") == "success":
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        result.get("message", "Manufacturer deleted successfully"),
+                    )
                     self.load_manufacturers()
                     self.changes_made.emit()
                 else:
-                    QMessageBox.warning(self, "Error", result.get('message', "Failed to delete manufacturer"))
+                    QMessageBox.warning(
+                        self,
+                        "Error",
+                        result.get("message", "Failed to delete manufacturer"),
+                    )
 
-            self.run_async(self.api_client.delete_manufacturer(name), on_manufacturer_deleted, loading_message=f"Deleting manufacturer {name}...")
+            self.run_async(
+                self.api_client.delete_manufacturer(name),
+                on_manufacturer_deleted,
+                loading_message=f"Deleting manufacturer {name}...",
+            )
 
     def add_device(self):
         """Add a new device"""
@@ -945,20 +1088,28 @@ class EditDialog(QDialog):
             "manufacturer_id": manufacturer_id,
             "device_id": device_id,
             "midi_ports": {"IN": "", "OUT": ""},
-            "midi_channels": {"IN": 1, "OUT": 1}
+            "midi_channels": {"IN": 1, "OUT": 1},
         }
 
         def on_device_created(result):
-            if result.get('status') == 'success':
+            if result.get("status") == "success":
                 # Update status bar instead of showing a popup
-                if self.main_window and hasattr(self.main_window, 'status_bar'):
-                    self.main_window.status_bar.showMessage(result.get('message', "Device created successfully"), 3000)
+                if self.main_window and hasattr(self.main_window, "status_bar"):
+                    self.main_window.status_bar.showMessage(
+                        result.get("message", "Device created successfully"), 3000
+                    )
                 self.load_devices(manufacturer)
                 self.changes_made.emit()
             else:
-                QMessageBox.warning(self, "Error", result.get('message', "Failed to create device"))
+                QMessageBox.warning(
+                    self, "Error", result.get("message", "Failed to create device")
+                )
 
-        self.run_async(self.api_client.create_device(device_data), on_device_created, loading_message=f"Creating device {name}...")
+        self.run_async(
+            self.api_client.create_device(device_data),
+            on_device_created,
+            loading_message=f"Creating device {name}...",
+        )
 
     def remove_device(self):
         """Remove a device"""
@@ -977,23 +1128,34 @@ class EditDialog(QDialog):
 
         # Confirm deletion
         reply = QMessageBox.question(
-            self, 
-            "Confirm Deletion", 
+            self,
+            "Confirm Deletion",
             f"Are you sure you want to delete device '{device_name}' and all its presets?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
+
             def on_device_deleted(result):
-                if result.get('status') == 'success':
-                    QMessageBox.information(self, "Success", result.get('message', "Device deleted successfully"))
+                if result.get("status") == "success":
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        result.get("message", "Device deleted successfully"),
+                    )
                     self.load_devices(manufacturer)
                     self.changes_made.emit()
                 else:
-                    QMessageBox.warning(self, "Error", result.get('message', "Failed to delete device"))
+                    QMessageBox.warning(
+                        self, "Error", result.get("message", "Failed to delete device")
+                    )
 
-            self.run_async(self.api_client.delete_device(manufacturer, device_name), on_device_deleted, loading_message=f"Deleting device {device_name}...")
+            self.run_async(
+                self.api_client.delete_device(manufacturer, device_name),
+                on_device_deleted,
+                loading_message=f"Deleting device {device_name}...",
+            )
 
     def add_preset(self):
         """Add a new preset"""
@@ -1038,18 +1200,28 @@ class EditDialog(QDialog):
             "manufacturer": manufacturer,
             "cc_0": cc0,
             "pgm": pgm,
-            "characters": characters
+            "characters": characters,
         }
 
         def on_preset_created(result):
-            if result.get('status') == 'success':
-                QMessageBox.information(self, "Success", result.get('message', "Preset created successfully"))
+            if result.get("status") == "success":
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    result.get("message", "Preset created successfully"),
+                )
                 self.load_presets(manufacturer, device)
                 self.changes_made.emit()
             else:
-                QMessageBox.warning(self, "Error", result.get('message', "Failed to create preset"))
+                QMessageBox.warning(
+                    self, "Error", result.get("message", "Failed to create preset")
+                )
 
-        self.run_async(self.api_client.create_preset(preset_data), on_preset_created, loading_message=f"Creating preset {name}...")
+        self.run_async(
+            self.api_client.create_preset(preset_data),
+            on_preset_created,
+            loading_message=f"Creating preset {name}...",
+        )
 
     def update_preset(self):
         """Update an existing preset"""
@@ -1100,18 +1272,28 @@ class EditDialog(QDialog):
             "manufacturer": manufacturer,
             "cc_0": cc0,
             "pgm": pgm,
-            "characters": characters
+            "characters": characters,
         }
 
         def on_preset_updated(result):
-            if result.get('status') == 'success':
-                QMessageBox.information(self, "Success", result.get('message', "Preset updated successfully"))
+            if result.get("status") == "success":
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    result.get("message", "Preset updated successfully"),
+                )
                 self.load_presets(manufacturer, device)
                 self.changes_made.emit()
             else:
-                QMessageBox.warning(self, "Error", result.get('message', "Failed to update preset"))
+                QMessageBox.warning(
+                    self, "Error", result.get("message", "Failed to update preset")
+                )
 
-        self.run_async(self.api_client.update_preset(preset_data), on_preset_updated, loading_message=f"Updating preset {name}...")
+        self.run_async(
+            self.api_client.update_preset(preset_data),
+            on_preset_updated,
+            loading_message=f"Updating preset {name}...",
+        )
 
     def remove_preset(self):
         """Remove a preset"""
@@ -1140,20 +1322,33 @@ class EditDialog(QDialog):
 
         # Confirm deletion
         reply = QMessageBox.question(
-            self, 
-            "Confirm Deletion", 
+            self,
+            "Confirm Deletion",
             f"Are you sure you want to delete preset '{preset_name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
+
             def on_preset_deleted(result):
-                if result.get('status') == 'success':
-                    QMessageBox.information(self, "Success", result.get('message', "Preset deleted successfully"))
+                if result.get("status") == "success":
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        result.get("message", "Preset deleted successfully"),
+                    )
                     self.load_presets(manufacturer, device)
                     self.changes_made.emit()
                 else:
-                    QMessageBox.warning(self, "Error", result.get('message', "Failed to delete preset"))
+                    QMessageBox.warning(
+                        self, "Error", result.get("message", "Failed to delete preset")
+                    )
 
-            self.run_async(self.api_client.delete_preset(manufacturer, device, collection, preset_name), on_preset_deleted, loading_message=f"Deleting preset {preset_name}...")
+            self.run_async(
+                self.api_client.delete_preset(
+                    manufacturer, device, collection, preset_name
+                ),
+                on_preset_deleted,
+                loading_message=f"Deleting preset {preset_name}...",
+            )

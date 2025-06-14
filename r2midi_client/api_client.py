@@ -9,13 +9,15 @@ import httpx
 from .models import Device, Preset, UIState
 
 # Configure logger
-logger = logging.getLogger('r2midi_client.api_client')
+logger = logging.getLogger("r2midi_client.api_client")
 
 
 class CachedApiClient:
     """Enhanced API client with caching and retry logic"""
 
-    def __init__(self, base_url: str = "http://localhost:7777", cache_timeout: int = 300):
+    def __init__(
+        self, base_url: str = "http://localhost:7777", cache_timeout: int = 300
+    ):
         """
         Initialize the API client with caching
 
@@ -73,8 +75,10 @@ class CachedApiClient:
                 raise
             except Exception as e:
                 if attempt < max_retries - 1:
-                    wait_time = delay * (2 ** attempt)  # Exponential backoff
-                    logger.warning(f"Request failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {str(e)}")
+                    wait_time = delay * (2**attempt)  # Exponential backoff
+                    logger.warning(
+                        f"Request failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {str(e)}"
+                    )
                     await asyncio.sleep(wait_time)
                 else:
                     raise
@@ -116,8 +120,9 @@ class CachedApiClient:
             logger.error(f"Error fetching manufacturers: {str(e)}")
             return []
 
-
-    async def get_devices_by_manufacturer(self, manufacturer: str, force_refresh: bool = False) -> List[str]:
+    async def get_devices_by_manufacturer(
+        self, manufacturer: str, force_refresh: bool = False
+    ) -> List[str]:
         """
         Fetch devices for a specific manufacturer from server with caching
 
@@ -137,7 +142,9 @@ class CachedApiClient:
                 return cached_data
 
         try:
-            logger.info(f"Fetching devices for manufacturer {manufacturer} from server...")
+            logger.info(
+                f"Fetching devices for manufacturer {manufacturer} from server..."
+            )
 
             async def fetch():
                 response = await self.client.get(f"/devices/{manufacturer}")
@@ -145,17 +152,23 @@ class CachedApiClient:
                 return response.json()
 
             devices = await self._retry_request(fetch)
-            logger.info(f"Fetched {len(devices)} devices for manufacturer {manufacturer}: {devices}")
+            logger.info(
+                f"Fetched {len(devices)} devices for manufacturer {manufacturer}: {devices}"
+            )
 
             # Cache the result
             self._set_cache(cache_key, devices)
             return devices
 
         except httpx.HTTPError as e:
-            logger.error(f"Error fetching devices for manufacturer {manufacturer}: {str(e)}")
+            logger.error(
+                f"Error fetching devices for manufacturer {manufacturer}: {str(e)}"
+            )
             return []
 
-    async def get_devices(self, manufacturer: str, force_refresh: bool = False) -> List[str]:
+    async def get_devices(
+        self, manufacturer: str, force_refresh: bool = False
+    ) -> List[str]:
         """
         Alias for get_devices_by_manufacturer for backward compatibility
 
@@ -169,7 +182,9 @@ class CachedApiClient:
         logger.info(f"Using get_devices alias for manufacturer {manufacturer}")
         return await self.get_devices_by_manufacturer(manufacturer, force_refresh)
 
-    async def get_device_info(self, manufacturer: str, force_refresh: bool = False) -> List[Dict]:
+    async def get_device_info(
+        self, manufacturer: str, force_refresh: bool = False
+    ) -> List[Dict]:
         """
         Fetch device info for a specific manufacturer from server with caching
 
@@ -189,25 +204,35 @@ class CachedApiClient:
                 return cached_data
 
         try:
-            logger.info(f"Fetching device info for manufacturer {manufacturer} from server...")
+            logger.info(
+                f"Fetching device info for manufacturer {manufacturer} from server..."
+            )
 
             async def fetch():
-                response = await self.client.post("/device_info", json={"manufacturer": manufacturer})
+                response = await self.client.post(
+                    "/device_info", json={"manufacturer": manufacturer}
+                )
                 response.raise_for_status()
                 return response.json()
 
             device_info = await self._retry_request(fetch)
-            logger.info(f"Fetched device info for {len(device_info)} devices for manufacturer {manufacturer}")
+            logger.info(
+                f"Fetched device info for {len(device_info)} devices for manufacturer {manufacturer}"
+            )
 
             # Cache the result
             self._set_cache(cache_key, device_info)
             return device_info
 
         except httpx.HTTPError as e:
-            logger.error(f"Error fetching device info for manufacturer {manufacturer}: {str(e)}")
+            logger.error(
+                f"Error fetching device info for manufacturer {manufacturer}: {str(e)}"
+            )
             return []
 
-    async def get_community_folders(self, device_name: str, force_refresh: bool = False) -> List[str]:
+    async def get_community_folders(
+        self, device_name: str, force_refresh: bool = False
+    ) -> List[str]:
         """
         Fetch community folders for a specific device from server with caching
 
@@ -227,7 +252,9 @@ class CachedApiClient:
                 return cached_data
 
         try:
-            logger.info(f"Fetching community folders for device {device_name} from server...")
+            logger.info(
+                f"Fetching community folders for device {device_name} from server..."
+            )
 
             async def fetch():
                 response = await self.client.get(f"/community_folders/{device_name}")
@@ -235,18 +262,27 @@ class CachedApiClient:
                 return response.json()
 
             folders = await self._retry_request(fetch)
-            logger.info(f"Fetched {len(folders)} community folders for device {device_name}: {folders}")
+            logger.info(
+                f"Fetched {len(folders)} community folders for device {device_name}: {folders}"
+            )
 
             # Cache the result
             self._set_cache(cache_key, folders)
             return folders
 
         except httpx.HTTPError as e:
-            logger.error(f"Error fetching community folders for device {device_name}: {str(e)}")
+            logger.error(
+                f"Error fetching community folders for device {device_name}: {str(e)}"
+            )
             return []
 
-    async def get_presets(self, device_name: Optional[str] = None, community_folder: Optional[str] = None, 
-                         manufacturer: Optional[str] = None, force_refresh: bool = False) -> List[Preset]:
+    async def get_presets(
+        self,
+        device_name: Optional[str] = None,
+        community_folder: Optional[str] = None,
+        manufacturer: Optional[str] = None,
+        force_refresh: bool = False,
+    ) -> List[Preset]:
         """
         Fetch presets from server with caching
 
@@ -261,11 +297,15 @@ class CachedApiClient:
         """
         # Both manufacturer and device_name are required for the specific endpoint
         if not (manufacturer and device_name):
-            logger.warning(f"Both manufacturer and device_name are required, got manufacturer={manufacturer}, device_name={device_name}")
+            logger.warning(
+                f"Both manufacturer and device_name are required, got manufacturer={manufacturer}, device_name={device_name}"
+            )
             return []
 
         # Create cache key based on parameters
-        cache_key = f"presets_{manufacturer}_{device_name}_{community_folder or 'default'}"
+        cache_key = (
+            f"presets_{manufacturer}_{device_name}_{community_folder or 'default'}"
+        )
 
         # Check cache first if not forcing refresh
         if not force_refresh:
@@ -274,13 +314,15 @@ class CachedApiClient:
                 return cached_data
 
         try:
-            logger.info(f"Fetching presets from server for {manufacturer}/{device_name} (folder: {community_folder})...")
+            logger.info(
+                f"Fetching presets from server for {manufacturer}/{device_name} (folder: {community_folder})..."
+            )
 
             # Use the specific endpoint with manufacturer and device_name
             url = f"/presets/{manufacturer}/{device_name}"
             params = {}
             if community_folder:
-                params['community_folder'] = community_folder
+                params["community_folder"] = community_folder
 
             async def fetch():
                 response = await self.client.get(url, params=params)
@@ -288,15 +330,18 @@ class CachedApiClient:
                 return response.json()
 
             presets_data = await self._retry_request(fetch)
-            presets = [Preset(
-                preset_name=preset.get('preset_name', ''),
-                category=preset.get('category', ''),
-                characters=preset.get('characters'),
-                sendmidi_command=preset.get('sendmidi_command'),
-                cc_0=preset.get('cc_0'),
-                pgm=preset.get('pgm'),
-                source=preset.get('source')
-            ) for preset in presets_data]
+            presets = [
+                Preset(
+                    preset_name=preset.get("preset_name", ""),
+                    category=preset.get("category", ""),
+                    characters=preset.get("characters"),
+                    sendmidi_command=preset.get("sendmidi_command"),
+                    cc_0=preset.get("cc_0"),
+                    pgm=preset.get("pgm"),
+                    source=preset.get("source"),
+                )
+                for preset in presets_data
+            ]
             logger.info(f"Fetched {len(presets)} presets")
 
             # Cache the result
@@ -318,10 +363,14 @@ class CachedApiClient:
             Tuple of (success, message)
         """
         try:
-            logger.info(f"Calling server REST API for git sync (sync_enabled={sync_enabled})...")
+            logger.info(
+                f"Calling server REST API for git sync (sync_enabled={sync_enabled})..."
+            )
 
             async def fetch():
-                response = await self.client.get("/git/sync", params={"sync_enabled": sync_enabled})
+                response = await self.client.get(
+                    "/git/sync", params={"sync_enabled": sync_enabled}
+                )
                 response.raise_for_status()
                 return response.json()
 
@@ -372,9 +421,13 @@ class CachedApiClient:
                 # Clear cache after sync as data might have changed
                 self.clear_cache()
 
-                return True, result.get("message", "Git remote sync completed successfully")
+                return True, result.get(
+                    "message", "Git remote sync completed successfully"
+                )
             else:
-                error_msg = result.get("message", "Unknown error during git remote sync")
+                error_msg = result.get(
+                    "message", "Unknown error during git remote sync"
+                )
                 logger.error(f"Git remote sync failed via REST API: {error_msg}")
                 return False, error_msg
         except Exception as e:
@@ -395,18 +448,22 @@ class CachedApiClient:
         # Also persist to file for next session
         try:
             import os
+
             state_file = os.path.join(os.path.expanduser("~"), ".r2midi_ui_state.json")
-            with open(state_file, 'w') as f:
-                json.dump({
-                    'manufacturer': state.manufacturer,
-                    'device': state.device,
-                    'community_folder': state.community_folder,
-                    'midi_in_port': state.midi_in_port,
-                    'midi_out_port': state.midi_out_port,
-                    'sequencer_port': state.sequencer_port,
-                    'midi_channel': state.midi_channel,
-                    'sync_enabled': state.sync_enabled
-                }, f)
+            with open(state_file, "w") as f:
+                json.dump(
+                    {
+                        "manufacturer": state.manufacturer,
+                        "device": state.device,
+                        "community_folder": state.community_folder,
+                        "midi_in_port": state.midi_in_port,
+                        "midi_out_port": state.midi_out_port,
+                        "sequencer_port": state.sequencer_port,
+                        "midi_channel": state.midi_channel,
+                        "sync_enabled": state.sync_enabled,
+                    },
+                    f,
+                )
             logger.debug(f"Persisted UI state to {state_file}")
         except Exception as e:
             logger.warning(f"Could not persist UI state: {str(e)}")
@@ -422,9 +479,12 @@ class CachedApiClient:
         if not any([self.ui_state.manufacturer, self.ui_state.device]):
             try:
                 import os
-                state_file = os.path.join(os.path.expanduser("~"), ".r2midi_ui_state.json")
+
+                state_file = os.path.join(
+                    os.path.expanduser("~"), ".r2midi_ui_state.json"
+                )
                 if os.path.exists(state_file):
-                    with open(state_file, 'r') as f:
+                    with open(state_file, "r") as f:
                         data = json.load(f)
                         self.ui_state = UIState(**data)
                         logger.debug(f"Loaded UI state from {state_file}")
@@ -461,7 +521,9 @@ class CachedApiClient:
                 return response.json()
 
             ports = await self._retry_request(fetch)
-            logger.info(f"Fetched MIDI ports: in={ports.get('in', [])}, out={ports.get('out', [])}")
+            logger.info(
+                f"Fetched MIDI ports: in={ports.get('in', [])}, out={ports.get('out', [])}"
+            )
 
             # Cache the result
             self._set_cache(cache_key, ports)
@@ -471,8 +533,13 @@ class CachedApiClient:
             logger.error(f"Error fetching MIDI ports: {str(e)}")
             return {"in": [], "out": []}
 
-    async def send_preset(self, preset_name: str, midi_port: str, midi_channel: int, 
-                          sequencer_port: Optional[str] = None) -> Dict[str, Any]:
+    async def send_preset(
+        self,
+        preset_name: str,
+        midi_port: str,
+        midi_channel: int,
+        sequencer_port: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Send preset selection to server
 
@@ -489,7 +556,7 @@ class CachedApiClient:
             data = {
                 "preset_name": preset_name,
                 "midi_port": midi_port,
-                "midi_channel": midi_channel
+                "midi_channel": midi_channel,
             }
 
             if sequencer_port:
@@ -500,19 +567,26 @@ class CachedApiClient:
                 response.raise_for_status()
                 return response.json()
 
-            return await self._retry_request(send, max_retries=2)  # Less retries for send operations
+            return await self._retry_request(
+                send, max_retries=2
+            )  # Less retries for send operations
 
         except httpx.HTTPError as e:
             logger.error(f"Error sending preset: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
 
-    async def check_directory_structure(self, manufacturer: str, device: str, create_if_missing: bool = True) -> Dict[str, Any]:
+    async def check_directory_structure(
+        self, manufacturer: str, device: str, create_if_missing: bool = True
+    ) -> Dict[str, Any]:
         """
         Check if the manufacturer and device directories exist, and if the device JSON file exists
 
@@ -529,12 +603,12 @@ class CachedApiClient:
 
             async def check():
                 response = await self.client.post(
-                    "/directory_structure", 
+                    "/directory_structure",
                     json={
                         "manufacturer": manufacturer,
                         "device": device,
-                        "create_if_missing": create_if_missing
-                    }
+                        "create_if_missing": create_if_missing,
+                    },
                 )
                 response.raise_for_status()
                 return response.json()
@@ -544,7 +618,7 @@ class CachedApiClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error checking directory structure: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
                     return {"error": error_data.get("detail", str(e))}
@@ -566,10 +640,7 @@ class CachedApiClient:
             logger.info(f"Creating manufacturer: {name}")
 
             async def create():
-                response = await self.client.post(
-                    "/manufacturers", 
-                    json={"name": name}
-                )
+                response = await self.client.post("/manufacturers", json={"name": name})
                 response.raise_for_status()
                 return response.json()
 
@@ -582,10 +653,13 @@ class CachedApiClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error creating manufacturer: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
@@ -618,10 +692,13 @@ class CachedApiClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error deleting manufacturer: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
@@ -637,7 +714,9 @@ class CachedApiClient:
             Dictionary with status, message, and json_path
         """
         try:
-            logger.info(f"Creating device: {device_data.get('name')} for manufacturer {device_data.get('manufacturer')}")
+            logger.info(
+                f"Creating device: {device_data.get('name')} for manufacturer {device_data.get('manufacturer')}"
+            )
 
             async def create():
                 response = await self.client.post("/devices", json=device_data)
@@ -648,22 +727,27 @@ class CachedApiClient:
             logger.info(f"Device creation result: {result}")
 
             # Clear cache for devices
-            manufacturer = device_data.get('manufacturer')
+            manufacturer = device_data.get("manufacturer")
             if manufacturer:
                 self.clear_cache_for_prefix(f"devices_by_manufacturer_{manufacturer}")
 
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error creating device: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
 
-    async def delete_device(self, manufacturer: str, device_name: str) -> Dict[str, Any]:
+    async def delete_device(
+        self, manufacturer: str, device_name: str
+    ) -> Dict[str, Any]:
         """
         Delete a device and all its presets
 
@@ -675,10 +759,14 @@ class CachedApiClient:
             Dictionary with status and message
         """
         try:
-            logger.info(f"Deleting device: {device_name} for manufacturer {manufacturer}")
+            logger.info(
+                f"Deleting device: {device_name} for manufacturer {manufacturer}"
+            )
 
             async def delete():
-                response = await self.client.delete(f"/devices/{manufacturer}/{device_name}")
+                response = await self.client.delete(
+                    f"/devices/{manufacturer}/{device_name}"
+                )
                 response.raise_for_status()
                 return response.json()
 
@@ -692,10 +780,13 @@ class CachedApiClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error deleting device: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
@@ -711,7 +802,9 @@ class CachedApiClient:
             Dictionary with status and message
         """
         try:
-            logger.info(f"Creating preset: {preset_data.get('preset_name')} for device {preset_data.get('device')}")
+            logger.info(
+                f"Creating preset: {preset_data.get('preset_name')} for device {preset_data.get('device')}"
+            )
 
             async def create():
                 response = await self.client.post("/presets", json=preset_data)
@@ -722,18 +815,21 @@ class CachedApiClient:
             logger.info(f"Preset creation result: {result}")
 
             # Clear cache for presets
-            manufacturer = preset_data.get('manufacturer')
-            device = preset_data.get('device')
+            manufacturer = preset_data.get("manufacturer")
+            device = preset_data.get("device")
             if manufacturer and device:
                 self.clear_cache_for_prefix(f"presets_{manufacturer}_{device}")
 
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error creating preset: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
@@ -749,7 +845,9 @@ class CachedApiClient:
             Dictionary with status and message
         """
         try:
-            logger.info(f"Updating preset: {preset_data.get('preset_name')} for device {preset_data.get('device')}")
+            logger.info(
+                f"Updating preset: {preset_data.get('preset_name')} for device {preset_data.get('device')}"
+            )
 
             async def update():
                 response = await self.client.put("/presets", json=preset_data)
@@ -760,23 +858,28 @@ class CachedApiClient:
             logger.info(f"Preset update result: {result}")
 
             # Clear cache for presets
-            manufacturer = preset_data.get('manufacturer')
-            device = preset_data.get('device')
+            manufacturer = preset_data.get("manufacturer")
+            device = preset_data.get("device")
             if manufacturer and device:
                 self.clear_cache_for_prefix(f"presets_{manufacturer}_{device}")
 
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error updating preset: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
 
-    async def delete_preset(self, manufacturer: str, device: str, collection: str, preset_name: str) -> Dict[str, Any]:
+    async def delete_preset(
+        self, manufacturer: str, device: str, collection: str, preset_name: str
+    ) -> Dict[str, Any]:
         """
         Delete a preset
 
@@ -790,10 +893,14 @@ class CachedApiClient:
             Dictionary with status and message
         """
         try:
-            logger.info(f"Deleting preset: {preset_name} from collection {collection} for device {device}")
+            logger.info(
+                f"Deleting preset: {preset_name} from collection {collection} for device {device}"
+            )
 
             async def delete():
-                response = await self.client.delete(f"/presets/{manufacturer}/{device}/{collection}/{preset_name}")
+                response = await self.client.delete(
+                    f"/presets/{manufacturer}/{device}/{collection}/{preset_name}"
+                )
                 response.raise_for_status()
                 return response.json()
 
@@ -806,15 +913,20 @@ class CachedApiClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error deleting preset: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
 
-    async def get_collections(self, manufacturer: str, device: str, force_refresh: bool = False) -> List[str]:
+    async def get_collections(
+        self, manufacturer: str, device: str, force_refresh: bool = False
+    ) -> List[str]:
         """
         Fetch collections for a device from server with caching
 
@@ -836,7 +948,9 @@ class CachedApiClient:
                 return cached_data
 
         try:
-            logger.info(f"Fetching collections from server for {manufacturer}/{device}...")
+            logger.info(
+                f"Fetching collections from server for {manufacturer}/{device}..."
+            )
 
             # Use the specific endpoint with manufacturer and device
             url = f"/collections/{manufacturer}/{device}"
@@ -857,7 +971,9 @@ class CachedApiClient:
             logger.error(f"Error fetching collections: {str(e)}")
             return ["default"]  # Return default collection on error
 
-    async def create_collection(self, manufacturer: str, device: str, collection_name: str) -> Dict[str, Any]:
+    async def create_collection(
+        self, manufacturer: str, device: str, collection_name: str
+    ) -> Dict[str, Any]:
         """
         Create a new collection
 
@@ -889,15 +1005,20 @@ class CachedApiClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error creating collection: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
 
-    async def update_collection(self, manufacturer: str, device: str, old_name: str, new_name: str) -> Dict[str, Any]:
+    async def update_collection(
+        self, manufacturer: str, device: str, old_name: str, new_name: str
+    ) -> Dict[str, Any]:
         """
         Rename a collection
 
@@ -911,7 +1032,9 @@ class CachedApiClient:
             Dictionary with status and message
         """
         try:
-            logger.info(f"Renaming collection: {old_name} to {new_name} for device {device}")
+            logger.info(
+                f"Renaming collection: {old_name} to {new_name} for device {device}"
+            )
 
             # Use the specific endpoint with manufacturer and device
             url = f"/collections/{manufacturer}/{device}/{old_name}"
@@ -933,15 +1056,20 @@ class CachedApiClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error updating collection: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}
 
-    async def delete_collection(self, manufacturer: str, device: str, collection_name: str) -> Dict[str, Any]:
+    async def delete_collection(
+        self, manufacturer: str, device: str, collection_name: str
+    ) -> Dict[str, Any]:
         """
         Delete a collection
 
@@ -975,10 +1103,13 @@ class CachedApiClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"Error deleting collection: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    return {"status": "error", "message": error_data.get("detail", str(e))}
+                    return {
+                        "status": "error",
+                        "message": error_data.get("detail", str(e)),
+                    }
                 except json.JSONDecodeError:
                     pass
             return {"status": "error", "message": str(e)}

@@ -17,7 +17,7 @@ git config --local user.email "action@github.com"
 # Function to get current version from server/version.py
 get_current_version() {
     if [ -f "server/version.py" ]; then
-        grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2
+        grep -o '__version__ = "[^"]*"' server/version.py | head -1 | cut -d'"' -f2 | tr -d '\n\r' | xargs
     else
         echo "❌ Error: server/version.py not found"
         exit 1
@@ -65,11 +65,35 @@ update_version_in_file() {
     if [ -f "$file" ]; then
         echo "📝 Updating version in $file: $old_version -> $new_version"
         
+        # Clean versions of any whitespace
+        old_version=$(echo "$old_version" | tr -d '\n\r' | xargs)
+        new_version=$(echo "$new_version" | tr -d '\n\r' | xargs)
+        
+        # Escape special characters for sed (dots become literal dots)
+        local escaped_old_version=$(echo "$old_version" | sed 's/\./\\./g')
+        local escaped_new_version=$(echo "$new_version" | sed 's/\./\\./g')
+        
         # Create backup
         cp "$file" "${file}.bak"
         
-        # Update version using the specified pattern
-        if sed -i.tmp "$pattern" "$file" 2>/dev/null; then
+        # Build the actual sed pattern with escaped versions
+        local actual_pattern
+        case "$pattern" in
+            *"__version__"*)
+                actual_pattern="s/__version__ = \"$escaped_old_version\"/__version__ = \"$new_version\"/"
+                ;;
+            *"version ="*)
+                # For version = patterns, update only the first occurrence to avoid changing tool.briefcase.version
+                actual_pattern="1,/^version = \"$escaped_old_version\"/s/^version = \"$escaped_old_version\"/version = \"$new_version\"/"
+                ;;
+            *)
+                # Fallback: use the provided pattern but escape the versions
+                actual_pattern=$(echo "$pattern" | sed "s|$old_version|$new_version|g")
+                ;;
+        esac
+        
+        # Update version using the constructed pattern
+        if sed -i.tmp "$actual_pattern" "$file" 2>/dev/null; then
             rm -f "${file}.tmp"
             echo "✅ Updated $file"
         else
@@ -168,21 +192,21 @@ update_version_in_file \
     "server/version.py" \
     "$CURRENT_VERSION" \
     "$NEW_VERSION" \
-    "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/"
+    "__version__"
 
 # Update pyproject.toml (project version)
 update_version_in_file \
     "pyproject.toml" \
     "$CURRENT_VERSION" \
     "$NEW_VERSION" \
-    "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/"
+    "version ="
 
-# Update pyproject.toml (tool.briefcase version)
+# Update pyproject.toml (tool.briefcase version) - try both patterns
 update_version_in_file \
     "pyproject.toml" \
     "$CURRENT_VERSION" \
     "$NEW_VERSION" \
-    "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/g"
+    "version ="
 
 # Update CHANGELOG.md
 update_changelog "$NEW_VERSION" "$VERSION_TYPE"

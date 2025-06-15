@@ -72,15 +72,43 @@ if ! grep -q "^version = " pyproject.toml; then
 fi
 
 # Check version consistency
-PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+echo "🔍 Checking version consistency..."
+PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2 | tr -d '\n\r')
+
+# Clean up any whitespace
+VERSION=$(echo "$VERSION" | tr -d '\n\r')
+PYPROJECT_VERSION=$(echo "$PYPROJECT_VERSION" | tr -d '\n\r')
+
+echo "📋 server/version.py: '$VERSION'"
+echo "📋 pyproject.toml: '$PYPROJECT_VERSION'"
+
 if [ "$VERSION" != "$PYPROJECT_VERSION" ]; then
     echo "⚠️ Warning: Version mismatch between server/version.py ($VERSION) and pyproject.toml ($PYPROJECT_VERSION)"
     echo "Using server/version.py version: $VERSION"
     
-    # Update pyproject.toml version to match
-    sed -i.bak "s/^version = \"$PYPROJECT_VERSION\"/version = \"$VERSION\"/" pyproject.toml
-    rm -f pyproject.toml.bak
-    echo "✅ Updated pyproject.toml version to match"
+    # Escape special characters for sed (dots become literal dots)
+    ESCAPED_OLD_VERSION=$(echo "$PYPROJECT_VERSION" | sed 's/\./\\./g')
+    ESCAPED_NEW_VERSION=$(echo "$VERSION" | sed 's/\./\\./g')
+    
+    # Update pyproject.toml version to match using a more robust approach
+    if sed -i.bak "1,/^version = \"$ESCAPED_OLD_VERSION\"/s/^version = \"$ESCAPED_OLD_VERSION\"/version = \"$VERSION\"/" pyproject.toml; then
+        rm -f pyproject.toml.bak
+        echo "✅ Updated pyproject.toml version to match"
+        
+        # Verify the update worked
+        NEW_PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2 | tr -d '\n\r')
+        if [ "$VERSION" = "$NEW_PYPROJECT_VERSION" ]; then
+            echo "✅ Version update verified successfully"
+        else
+            echo "❌ Error: Version update failed. Expected: $VERSION, Got: $NEW_PYPROJECT_VERSION"
+            exit 1
+        fi
+    else
+        echo "❌ Error: Failed to update pyproject.toml version"
+        exit 1
+    fi
+else
+    echo "✅ Version consistency check passed"
 fi
 
 # Create source distribution manifest

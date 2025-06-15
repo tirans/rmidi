@@ -10,18 +10,22 @@ echo "🔧 Setting up R2MIDI build environment..."
 setup_git() {
     echo "🔗 Configuring Git..."
     
-    # Mark workspace as safe directory
-    git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+    # Mark workspace as safe directory - handle both CI and local
+    if [ -n "${GITHUB_WORKSPACE:-}" ]; then
+        git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+    fi
     git config --global --add safe.directory "$PWD" 2>/dev/null || true
     
     # Set up Git user for CI if in GitHub Actions
     if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
-        git config --local user.name "GitHub Action"
-        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action" 2>/dev/null || true
+        git config --local user.email "action@github.com" 2>/dev/null || true
         echo "✅ Configured Git for GitHub Actions"
     else
         echo "ℹ️ Not in GitHub Actions, skipping Git user configuration"
     fi
+    
+    echo "✅ Git configuration complete"
 }
 
 # Function to setup workspace
@@ -34,7 +38,9 @@ setup_workspace() {
     
     # Set up Python path
     export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
-    echo "PYTHONPATH=$PYTHONPATH" >> "${GITHUB_ENV:-/dev/null}" 2>/dev/null || true
+    if [ -n "${GITHUB_ENV:-}" ]; then
+        echo "PYTHONPATH=$PYTHONPATH" >> "$GITHUB_ENV"
+    fi
     
     echo "✅ Workspace setup complete"
 }
@@ -44,11 +50,13 @@ setup_version() {
     echo "📋 Setting up version information..."
     
     if [ -f "server/version.py" ]; then
-        VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2)
+        VERSION=$(grep -o '__version__ = "[^"]*"' server/version.py | cut -d'"' -f2 | tr -d '\n\r' | xargs)
         echo "Extracted version: $VERSION"
         
         # Set environment variables
-        echo "APP_VERSION=$VERSION" >> "${GITHUB_ENV:-/dev/null}" 2>/dev/null || true
+        if [ -n "${GITHUB_ENV:-}" ]; then
+            echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+        fi
         export APP_VERSION="$VERSION"
         
         # Set GitHub Actions outputs if available
@@ -121,19 +129,25 @@ setup_ci_environment() {
         echo "🤖 Setting up CI-specific environment..."
         
         # Set up step summary file
-        echo "## 🚀 R2MIDI Build Environment Setup" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
-        echo "" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
-        echo "**Environment**: $(uname -s) $(uname -m)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
-        echo "**Python**: $(python --version)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
-        echo "**Working Directory**: $PWD" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
-        
-        if [ -n "${APP_VERSION:-}" ]; then
-            echo "**Version**: $APP_VERSION" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+                echo "## 🚀 R2MIDI Build Environment Setup"
+                echo ""
+                echo "**Environment**: $(uname -s) $(uname -m)"
+                echo "**Python**: $(python --version 2>/dev/null || echo 'Not available')"
+                echo "**Working Directory**: $PWD"
+                
+                if [ -n "${APP_VERSION:-}" ]; then
+                    echo "**Version**: $APP_VERSION"
+                fi
+                
+                echo "**Setup Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            } >> "$GITHUB_STEP_SUMMARY"
         fi
         
-        echo "**Setup Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" 2>/dev/null || true
-        
         echo "✅ CI environment setup complete"
+    else
+        echo "ℹ️ Not in CI environment, skipping CI-specific setup"
     fi
 }
 
@@ -148,7 +162,7 @@ validate_environment() {
         echo "❌ Python not found"
         errors=$((errors + 1))
     else
-        echo "✅ Python: $(python --version)"
+        echo "✅ Python: $(python --version 2>/dev/null || echo 'Available')"
     fi
     
     # Check Git
@@ -156,13 +170,12 @@ validate_environment() {
         echo "❌ Git not found"
         errors=$((errors + 1))
     else
-        echo "✅ Git: $(git --version)"
+        echo "✅ Git: $(git --version 2>/dev/null || echo 'Available')"
     fi
     
     # Check required files
     local required_files=(
         "pyproject.toml"
-        "requirements.txt"
         "server/main.py"
         "r2midi_client/main.py"
     )
@@ -196,7 +209,11 @@ setup_ci_environment
 # Validate the setup
 validate_environment
 
-# Generate setup summary
+echo ""
+echo "✅ Environment setup complete!"
+echo "📋 Setup summary written to build_environment_setup.txt"
+
+# Generate setup summary for troubleshooting
 cat > build_environment_setup.txt << EOF
 R2MIDI Build Environment Setup Summary
 ======================================
@@ -204,8 +221,8 @@ R2MIDI Build Environment Setup Summary
 Setup Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 Platform: $(uname -s) $(uname -m)
 Working Directory: $PWD
-Python Version: $(python --version)
-Git Version: $(git --version)
+Python Version: $(python --version 2>/dev/null || echo 'Not available')
+Git Version: $(git --version 2>/dev/null || echo 'Not available')
 
 Environment Variables:
 - PYTHONPATH: ${PYTHONPATH:-"Not set"}
@@ -220,8 +237,3 @@ Build Directories:
 
 Status: ✅ READY FOR BUILD
 EOF
-
-echo ""
-echo "✅ Environment setup complete!"
-echo "📋 Setup summary:"
-cat build_environment_setup.txt

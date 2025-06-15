@@ -38,15 +38,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup workspace
-        run: |
-          # Mark workspace as safe directory
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # Skip submodule setup since server/midi-presets is in .gitignore
-          # This indicates the build is designed to work without it
-          echo "ℹ️ Skipping submodule setup (not required for build)"
+      - name: Setup environment
         shell: bash
+        run: |
+          ./.github/scripts/setup-environment.sh
 
       - name: Setup Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -57,51 +52,15 @@ jobs:
             requirements.txt
             r2midi_client/requirements.txt
 
-      - name: Install system dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install system dependencies
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libasound2-dev libegl1 libjack-dev librtmidi-dev \
-            libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 \
-            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
-            libxcb-xinerama0 libxcb-xfixes0 libfontconfig1-dev \
-            libfreetype6-dev libx11-dev libx11-xcb-dev libxext-dev \
-            libxfixes-dev libxi-dev libxrender-dev libxcb1-dev \
-            libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev \
-            libxcb-shm0-dev libxcb-util0-dev libxcb-util-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libxcb-cursor0 \
-            libxcb-shape0 portaudio19-dev build-essential \
-            pkg-config libffi-dev libssl-dev libgl1-mesa-dri \
-            libglib2.0-0 xvfb
-
-      - name: Install system dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Write-Host "🪟 Installing Windows dependencies..."
-          # Windows typically doesn't need additional system dependencies for Python/Qt
-          # but we can install any required packages here if needed in the future
-
-      - name: Install system dependencies (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          echo "🍎 Installing macOS dependencies..."
-          # macOS typically doesn't need additional system dependencies for Python/Qt
-          # but we can install any required packages here if needed in the future
+          ./.github/scripts/install-system-dependencies.sh
 
       - name: Install Python dependencies
         shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install flake8 pytest build twine
-          if [ -f requirements.txt ]; then 
-            pip install -r requirements.txt
-          fi
-          if [ -f r2midi_client/requirements.txt ]; then 
-            pip install -r r2midi_client/requirements.txt
-          fi
-          pip install -e ".[test]"
+          ./.github/scripts/install-python-dependencies.sh ci
 
       - name: Validate project structure
         shell: bash
@@ -234,47 +193,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup workspace
-        run: |
-          # Mark workspace as safe directory
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # Skip submodule setup since server/midi-presets is in .gitignore
-          # This indicates the build is designed to work without it
-          echo "ℹ️ Skipping submodule setup (not required for build)"
+      - name: Setup environment
         shell: bash
+        run: |
+          ./.github/scripts/setup-environment.sh
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install system dependencies (Linux)
+      - name: Install system dependencies
         if: matrix.platform == 'linux'
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libasound2-dev libegl1 libjack-dev librtmidi-dev \
-            libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 \
-            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
-            libxcb-xinerama0 libxcb-xfixes0 libfontconfig1-dev \
-            libfreetype6-dev libx11-dev libx11-xcb-dev libxext-dev \
-            libxfixes-dev libxi-dev libxrender-dev libxcb1-dev \
-            libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev \
-            libxcb-shm0-dev libxcb-util0-dev libxcb-util-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libxcb-cursor0 \
-            libxcb-shape0 portaudio19-dev build-essential \
-            pkg-config libffi-dev libssl-dev
+          ./.github/scripts/install-system-dependencies.sh linux
 
       - name: Install dependencies
         shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install briefcase
-          python -m pip install -r requirements.txt
-          if [ -f r2midi_client/requirements.txt ]; then 
-            pip install -r r2midi_client/requirements.txt
-          fi
+          ./.github/scripts/install-python-dependencies.sh production
 
       - name: Test Briefcase build (dry run)
         shell: bash

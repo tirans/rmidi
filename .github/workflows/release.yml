@@ -104,7 +104,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build package
+      - name: Build Python package
         shell: bash
         run: |
           ./.github/scripts/build-python-package.sh
